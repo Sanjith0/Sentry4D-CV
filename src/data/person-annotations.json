@@ -1,4 +1,410 @@
 {
   "version": 1,
-  "datasets": []
+  "datasets": [
+    {
+      "personId": "person_01",
+      "observations": [
+        {
+          "masterTime": 4.326,
+          "cameraId": "cam3",
+          "pixel": [
+            0.7351,
+            0.3146
+          ],
+          "worldPosition": [
+            -1.417,
+            0,
+            -6.405
+          ],
+          "source": "manual",
+          "videoTime": 4.326,
+          "id": "obs_mw7ok8l0_w28ti"
+        },
+        {
+          "masterTime": 5.759,
+          "cameraId": "cam2",
+          "pixel": [
+            0.6562,
+            0.8443
+          ],
+          "worldPosition": [
+            -1.488,
+            0,
+            -5.765
+          ],
+          "source": "manual",
+          "videoTime": 5.759,
+          "id": "obs_mw7olpwp_hnbi9"
+        },
+        {
+          "masterTime": 6.674,
+          "cameraId": "cam3",
+          "pixel": [
+            0.7088,
+            0.3333
+          ],
+          "worldPosition": [
+            -1.301,
+            0,
+            -4.503
+          ],
+          "source": "manual",
+          "videoTime": 6.674,
+          "id": "obs_mw7okhtf_zenyo"
+        },
+        {
+          "masterTime": 7.295,
+          "cameraId": "cam2",
+          "pixel": [
+            0.5563,
+            0.6947
+          ],
+          "worldPosition": [
+            -1.41,
+            0,
+            -4.485
+          ],
+          "source": "manual",
+          "videoTime": 7.295,
+          "id": "obs_mw7oltpa_lxs39"
+        },
+        {
+          "masterTime": 8.355,
+          "cameraId": "cam1",
+          "pixel": [
+            0.5581,
+            0.9813
+          ],
+          "worldPosition": [
+            -0.702,
+            0,
+            -3.072
+          ],
+          "source": "manual",
+          "videoTime": 8.355,
+          "id": "obs_mw7op9e3_03elu"
+        },
+        {
+          "masterTime": 8.613,
+          "cameraId": "cam2",
+          "pixel": [
+            0.509,
+            0.6013
+          ],
+          "worldPosition": [
+            -1.538,
+            0,
+            -3.366
+          ],
+          "source": "manual",
+          "videoTime": 8.613,
+          "id": "obs_mw7olwp5_pn1ae"
+        },
+        {
+          "masterTime": 9.134,
+          "cameraId": "cam1",
+          "pixel": [
+            0.5861,
+            0.9003
+          ],
+          "worldPosition": [
+            -0.555,
+            0,
+            -2.244
+          ],
+          "source": "manual",
+          "videoTime": 9.134,
+          "id": "obs_mw7opdpf_gbcck"
+        },
+        {
+          "masterTime": 9.715,
+          "cameraId": "cam1",
+          "pixel": [
+            0.5861,
+            0.8941
+          ],
+          "worldPosition": [
+            -0.525,
+            0,
+            -2.185
+          ],
+          "source": "manual",
+          "videoTime": 9.715,
+          "id": "obs_mw7ophhj_85xjp"
+        },
+        {
+          "masterTime": 9.879,
+          "cameraId": "cam3",
+          "pixel": [
+            0.6913,
+            0.3801
+          ],
+          "worldPosition": [
+            -0.691,
+            0,
+            -2.303
+          ],
+          "source": "manual",
+          "videoTime": 9.879,
+          "id": "obs_mw7okne4_h42hr"
+        },
+        {
+          "masterTime": 10.195,
+          "cameraId": "cam1",
+          "pixel": [
+            0.6071,
+            0.8598
+          ],
+          "worldPosition": [
+            -0.514,
+            0,
+            -1.626
+          ],
+          "source": "manual",
+          "videoTime": 10.195,
+          "id": "obs_mw7opken_qlqcm"
+        },
+        {
+          "masterTime": 10.861,
+          "cameraId": "cam1",
+          "pixel": [
+            0.6177,
+            0.8162
+          ],
+          "worldPosition": [
+            -0.346,
+            0,
+            -0.916
+          ],
+          "source": "manual",
+          "videoTime": 10.861,
+          "id": "obs_mw7opnf0_80gpw"
+        },
+        {
+          "masterTime": 11.45,
+          "cameraId": "cam4",
+          "pixel": [
+            0.0201,
+            0.9844
+          ],
+          "worldPosition": [
+            -0.133,
+            0,
+            -1.238
+          ],
+          "source": "manual",
+          "videoTime": 20.75,
+          "id": "obs_mw7onu0z_07cbc"
+        },
+        {
+          "masterTime": 11.841,
+          "cameraId": "cam1",
+          "pixel": [
+            0.6107,
+            0.7508
+          ],
+          "worldPosition": [
+            0.264,
+            0,
+            0.246
+          ],
+          "source": "manual",
+          "videoTime": 11.841,
+          "id": "obs_mw7opq1x_7zt86"
+        },
+        {
+          "masterTime": 12.505,
+          "cameraId": "cam1",
+          "pixel": [
+            0.5984,
+            0.7321
+          ],
+          "worldPosition": [
+            0.611,
+            0,
+            0.518
+          ],
+          "source": "manual",
+          "videoTime": 12.505,
+          "id": "obs_mw7optef_au65y"
+        },
+        {
+          "masterTime": 12.899,
+          "cameraId": "cam3",
+          "pixel": [
+            0.6842,
+            0.5296
+          ],
+          "worldPosition": [
+            0.687,
+            0,
+            0.816
+          ],
+          "source": "manual",
+          "videoTime": 12.899,
+          "id": "obs_mw7okukx_t3msz"
+        },
+        {
+          "masterTime": 14.805,
+          "cameraId": "cam2",
+          "pixel": [
+            0.2882,
+            0.3925
+          ],
+          "worldPosition": [
+            0.253,
+            0,
+            1.621
+          ],
+          "source": "manual",
+          "videoTime": 14.805,
+          "id": "obs_mw7olevy_p75zn"
+        },
+        {
+          "masterTime": 19.43,
+          "cameraId": "cam2",
+          "pixel": [
+            0.2795,
+            0.4112
+          ],
+          "worldPosition": [
+            0.496,
+            0,
+            0.957
+          ],
+          "source": "manual",
+          "videoTime": 19.43,
+          "id": "obs_mw7omjxa_adofv"
+        },
+        {
+          "masterTime": 20.402,
+          "cameraId": "cam1",
+          "pixel": [
+            0.6159,
+            0.7352
+          ],
+          "worldPosition": [
+            0.374,
+            0,
+            0.717
+          ],
+          "source": "manual",
+          "videoTime": 20.402,
+          "id": "obs_mw7oqrup_1lywb"
+        },
+        {
+          "masterTime": 21.498,
+          "cameraId": "cam1",
+          "pixel": [
+            0.6685,
+            0.8567
+          ],
+          "worldPosition": [
+            -1.023,
+            0,
+            -0.968
+          ],
+          "source": "manual",
+          "videoTime": 21.498,
+          "id": "obs_mw7oom8i_a5wh6"
+        },
+        {
+          "masterTime": 22.143,
+          "cameraId": "cam1",
+          "pixel": [
+            0.6632,
+            0.9003
+          ],
+          "worldPosition": [
+            -1.146,
+            0,
+            -1.573
+          ],
+          "source": "manual",
+          "videoTime": 22.143,
+          "id": "obs_mw7ootx5_4zij0"
+        },
+        {
+          "masterTime": 22.723,
+          "cameraId": "cam1",
+          "pixel": [
+            0.6527,
+            0.9844
+          ],
+          "worldPosition": [
+            -1.322,
+            0,
+            -2.439
+          ],
+          "source": "manual",
+          "videoTime": 22.723,
+          "id": "obs_mw7ooww1_kizgv"
+        },
+        {
+          "masterTime": 22.745,
+          "cameraId": "cam2",
+          "pixel": [
+            0.4792,
+            0.5514
+          ],
+          "worldPosition": [
+            -1.562,
+            0,
+            -2.559
+          ],
+          "source": "manual",
+          "videoTime": 22.745,
+          "id": "obs_mw7on1xx_dkkt3"
+        },
+        {
+          "masterTime": 23.491,
+          "cameraId": "cam2",
+          "pixel": [
+            0.5441,
+            0.6636
+          ],
+          "worldPosition": [
+            -1.49,
+            0,
+            -4.167
+          ],
+          "source": "manual",
+          "videoTime": 23.491,
+          "id": "obs_mw7on51p_7g03c"
+        },
+        {
+          "masterTime": 24.252,
+          "cameraId": "cam2",
+          "pixel": [
+            0.5774,
+            0.7633
+          ],
+          "worldPosition": [
+            -1.204,
+            0,
+            -5.052
+          ],
+          "source": "manual",
+          "videoTime": 24.252,
+          "id": "obs_mw7on7d7_zcs34"
+        },
+        {
+          "masterTime": 25.522,
+          "cameraId": "cam2",
+          "pixel": [
+            0.6545,
+            0.9689
+          ],
+          "worldPosition": [
+            -0.897,
+            0,
+            -6.217
+          ],
+          "source": "manual",
+          "videoTime": 25.522,
+          "id": "obs_mw7onamk_4bn5b"
+        }
+      ]
+    }
+  ]
 }
