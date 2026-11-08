@@ -14,6 +14,7 @@ import { CameraSyncPanel } from "../dashboard/CameraSyncPanel";
 import { AnnotationPanel } from "../features/annotation/AnnotationPanel";
 import { useEvidenceSync } from "../features/sentry/useEvidence";
 import { EvidencePanel } from "../features/sentry/EvidencePanel";
+import { InvestigatorPanel } from "../features/investigator/InvestigatorPanel";
 
 function useShortcuts() {
   useEffect(() => {
@@ -135,6 +136,7 @@ export default function App() {
           <EnlargedFeed />
           <CameraSyncPanel />
         </main>
+        <InvestigatorPanel />
         <CCTVPanel />
       </div>
       <ReplayTimeline />

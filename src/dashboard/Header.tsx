@@ -1,4 +1,5 @@
-import { Footprints, Ghost, Radar, ScanEye, Users } from "lucide-react";
+import { Footprints, Ghost, Radar, ScanEye, Users, BrainCircuit } from "lucide-react";
+import { useInvestigatorStore } from "../features/investigator/useInvestigatorStore";
 import { incidentConfig } from "../config/incident";
 import { useReplayStore } from "../store/useReplayStore";
 import { useViewStore } from "../store/useViewStore";
@@ -48,6 +49,9 @@ export function Header() {
   const toggleSentry = useReplayStore((s) => s.toggleSentry);
   const annotating = useViewStore((s) => s.annotating);
   const setAnnotating = useViewStore((s) => s.setAnnotating);
+  const aiOpen = useInvestigatorStore((s) => s.open);
+  const aiRunning = useInvestigatorStore((s) => s.status === "running");
+  const toggleAi = useInvestigatorStore((s) => s.toggle);
 
   return (
     <header className="relative z-10 flex h-14 shrink-0 items-center gap-5 whitespace-nowrap border-b border-ink-600/70 bg-ink-900/95 px-4">
@@ -108,6 +112,14 @@ export function Header() {
           title="Click a real person's feet in the CCTV video to place them in the 3D room"
         >
           <Footprints className="h-3.5 w-3.5" /> ANNOTATE SUBJECT
+        </ToolButton>
+        <ToolButton
+          active={aiOpen}
+          onClick={toggleAi}
+          title="NVIDIA Nemotron autonomous investigation agent"
+          className={aiOpen ? "" : "!border-[#76b900]/60 !text-[#b5e05c]"}
+        >
+          <BrainCircuit className={`h-3.5 w-3.5 ${aiRunning ? "animate-pulse" : ""}`} /> AI INVESTIGATOR
         </ToolButton>
         <ToolButton active={xray} onClick={toggleXray} title="Toggle X-ray tracking (X)">
           <Ghost className="h-3.5 w-3.5" /> X-RAY

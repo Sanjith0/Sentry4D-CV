@@ -191,3 +191,12 @@ interface SceneActorsProps {          // src/types/security.ts
 - Real-person annotations: `PersonObservation` / `PersonAnnotationDataset` (types/security.ts), live in `useAnnotationStore` (`features/annotation/`), committed in `src/data/person-annotations.json`. They are master-time floor positions from human clicks, not tracking output.
 - Coordinates: meters, Y-up, room floor at y = 0, same space as `config/cameras.ts`.
 - Dev console: `window.__sentry.replay.getState()` / `.view` / `.viewport.camera`.
+
+## AI Investigator (NVIDIA Nemotron)
+
+An autonomous, tool-calling investigation agent (`server/investigator.ts`, served by the Vite dev server at `POST /api/investigate`).
+
+1. `cp .env.example .env` and set `NVIDIA_API_KEY` (server-side only — never `VITE_`-prefixed). Optional `NVIDIA_MODEL` (default `nvidia/nemotron-3-super-120b-a12b`).
+2. `npm run dev`, click **AI INVESTIGATOR → ANALYZE INCIDENT**.
+
+Nemotron calls read-only tools over the project's real data (`getIncidentOverview`, `getIncidentEvents`, `getSubjectTrajectory`, `getCameraObservations`, `getObjectMovements`, `getEvidenceAtTime`, `getSpatialContext`) and finishes with `createInvestigationReport`, which is schema-validated (camera IDs, timestamps and event IDs must exist). The panel streams the real tool trace; clicking a report event seeks the shared master timeline. No footage is sent — only compact structured metadata. Bounded loop: 12 model turns / 16 tool calls, 90 s timeouts, retries on 429/5xx.
