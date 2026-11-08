@@ -6,6 +6,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 const CAMERA_IDS = ["cam1", "cam2", "cam3", "cam4"];
+const DEVICE_IDS = ["laptop1", "laptop2", "laptop3"];
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
 /** Whitelisted config files the app may rewrite in dev, with validation. */
@@ -56,6 +57,18 @@ const CONFIGS: Record<string, { file: string; validate: (d: unknown) => void }> 
       const o = d as Record<string, unknown>;
       for (const id of CAMERA_IDS) if (!isNum(o?.[id])) throw new Error(`${id} offset invalid`);
       if (Object.keys(o).some((k) => !CAMERA_IDS.includes(k))) throw new Error("unknown camera id");
+    },
+  },
+  "device-positions": {
+    file: "src/config/device-positions.json",
+    validate(d) {
+      const o = d as Record<string, unknown>;
+      for (const id of DEVICE_IDS) {
+        const p = o?.[id];
+        if (p === null) continue;
+        if (!Array.isArray(p) || p.length !== 3 || !p.every(isNum)) throw new Error(`${id} position invalid`);
+      }
+      if (Object.keys(o).some((k) => !DEVICE_IDS.includes(k))) throw new Error("unknown device id");
     },
   },
 };

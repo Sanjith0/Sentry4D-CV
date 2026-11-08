@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useGLTF } from "@react-three/drei";
-import { useFrame, useThree } from "@react-three/fiber";
+import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import { roomConfig, type RoomConfig } from "../config/roomConfig";
 import { useViewStore } from "../store/useViewStore";
 import { useReplayStore } from "../store/useReplayStore";
+import { useDeviceStore } from "../features/devices/useDeviceStore";
 import type { RoomBounds, Vec3 } from "../types/security";
 import { ceilingPlanes, setCeilingCut } from "./ceilingClip";
 import { applyWindowClip } from "./windowWallClip";
@@ -71,8 +72,14 @@ export function RoomModel({ url = roomConfig.url, config = roomConfig, onLoaded 
     config.rendering.anisotropy === "max" ? gl.capabilities.getMaxAnisotropy() : config.rendering.anisotropy;
   // Ceiling is always shown when looking through a CCTV camera (they're ceiling-mounted).
   const ceilingToggle = useViewStore((s) => s.showCeiling);
-  const cctvView = useReplayStore((s) => s.cameraMode === "cctv");
+  const cameraMode = useReplayStore((s) => s.cameraMode);
+  const cctvView = cameraMode === "cctv";
   const showCeiling = ceilingToggle || cctvView;
+  const placingDeviceId = useDeviceStore((s) => s.placingDeviceId);
+  const setDevicePosition = useDeviceStore((s) => s.setPosition);
+  // Placement raycasts against the real scan, so only modes without pointer-lock/video
+  // framing (orbit, top-down) resolve a click to a point on the laptop.
+  const canPlaceDevice = placingDeviceId !== null && (cameraMode === "orbit" || cameraMode === "topdown");
 
   const { object, wire, bounds, sweep, materials } = useMemo(() => {
     const root = gltf.scene.clone(true);
@@ -156,9 +163,22 @@ export function RoomModel({ url = roomConfig.url, config = roomConfig, onLoaded 
 
   useEffect(() => () => materials.forEach((m) => m.dispose()), [materials]);
 
+  const onClick = (e: ThreeEvent<MouseEvent>) => {
+    if (!canPlaceDevice || !placingDeviceId) return;
+    if (e.delta > 4) return; // a drag (orbit pan/rotate), not a click
+    e.stopPropagation();
+    const p = e.point;
+    setDevicePosition(placingDeviceId, [Math.round(p.x * 1000) / 1000, Math.round(p.y * 1000) / 1000, Math.round(p.z * 1000) / 1000]);
+  };
+
   return (
     <>
-      <primitive object={object} />
+      <primitive
+        object={object}
+        onClick={canPlaceDevice ? onClick : undefined}
+        onPointerOver={canPlaceDevice ? () => (document.body.style.cursor = "crosshair") : undefined}
+        onPointerOut={canPlaceDevice ? () => (document.body.style.cursor = "") : undefined}
+      />
       {(building || wireframe) && <primitive object={wire} />}
     </>
   );
