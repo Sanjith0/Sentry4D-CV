@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Box, Cctv, ClipboardCopy, Crosshair, Eye, EyeOff, Gamepad2, Map, Orbit, RotateCcw, Square, Video } from "lucide-react";
+import { Box, Cctv, ClipboardCopy, Crosshair, Eye, EyeOff, Gamepad2, Map, Orbit, RotateCcw, Sparkles, Square, Video } from "lucide-react";
 import * as THREE from "three";
 import { securityCameras } from "../config/cameras";
 import { useReplayStore } from "../store/useReplayStore";
-import { useViewStore } from "../store/useViewStore";
+import { useViewStore, type RenderQuality } from "../store/useViewStore";
 import type { CameraMode } from "../types/security";
 import { formatWallClock } from "../lib/format";
 import { viewport } from "../scene/viewportCamera";
@@ -76,6 +76,37 @@ export function ViewerToolbar() {
         CEILING
       </ToolButton>
       <CopyPoseButton />
+      <div className="mx-1 h-5 w-px bg-ink-500" />
+      <QualityToggle />
+    </div>
+  );
+}
+
+const QUALITIES: { q: RenderQuality; label: string; title: string }[] = [
+  { q: "performance", label: "PERF", title: "Performance: lower resolution, no post-processing" },
+  { q: "balanced", label: "BAL", title: "Balanced: native resolution + sharpen, AO, grading" },
+  { q: "ultra", label: "ULTRA", title: "Ultra: supersampled resolution + all effects" },
+];
+
+function QualityToggle() {
+  const quality = useViewStore((s) => s.quality);
+  const setQuality = useViewStore((s) => s.setQuality);
+  return (
+    <div className="flex h-8 items-center gap-0.5 rounded-md border border-ink-500/70 bg-ink-800/80 p-0.5" title="Render quality">
+      <Sparkles className="mx-1 h-3.5 w-3.5 text-slate-500" />
+      {QUALITIES.map(({ q, label, title }) => (
+        <button
+          key={q}
+          type="button"
+          title={title}
+          onClick={() => setQuality(q)}
+          className={`h-6 rounded px-1.5 font-mono text-[10px] transition-colors ${
+            quality === q ? "bg-cyan-400/20 text-cyan-200" : "text-slate-500 hover:text-slate-200"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }

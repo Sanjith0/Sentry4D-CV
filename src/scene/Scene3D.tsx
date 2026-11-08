@@ -3,7 +3,8 @@ import { Canvas } from "@react-three/fiber";
 import { roomConfig } from "../config/roomConfig";
 import { securityCameras } from "../config/cameras";
 import { useReplayStore } from "../store/useReplayStore";
-import { useViewStore } from "../store/useViewStore";
+import { useViewStore, type RenderQuality } from "../store/useViewStore";
+import * as THREE from "three";
 import { ErrorBoundary } from "../lib/ErrorBoundary";
 import { SceneActors } from "../features/sentry/SceneActors";
 import { RoomStage } from "./RoomStage";
@@ -45,14 +46,22 @@ function SceneActorsBridge() {
   );
 }
 
+const DPR: Record<RenderQuality, number | [number, number]> = {
+  performance: [1, 1.5],
+  balanced: [1, 2],
+  ultra: Math.min(typeof window !== "undefined" ? window.devicePixelRatio * 1.25 : 2, 2.5),
+};
+
 export function Scene3D() {
+  const quality = useViewStore((s) => s.quality);
   return (
     <Canvas
       camera={{ fov: DEFAULT_FOV, near: 0.03, far: 500, position: [12, 10, 14] }}
-      dpr={[1, 2]}
+      dpr={DPR[quality]}
       gl={{ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: false }}
       onCreated={({ gl }) => {
         gl.localClippingEnabled = true;
+        gl.outputColorSpace = THREE.SRGBColorSpace;
       }}
     >
       <color attach="background" args={["#05080d"]} />

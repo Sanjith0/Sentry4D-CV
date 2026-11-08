@@ -34,6 +34,21 @@ export interface RoomConfig {
     directionalIntensity: number;
     directionalPosition: Vec3;
   };
+  /** Image quality settings (see also the PERF/BAL/ULTRA toggle in the viewer toolbar). */
+  rendering: {
+    /** Texture anisotropic filtering: "max" = GPU maximum (usually 16). Fixes floor/wall blur at grazing angles. */
+    anisotropy: "max" | number;
+    /** Unsharp-mask strength for the post-process sharpen pass (0 = off). */
+    sharpen: number;
+    /** Screen-space ambient occlusion (contact shadows the smoothed scan lost). */
+    ao: boolean;
+    aoIntensity: number;
+    /** AO sample radius in meters. */
+    aoRadius: number;
+    /** Subtle grading; unlit scans tend to look washed out. Range -1..1. */
+    contrast: number;
+    saturation: number;
+  };
   /** Distance below the bbox top where the "hide ceiling" clipping plane cuts. */
   ceilingCutOffset: number;
   /** Simple patches for holes in the scan. Off by default. */
@@ -68,6 +83,15 @@ export const roomConfig: RoomConfig = {
     hemisphereIntensity: 0.6,
     directionalIntensity: 1.2,
     directionalPosition: [4, 8, 3],
+  },
+  rendering: {
+    anisotropy: "max",
+    sharpen: 0.35,
+    ao: true,
+    aoIntensity: 1.5,
+    aoRadius: 0.6,
+    contrast: 0.08,
+    saturation: 0.06,
   },
   ceilingCutOffset: 0.25,
   supplemental: {

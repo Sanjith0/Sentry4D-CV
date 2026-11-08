@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { useGLTF } from "@react-three/drei";
+import { useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { roomConfig, type RoomConfig } from "../config/roomConfig";
 import { useViewStore } from "../store/useViewStore";
@@ -20,8 +21,19 @@ export function boundsFromBox(box: THREE.Box3): RoomBounds {
   };
 }
 
-function prepareMaterial(src: THREE.Material, mode: RoomConfig["materialMode"]): THREE.Material {
+/** Sharper sampling at grazing angles. Textures are shared with the loader cache; this only changes sampler state. */
+function tuneTexture(tex: THREE.Texture | null, anisotropy: number) {
+  if (!tex) return;
+  tex.anisotropy = anisotropy;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.generateMipmaps = true;
+  tex.needsUpdate = true;
+}
+
+function prepareMaterial(src: THREE.Material, mode: RoomConfig["materialMode"], anisotropy: number): THREE.Material {
   const m = src as THREE.MeshStandardMaterial;
+  tuneTexture(m.map, anisotropy);
   if (mode === "unlit") {
     return new THREE.MeshBasicMaterial({
       map: m.map ?? null,
@@ -52,6 +64,9 @@ interface RoomModelProps {
  */
 export function RoomModel({ url = roomConfig.url, config = roomConfig, onLoaded }: RoomModelProps) {
   const gltf = useGLTF(url);
+  const gl = useThree((s) => s.gl);
+  const anisotropy =
+    config.rendering.anisotropy === "max" ? gl.capabilities.getMaxAnisotropy() : config.rendering.anisotropy;
   // Ceiling is always shown when looking through a CCTV camera (they're ceiling-mounted).
   const ceilingToggle = useViewStore((s) => s.showCeiling);
   const cctvView = useReplayStore((s) => s.cameraMode === "cctv");
@@ -64,7 +79,7 @@ export function RoomModel({ url = roomConfig.url, config = roomConfig, onLoaded 
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
       const prep = (m: THREE.Material) => {
-        const n = prepareMaterial(m, config.materialMode);
+        const n = prepareMaterial(m, config.materialMode, anisotropy);
         materials.push(n);
         return n;
       };
@@ -99,7 +114,7 @@ export function RoomModel({ url = roomConfig.url, config = roomConfig, onLoaded 
     const scan = boundsFromBox(scanBox.clone().translate(offset));
     console.info(`[Sentry3D] full scan extent incl. outside geometry: ${scan.size.map((v) => v.toFixed(2)).join(" × ")} m`);
     return { object: outer, bounds: boundsFromBox(box), materials };
-  }, [gltf, config]);
+  }, [gltf, config, anisotropy]);
 
   useEffect(() => {
     onLoaded?.(bounds);

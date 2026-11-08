@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import type { RoomBounds } from "../types/security";
 
+export type RenderQuality = "performance" | "balanced" | "ultra";
+
 export type RoomStatus = "checking" | "loading" | "loaded" | "missing" | "error";
 
 interface ViewState {
@@ -20,6 +22,7 @@ interface ViewState {
   resetToken: number;
   /** True while the camera rig animates between modes. */
   transitioning: boolean;
+  quality: RenderQuality;
 
   setRoomBounds: (b: RoomBounds | null) => void;
   setRoomStatus: (s: RoomStatus, error?: string | null) => void;
@@ -33,6 +36,7 @@ interface ViewState {
   setFlySpeed: (v: number) => void;
   resetView: () => void;
   setTransitioning: (v: boolean) => void;
+  setQuality: (q: RenderQuality) => void;
 }
 
 export const useViewStore = create<ViewState>()((set) => ({
@@ -49,6 +53,7 @@ export const useViewStore = create<ViewState>()((set) => ({
   flySpeed: 2.5,
   resetToken: 0,
   transitioning: false,
+  quality: "balanced",
 
   setRoomBounds: (roomBounds) => set({ roomBounds }),
   setRoomStatus: (roomStatus, roomError = null) => set({ roomStatus, roomError }),
@@ -62,4 +67,5 @@ export const useViewStore = create<ViewState>()((set) => ({
   setFlySpeed: (flySpeed) => set({ flySpeed: Math.min(Math.max(flySpeed, 0.25), 20) }),
   resetView: () => set((s) => ({ resetToken: s.resetToken + 1 })),
   setTransitioning: (transitioning) => set({ transitioning }),
+  setQuality: (quality) => set({ quality }),
 }));
