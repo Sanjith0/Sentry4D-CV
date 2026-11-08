@@ -112,19 +112,7 @@ export function WindowWall() {
       <mesh position={[w.glassX, w.height / 2, zc]} rotation-y={Math.PI / 2} material={assets.glass} renderOrder={5} raycast={noRay}>
         <planeGeometry args={[len, w.height]} />
       </mesh>
-      {/* Mullions */}
-      {w.mullionsZ.map((z) => (
-        <mesh key={z} position={[w.glassX + 0.02, w.height / 2, z]} material={assets.frame} raycast={noRay}>
-          <boxGeometry args={[0.1, w.height, 0.055]} />
-        </mesh>
-      ))}
-      {/* Top and bottom frame rails */}
-      <mesh position={[w.glassX + 0.02, 0.04, zc]} material={assets.frame} raycast={noRay}>
-        <boxGeometry args={[0.12, 0.08, len]} />
-      </mesh>
-      <mesh position={[w.glassX + 0.02, w.height - 0.05, zc]} material={assets.frame} raycast={noRay}>
-        <boxGeometry args={[0.12, 0.1, len]} />
-      </mesh>
+      {/* Window frames: the real scanned mullions/sill/head are kept (see windowWallClip.ts). */}
       {/* Balcony floor: from just inside the glass (covers the trimmed strip) out to the edge */}
       <mesh position={[floorX + 0.1, -0.006, zc]} rotation-x={-Math.PI / 2} material={assets.floor} receiveShadow raycast={noRay}>
         <planeGeometry args={[balconyDepth + 0.2, len]} />

@@ -65,6 +65,12 @@ export interface RoomConfig {
     height: number;
     /** Mullion centres along z (measured density peaks, ~1.1 m spacing). */
     mullionsZ: number[];
+    /** Scanned frame geometry is KEPT inside the wall slab (x > frameSlabX) within ±frameHalfWidth of a
+     *  mullion, below sillHeight, or within headDepth of the top. Everything else there is hidden. */
+    frameSlabX: number;
+    frameHalfWidth: number;
+    sillHeight: number;
+    headDepth: number;
     /** Balcony floor extends from the glass out to this x. */
     balconyOuterX: number;
     railingHeight: number;
@@ -120,6 +126,10 @@ export const roomConfig: RoomConfig = {
     glassX: -2.47,
     height: 3.06,
     mullionsZ: [-6.9, -5.9, -4.7, -3.65, -2.55, -1.45, -0.3, 0.8, 1.85, 3.05, 4.15, 5.45, 6.5],
+    frameSlabX: -2.8,
+    frameHalfWidth: 0.12,
+    sillHeight: 0.14,
+    headDepth: 0.18,
     balconyOuterX: -6.2,
     railingHeight: 1.05,
   },
