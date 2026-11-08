@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { ClipboardCopy, Laptop, Save, Undo2, X } from "lucide-react";
+import { ClipboardCopy, Laptop, Save, ShieldAlert, Undo2, X } from "lucide-react";
 import { securityDevices } from "../config/devices";
 import { positionsEqual, useDeviceStore } from "../features/devices/useDeviceStore";
+import { startAttack } from "../features/devices/useCyberAlertSocket";
+import { useCyberAlertStore } from "../features/devices/useCyberAlertStore";
 import { canSaveToProject, saveProjectConfig } from "../lib/saveConfig";
 import { useReplayStore } from "../store/useReplayStore";
 
@@ -19,6 +21,8 @@ export function DevicePlacementPanel({ onClose }: { onClose: () => void }) {
   const revertPosition = useDeviceStore((s) => s.revertPosition);
   const markSaved = useDeviceStore((s) => s.markSaved);
   const cameraMode = useReplayStore((s) => s.cameraMode);
+  const stages = useCyberAlertStore((s) => s.stages);
+  const connected = useCyberAlertStore((s) => s.connected);
   const [status, setStatus] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -58,36 +62,56 @@ export function DevicePlacementPanel({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
+      {!connected && (
+        <div className="rounded-md border border-ink-600 bg-ink-800/60 px-2 py-1.5 text-[10px] leading-snug text-slate-400">
+          Not connected to the training bridge (ws://localhost:8787). Run{" "}
+          <code className="text-slate-300">python -m blacksite_agent.server</code> from services/agent-worker to enable ATTACK.
+        </div>
+      )}
+
       <div className="space-y-1.5">
         {securityDevices.map((d) => {
           const placed = !!positions[d.id];
           const dirty = !positionsEqual(positions[d.id], savedPositions[d.id]);
           const placing = placingDeviceId === d.id;
+          const stage = stages[d.id];
+          const canAttack = connected && placed && (stage === "idle" || stage === "resolved");
           return (
-            <div key={d.id} className="flex items-center gap-1.5 rounded-md border border-ink-600 p-1.5">
-              <span className="flex-1 font-mono text-[11px] text-slate-200">
-                {d.name}
-                {dirty && <span className="ml-1 text-cyan-300">•</span>}
-              </span>
-              <span className={`font-mono text-[10px] ${placed ? "text-emerald-300" : "text-slate-500"}`}>{placed ? "PLACED" : "UNPLACED"}</span>
+            <div key={d.id} className="space-y-1 rounded-md border border-ink-600 p-1.5">
+              <div className="flex items-center gap-1.5">
+                <span className="flex-1 font-mono text-[11px] text-slate-200">
+                  {d.name}
+                  {dirty && <span className="ml-1 text-cyan-300">•</span>}
+                </span>
+                <span className={`font-mono text-[10px] ${placed ? "text-emerald-300" : "text-slate-500"}`}>{placed ? "PLACED" : "UNPLACED"}</span>
+                <button
+                  type="button"
+                  onClick={() => setPlacing(placing ? null : d.id)}
+                  title="Click, then click the laptop in the 3D view"
+                  className={`h-6 rounded border px-2 font-mono text-[10px] ${
+                    placing ? "border-cyan-400/70 bg-cyan-400/20 text-cyan-100" : "border-ink-500 text-slate-400 hover:text-slate-100"
+                  }`}
+                >
+                  {placing ? "CLICK LAPTOP…" : "PLACE"}
+                </button>
+                <button
+                  type="button"
+                  disabled={!dirty}
+                  onClick={() => revertPosition(d.id)}
+                  title="Revert to the last saved position"
+                  className="h-6 rounded border border-ink-500 px-1.5 text-slate-400 hover:text-slate-100 disabled:opacity-30"
+                >
+                  <Undo2 className="h-3 w-3" />
+                </button>
+              </div>
               <button
                 type="button"
-                onClick={() => setPlacing(placing ? null : d.id)}
-                title={`Click, then click the laptop in the 3D view`}
-                className={`h-6 rounded border px-2 font-mono text-[10px] ${
-                  placing ? "border-cyan-400/70 bg-cyan-400/20 text-cyan-100" : "border-ink-500 text-slate-400 hover:text-slate-100"
-                }`}
+                disabled={!canAttack}
+                onClick={() => startAttack(d.id)}
+                title={placed ? "Simulate a cyber attack on this device (real agent calls, fully scripted)" : "Place the marker first"}
+                className="flex h-6 w-full items-center justify-center gap-1 rounded border border-red-500/50 font-mono text-[10px] text-red-300 hover:bg-red-500/10 disabled:opacity-30"
               >
-                {placing ? "CLICK LAPTOP…" : "PLACE"}
-              </button>
-              <button
-                type="button"
-                disabled={!dirty}
-                onClick={() => revertPosition(d.id)}
-                title="Revert to the last saved position"
-                className="h-6 rounded border border-ink-500 px-1.5 text-slate-400 hover:text-slate-100 disabled:opacity-30"
-              >
-                <Undo2 className="h-3 w-3" />
+                <ShieldAlert className="h-3 w-3" /> {stage === "idle" || stage === "resolved" ? "ATTACK" : stage.toUpperCase()}
               </button>
             </div>
           );
