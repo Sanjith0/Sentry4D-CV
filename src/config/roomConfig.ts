@@ -49,6 +49,26 @@ export interface RoomConfig {
     contrast: number;
     saturation: number;
   };
+  /**
+   * Clean replacement for the glass wall (LiDAR captures glass as smeared reflections and grabs
+   * fragments of the balcony through it). Scan geometry beyond `cutX` within [zMin, zMax] is hidden
+   * at render time (room.glb is untouched); procedural glass, mullions and a balcony are drawn
+   * instead. Room frame: metres, floor y = 0. Values measured from the scan's vertex density.
+   */
+  windowWall: {
+    /** Hide scan fragments with x < cutX (just inside the mullions). */
+    cutX: number;
+    zMin: number;
+    zMax: number;
+    /** Glass plane position and height. */
+    glassX: number;
+    height: number;
+    /** Mullion centres along z (measured density peaks, ~1.1 m spacing). */
+    mullionsZ: number[];
+    /** Balcony floor extends from the glass out to this x. */
+    balconyOuterX: number;
+    railingHeight: number;
+  };
   /** Distance below the bbox top where the "hide ceiling" clipping plane cuts. */
   ceilingCutOffset: number;
   /** Simple patches for holes in the scan. Off by default. */
@@ -92,6 +112,16 @@ export const roomConfig: RoomConfig = {
     aoRadius: 0.6,
     contrast: 0.08,
     saturation: 0.06,
+  },
+  windowWall: {
+    cutX: -2.28,
+    zMin: -6.95,
+    zMax: 6.78,
+    glassX: -2.47,
+    height: 3.06,
+    mullionsZ: [-6.9, -5.9, -4.7, -3.65, -2.55, -1.45, -0.3, 0.8, 1.85, 3.05, 4.15, 5.45, 6.5],
+    balconyOuterX: -6.2,
+    railingHeight: 1.05,
   },
   ceilingCutOffset: 0.25,
   supplemental: {

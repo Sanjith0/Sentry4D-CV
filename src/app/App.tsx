@@ -78,6 +78,9 @@ function useShortcuts() {
         case "KeyH":
           v.toggleCeiling();
           break;
+        case "KeyG":
+          v.toggleCleanWindows();
+          break;
         case "KeyY":
           v.setSyncPanelOpen(!v.syncPanelOpen);
           break;

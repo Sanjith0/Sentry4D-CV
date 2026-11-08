@@ -8,6 +8,7 @@ import { ErrorBoundary } from "../lib/ErrorBoundary";
 import { SceneActors } from "../features/sentry/SceneActors";
 import { RoomStage } from "./RoomStage";
 import { SupplementalGeometry } from "./SupplementalGeometry";
+import { WindowWall } from "./WindowWall";
 import { CameraMarkers } from "./CameraMarkers";
 import { CameraControls } from "./CameraControls";
 import { DEFAULT_FOV } from "./cameraPoses";
@@ -80,6 +81,7 @@ export function Scene3D() {
       <SceneLighting />
       <RoomStage />
       <SupplementalGeometry />
+      <WindowWall />
       <CameraMarkers />
       <SceneActorsBridge />
       <AnnotationLayer />

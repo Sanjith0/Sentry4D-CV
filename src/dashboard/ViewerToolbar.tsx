@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Box, Cctv, ClipboardCopy, Crosshair, Footprints, Eye, EyeOff, Gamepad2, Map, Orbit, RotateCcw, Sparkles, Square, Video } from "lucide-react";
+import { Box, Cctv, ClipboardCopy, Crosshair, Footprints, Eye, EyeOff, Gamepad2, Map, Orbit, PanelsLeftRight, RotateCcw, Sparkles, Square, Video } from "lucide-react";
 import * as THREE from "three";
 import { useCamera, useCameras, useReplayStore } from "../store/useReplayStore";
 import { CalibrationPanel, SensorFrame } from "./CalibrationPanel";
@@ -57,6 +57,8 @@ export function ViewerToolbar() {
   const toggleCoverage = useViewStore((s) => s.toggleCoverage);
   const toggleCeiling = useViewStore((s) => s.toggleCeiling);
   const resetView = useViewStore((s) => s.resetView);
+  const cleanWindows = useViewStore((s) => s.cleanWindows);
+  const toggleCleanWindows = useViewStore((s) => s.toggleCleanWindows);
 
   return (
     <div className="glass pointer-events-auto absolute top-3 right-3 left-3 flex w-fit max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1.5 rounded-lg p-1.5 fade-in">
@@ -74,6 +76,10 @@ export function ViewerToolbar() {
       <ToolButton active={showCoverage} onClick={toggleCoverage} title="Camera coverage frustums (C)">
         <Video className="h-3.5 w-3.5" />
         COVERAGE
+      </ToolButton>
+      <ToolButton active={cleanWindows} onClick={toggleCleanWindows} title="Clean glass wall + balcony instead of the noisy scanned windows (G)">
+        <PanelsLeftRight className="h-3.5 w-3.5" />
+        GLASS
       </ToolButton>
       <ToolButton active={showCeiling} tone="slate" onClick={toggleCeiling} title="Ceiling visibility (H)">
         {showCeiling ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}

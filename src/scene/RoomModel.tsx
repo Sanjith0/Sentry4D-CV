@@ -7,6 +7,7 @@ import { useViewStore } from "../store/useViewStore";
 import { useReplayStore } from "../store/useReplayStore";
 import type { RoomBounds, Vec3 } from "../types/security";
 import { ceilingPlanes, setCeilingCut } from "./ceilingClip";
+import { applyWindowClip } from "./windowWallClip";
 
 const DEG = Math.PI / 180;
 
@@ -80,6 +81,7 @@ export function RoomModel({ url = roomConfig.url, config = roomConfig, onLoaded 
       if (!mesh.isMesh) return;
       const prep = (m: THREE.Material) => {
         const n = prepareMaterial(m, config.materialMode, anisotropy);
+        applyWindowClip(n);
         materials.push(n);
         return n;
       };
