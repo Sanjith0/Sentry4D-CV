@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
+import { investigatorMiddleware } from "./server/investigator.ts";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -110,6 +111,29 @@ function sentry3dConfigWriter(): Plugin {
   };
 }
 
-export default defineConfig({
-  plugins: [react(), tailwindcss(), sentry3dConfigWriter()],
+/**
+ * AI Investigator API (server-side NVIDIA Nemotron agent). NVIDIA_API_KEY is read from .env on the
+ * server only (no VITE_ prefix, so Vite never exposes it to the browser bundle).
+ */
+function sentry4dInvestigator(env: Record<string, string>): Plugin {
+  return {
+    name: "sentry4d-investigator",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use(
+        investigatorMiddleware({
+          root: server.config.root,
+          load: (id) => server.ssrLoadModule(id),
+          env: { NVIDIA_API_KEY: env.NVIDIA_API_KEY || process.env.NVIDIA_API_KEY, NVIDIA_MODEL: env.NVIDIA_MODEL || process.env.NVIDIA_MODEL },
+        }),
+      );
+    },
+  };
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "NVIDIA_");
+  return {
+    plugins: [react(), tailwindcss(), sentry3dConfigWriter(), sentry4dInvestigator(env)],
+  };
 });
