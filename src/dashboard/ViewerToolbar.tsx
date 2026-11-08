@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Box, Cctv, ClipboardCopy, Crosshair, Eye, EyeOff, Gamepad2, Map, Orbit, RotateCcw, Sparkles, Square, Video } from "lucide-react";
 import * as THREE from "three";
-import { securityCameras } from "../config/cameras";
-import { useReplayStore } from "../store/useReplayStore";
+import { useCamera, useCameras, useReplayStore } from "../store/useReplayStore";
+import { CalibrationPanel, SensorFrame } from "./CalibrationPanel";
 import { useViewStore, type RenderQuality } from "../store/useViewStore";
 import type { CameraMode } from "../types/security";
 import { formatWallClock } from "../lib/format";
@@ -21,16 +21,19 @@ function CopyPoseButton() {
   const [copied, setCopied] = useState(false);
   return (
     <ToolButton
-      title="Copy the current viewpoint as a SecurityCamera pose (for config/cameras.ts)"
+      title="Copy the current viewpoint as a camera pose (camera-poses.json format)"
       onClick={() => {
         const cam = viewport.camera;
         if (!cam) return;
-        const dir = cam.getWorldDirection(new THREE.Vector3());
-        const target = cam.position.clone().addScaledVector(dir, 3);
+        const e = new THREE.Euler().setFromQuaternion(cam.quaternion, "YXZ");
         const r = (v: number) => Math.round(v * 100) / 100;
+        const d = (v: number) => r((v * 180) / Math.PI);
+        // Same shape as an entry in src/config/camera-poses.json.
         const json = JSON.stringify({
           position: cam.position.toArray().map(r),
-          target: target.toArray().map(r),
+          yaw: d(e.y),
+          pitch: d(e.x),
+          roll: d(e.z),
           fov: r(cam.fov),
         });
         console.info("[Sentry3D] camera pose:", json);
@@ -162,38 +165,49 @@ function CctvHud() {
   const setCameraMode = useReplayStore((s) => s.setCameraMode);
   const viewThroughCamera = useReplayStore((s) => s.viewThroughCamera);
   const t = useReplayStore((s) => Math.floor(s.currentTime));
+  const cam = useCamera(id);
+  const cameras = useCameras();
   // The post-processing chain draws the vignette except in performance mode.
   const cssVignette = useViewStore((s) => s.quality === "performance");
-  const idx = securityCameras.findIndex((c) => c.id === id);
-  const cam = securityCameras[idx];
+  const calibrating = useViewStore((s) => s.calibrating);
+  const setCalibrating = useViewStore((s) => s.setCalibrating);
   if (!cam) return null;
   return (
     <>
-      <div className="scanlines absolute inset-0" />
-      {cssVignette && <div className="vignette absolute inset-0" />}
-      {/* Corner brackets */}
-      {["top-14 left-3 border-t-2 border-l-2", "top-14 right-3 border-t-2 border-r-2", "bottom-3 left-3 border-b-2 border-l-2", "bottom-3 right-3 border-b-2 border-r-2"].map((c) => (
-        <div key={c} className={`pointer-events-none absolute h-6 w-6 border-cyan-300/70 ${c}`} />
-      ))}
+      {!calibrating && <div className="scanlines absolute inset-0" />}
+      {!calibrating && cssVignette && <div className="vignette absolute inset-0" />}
+      <SensorFrame />
+      {calibrating && <CalibrationPanel />}
+      {!calibrating && (
       <div className="glass pointer-events-auto absolute top-16 right-3 flex flex-col items-end gap-2 rounded-lg p-2.5 fade-in">
         <div className="flex items-center gap-2 font-mono text-xs text-slate-100">
           <span className="rec-dot h-2 w-2 rounded-full bg-red-500" />
           {cam.name}
         </div>
         <div className="font-mono text-[11px] text-slate-400">
-          VIRTUAL VIEW · FOV {cam.fov}° · {formatWallClock(t)}
+          VIRTUAL VIEW · FOV {cam.fov.toFixed(1)}° · {formatWallClock(t)}
         </div>
         <div className="flex gap-1">
-          {securityCameras.map((c, i) => (
+          {cameras.map((c, i) => (
             <ToolButton key={c.id} active={c.id === id} onClick={() => viewThroughCamera(c.id)} className="!h-7 !px-2" title={c.name}>
               {String(i + 1).padStart(2, "0")}
             </ToolButton>
           ))}
         </div>
+        <ToolButton
+          active={calibrating}
+          tone="amber"
+          onClick={() => setCalibrating(!calibrating)}
+          className="w-full justify-center"
+          title="Align this virtual camera with its real recording"
+        >
+          <Crosshair className="h-3.5 w-3.5" /> {calibrating ? "CALIBRATING" : "CALIBRATE CAMERA"}
+        </ToolButton>
         <ToolButton onClick={() => setCameraMode("free")} className="w-full justify-center">
           <Gamepad2 className="h-3.5 w-3.5" /> RETURN TO FREE CAMERA
         </ToolButton>
       </div>
+      )}
     </>
   );
 }

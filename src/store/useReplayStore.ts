@@ -1,6 +1,9 @@
+import { useMemo } from "react";
 import { create } from "zustand";
 import type {
   CameraCoverage,
+  CameraPoseConfig,
+  SecurityCamera,
   CameraFeedState,
   CameraId,
   CameraMode,
@@ -9,7 +12,7 @@ import type {
   SelectedEntityInfo,
 } from "../types/security";
 import { incidentConfig, initialEvents } from "../config/incident";
-import { securityCameras } from "../config/cameras";
+import { buildCamera, savedPoses, securityCameras } from "../config/cameras";
 
 export const PLAYBACK_SPEEDS = [0.5, 1, 2] as const;
 const OFFSETS_STORAGE_KEY = "sentry3d.cameraOffsets.v1";
@@ -29,6 +32,10 @@ export interface ReplayState {
   seekToken: number;
   /** Live per-camera sync offsets: videoTime = masterTime + offset. */
   cameraOffsets: Record<CameraId, number>;
+  /** Live virtual-camera poses (edited in the Calibrate panel). */
+  cameraPoses: Record<CameraId, CameraPoseConfig>;
+  /** Poses as last saved to src/config/camera-poses.json. */
+  savedCameraPoses: Record<CameraId, CameraPoseConfig>;
   /** Load state + duration of each recording. */
   feeds: Record<CameraId, CameraFeedState>;
   /** Integration points for the sentry feature. */
@@ -54,6 +61,12 @@ export interface ReplayState {
   setCameraOffset: (id: CameraId, offset: number) => void;
   /** Restore offsets from config/camera-sync.json and clear the saved local copy. */
   resetCameraOffsets: () => void;
+  /** Offsets were written to camera-sync.json: make them the new defaults. */
+  markOffsetsSaved: () => void;
+  setCameraPose: (id: CameraId, patch: Partial<CameraPoseConfig>) => void;
+  revertCameraPose: (id: CameraId) => void;
+  /** Poses were written to camera-poses.json. */
+  markPosesSaved: () => void;
   setFeedState: (id: CameraId, patch: Partial<Omit<CameraFeedState, "cameraId">>) => void;
 
   /** Video position for a camera at a master time (defaults to currentTime). */
@@ -122,6 +135,8 @@ function computeDuration(feeds: Record<CameraId, CameraFeedState>, offsets: Reco
 }
 
 const startOffsets = loadOffsets();
+const clonePoses = (p: Record<CameraId, CameraPoseConfig>) =>
+  Object.fromEntries(Object.entries(p).map(([k, v]) => [k, { ...v, position: [...v.position] }])) as Record<CameraId, CameraPoseConfig>;
 
 export const useReplayStore = create<ReplayState>()((set, get) => ({
   currentTime: 0,
@@ -134,6 +149,8 @@ export const useReplayStore = create<ReplayState>()((set, get) => ({
   sentryEnabled: false,
   seekToken: 0,
   cameraOffsets: startOffsets,
+  cameraPoses: clonePoses(savedPoses),
+  savedCameraPoses: clonePoses(savedPoses),
   feeds: initialFeeds,
   events: initialEvents,
   activeSubjectCount: 0,
@@ -180,6 +197,20 @@ export const useReplayStore = create<ReplayState>()((set, get) => ({
       return { cameraOffsets, duration, currentTime: clamp(s.currentTime, duration) };
     });
   },
+  markOffsetsSaved: () => {
+    Object.assign(defaultOffsets, get().cameraOffsets);
+    saveOffsets(null); // the project file is now the source of truth
+    set((s) => ({ cameraOffsets: { ...s.cameraOffsets } }));
+  },
+  setCameraPose: (id, patch) =>
+    set((s) => {
+      const cur = s.cameraPoses[id];
+      const next = { ...cur, ...patch, position: [...(patch.position ?? cur.position)] as CameraPoseConfig["position"] };
+      return { cameraPoses: { ...s.cameraPoses, [id]: next } };
+    }),
+  revertCameraPose: (id) =>
+    set((s) => ({ cameraPoses: { ...s.cameraPoses, [id]: clonePoses({ [id]: s.savedCameraPoses[id] } as Record<CameraId, CameraPoseConfig>)[id] } })),
+  markPosesSaved: () => set((s) => ({ savedCameraPoses: clonePoses(s.cameraPoses) })),
   setFeedState: (id, patch) =>
     set((s) => {
       const feeds = { ...s.feeds, [id]: { ...s.feeds[id], ...patch } };
@@ -217,3 +248,25 @@ export const useReplayStore = create<ReplayState>()((set, get) => ({
   setActiveSubjectCount: (activeSubjectCount) => set({ activeSubjectCount }),
   setSelectedEntity: (selectedEntity) => set({ selectedEntity }),
 }));
+
+/** Cameras with LIVE poses + offsets (reflects calibration edits immediately). */
+export function getCameras(state: Pick<ReplayState, "cameraPoses" | "cameraOffsets"> = useReplayStore.getState()): SecurityCamera[] {
+  return securityCameras.map((c) => buildCamera(c, state.cameraPoses[c.id], state.cameraOffsets[c.id] ?? c.offset));
+}
+
+export function useCameras(): SecurityCamera[] {
+  const cameraPoses = useReplayStore((s) => s.cameraPoses);
+  const cameraOffsets = useReplayStore((s) => s.cameraOffsets);
+  return useMemo(() => getCameras({ cameraPoses, cameraOffsets }), [cameraPoses, cameraOffsets]);
+}
+
+export function useCamera(id: CameraId | null | undefined): SecurityCamera | undefined {
+  const cams = useCameras();
+  return cams.find((c) => c.id === id);
+}
+
+export function posesEqual(a: CameraPoseConfig, b: CameraPoseConfig) {
+  return (
+    a.yaw === b.yaw && a.pitch === b.pitch && a.roll === b.roll && a.fov === b.fov && a.position.every((v, i) => v === b.position[i])
+  );
+}

@@ -24,15 +24,29 @@ Three of the recordings are iPhone HEVC (Main 10, HDR). They play in Chrome or S
 ## Configuration (all in `src/config/`)
 
 - **`roomConfig.ts`**: GLB transform (scale/rotation/offset), `interior` = the real room box in scan coordinates (the scan also contains stuff seen through the window wall; grounding, framing and the ceiling cut use this box, so the floor is y=0 and the room center is the origin), material mode (`unlit` shows the scan as captured; `standard` = lit PBR), lighting, ceiling cut height, supplemental floor/wall patches for scan holes, placeholder dimensions. The GLB file is never modified; materials are cloned in memory.
-- **`cameras.ts`**: the four `SecurityCamera`s (position, target, fov, videoUrl, offset). Poses are estimates in the four interior corners, 2.7 m high. Each has its own target; cam4 is aimed to its right for partial coverage. To fine-tune one: free camera → fly to the camera spot → aim → click **POSE** in the toolbar → paste the JSON. The JSON is also logged to the console.
+- **`cameras.ts`**: names and video files of the four cameras.
+- **`camera-poses.json`**: each virtual camera's calibrated pose: `position` (m), `yaw`/`pitch`/`roll` (degrees; yaw 0 = looking toward −Z, + = turn left; + pitch = look up), `fov` (vertical FOV of the 16:9 frame). **Edit it from the app** (see Calibrating cameras below), not by hand.
   - `offset`: sync offset, **`videoTime = masterTime + offset`**. Defaults come from `src/config/camera-sync.json`.
+
+## Calibrating cameras (in the app)
+
+1. Select a camera (marker click, **1–4**, or the CCTV feed's 👁), then click **CALIBRATE CAMERA**.
+2. The real recording is overlaid on the virtual view inside the 16:9 frame. Set the overlay **opacity**, or use **DIFFERENCE** blend: matching areas go dark, so align until the image is darkest.
+3. Adjust until the room lines up with the footage:
+   - **Drag** in the view to aim (the image follows the cursor), **wheel** = FOV.
+   - **W/A/S/D** move, **Q/E** down/up, **←/→** pan, **↑/↓** tilt, **[ / ]** FOV, **, / .** roll. Hold **Shift** for fine steps (1 cm / 0.1°).
+   - Or use the sliders and number fields (X/Y/Z, pan/tilt/roll, FOV).
+   - Tip: scrub to a frame with no people in it, then match fixed features (wall edges, the TV, booths). Get FOV and position roughly right first, then refine aim.
+4. **SAVE TO PROJECT** writes all four poses to `src/config/camera-poses.json`, without reloading the page. Commit that file to share the calibration. **REVERT CAM** undoes unsaved edits; a • marks cameras with unsaved changes.
+
+Saving goes through a small dev-server endpoint (`vite.config.ts`, `sentry3dConfigWriter`), so it only works under `npm run dev`. It accepts only the two whitelisted, validated JSON files. In a production build, use **COPY JSON** instead.
 
 ## Camera sync
 
 Open with the **SYNC** button in the CCTV panel header (or press **Y**).
 1. Scrub or frame-step the master time to a sharp moment that every camera sees (a clap, a door closing, an object set down).
 2. Type each camera's offset, or nudge it (±1 s / ±0.1 s / ±1 frame), until all four previews show the same instant. Changes apply immediately.
-3. Offsets auto-save to this browser (localStorage). **COPY JSON** puts them on the clipboard: paste into `src/config/camera-sync.json` and commit, so the whole team shares them. **RESET** reverts to that file.
+3. Offsets auto-save to this browser. **SAVE TO PROJECT** writes them to `src/config/camera-sync.json` (dev server); commit it so the whole team shares them. **COPY JSON** / **RESET** (revert to the file) are also available.
 
 Clips that haven't started at the current master time show "NOT RECORDING YET" (parked on frame 0); clips past their end show "RECORDING ENDED". The timeline's thin lanes show each camera's covered range.
 - **`incident.ts`**: incident name, recording start time (wall-clock display), event type → color mapping.
@@ -44,6 +58,7 @@ Clips that haven't started at the current master time show "NOT RECORDING YET" (
 | Free cam | click scene = mouse look (pointer lock), **WASD** move, **Space/E** up, **Shift/Q** down, **Ctrl** sprint, wheel = speed, **Esc** release |
 | Modes | **F** free · **O** orbit · **T** top-down · **1–4** view through CCTV camera · **R** reset view |
 | Replay | **K** (or Space outside free cam) play/pause · **←/→** ±5 s (Shift ±1 s) |
+| Calibrate (CCTV view) | drag = aim · wheel = FOV · **WASD** move · **Q/E** down/up · arrows pan/tilt · **[ ]** FOV · **, .** roll · **Shift** fine |
 | Toggles | **X** X-ray · **M** Sentry Mode · **C** coverage frustums · **H** ceiling · **Y** camera sync · **Esc** close overlay |
 
 Click a camera marker in the 3D view to look through it (its feed highlights). Click a feed to enlarge it over the viewport (it is also linked to its 3D marker), and use 👁 to view through that camera.

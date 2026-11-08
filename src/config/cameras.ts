@@ -1,65 +1,56 @@
-import type { CameraId, SecurityCamera } from "../types/security";
+import type { CameraId, CameraPoseConfig, SecurityCamera } from "../types/security";
+import { poseTarget } from "../lib/cameraMath";
 import cameraSync from "./camera-sync.json";
+import cameraPoses from "./camera-poses.json";
+
+export { CCTV_ASPECT, FRUSTUM_LENGTH } from "./cctv";
 
 const syncDefaults = cameraSync as Record<CameraId, number>;
 
 /**
- * Virtual counterparts of the four physical CCTV cameras.
- * Coordinates: room space, Y-up, meters, floor at y = 0 (after auto-grounding).
- *
- * Room: x ∈ [-2.4, 2.4] (window wall at x = -2.4), z ∈ [-6.78, 6.78], ceiling ≈ 3.05.
- * Each camera has its OWN position + target; they are not auto-aimed. Fine-tune by
- * flying to the mount in free mode, aiming, and clicking "POSE" in the toolbar.
- *
- * Video file names match the files on disk exactly (case matters on Linux hosts).
- * Sync offsets: config/camera-sync.json (defaults) → Camera Sync panel (live, saved locally).
+ * Calibrated poses (position, yaw/pitch/roll, fov) for each virtual camera.
+ * Edited in the app: CCTV view → CALIBRATE → SAVE TO PROJECT, which rewrites
+ * src/config/camera-poses.json. Commit that file to share the calibration.
  */
-export const securityCameras: SecurityCamera[] = [
-  {
-    id: "cam1",
-    name: "CAM 01 · NW · Window",
-    position: [-2.1, 2.7, -6.45],
-    target: [0, 0.8, 0],
-    fov: 60,
-    videoUrl: "/videos/Jason_cam_01.mov",
-    offset: syncDefaults.cam1 ?? 0,
-  },
-  {
-    id: "cam2",
-    name: "CAM 02 · NE",
-    position: [2.1, 2.7, -6.45],
-    target: [0, 0.8, 0],
-    fov: 60,
-    videoUrl: "/videos/Jason_Cam_02.MOV",
-    offset: syncDefaults.cam2 ?? 0,
-  },
-  {
-    id: "cam3",
-    name: "CAM 03 · SE",
-    position: [2.1, 2.7, 6.45],
-    target: [0, 0.8, 0],
-    fov: 60,
-    videoUrl: "/videos/Jason_cam_03.mov",
-    offset: syncDefaults.cam3 ?? 0,
-  },
-  {
-    id: "cam4",
-    name: "CAM 04 · SW · Window",
-    position: [-2.1, 2.7, 6.45],
-    // Partial coverage: aimed farther to its right (toward the orange-wall side,
-    // +x) rather than at the room center. Adjust independently of the others.
-    target: [2.0, 0.6, 2.2],
-    fov: 60,
-    videoUrl: "/videos/Jason_Cam_04.mov",
-    offset: syncDefaults.cam4 ?? 0,
-  },
+export const savedPoses = cameraPoses as Record<CameraId, CameraPoseConfig>;
+
+interface CameraMeta {
+  id: CameraId;
+  name: string;
+  /** Exact on-disk file name (case matters on Linux hosts). */
+  videoUrl: string;
+  videoRotation?: SecurityCamera["videoRotation"];
+}
+
+/**
+ * Coordinates: room space, Y-up, meters, floor at y = 0 (after auto-grounding).
+ * Room: x ∈ [-2.4, 2.4] (window wall at x = -2.4), z ∈ [-6.78, 6.78], ceiling ≈ 3.05.
+ * Sync offsets: config/camera-sync.json (defaults) → Camera Sync panel.
+ */
+const CAMERA_META: CameraMeta[] = [
+  { id: "cam1", name: "CAM 01 · NW · Window", videoUrl: "/videos/Jason_cam_01.mov" },
+  { id: "cam2", name: "CAM 02 · NE", videoUrl: "/videos/Jason_Cam_02.MOV" },
+  { id: "cam3", name: "CAM 03 · SE", videoUrl: "/videos/Jason_cam_03.mov" },
+  // Partial coverage, aimed farther to its right; pose is independent (camera-poses.json).
+  { id: "cam4", name: "CAM 04 · SW · Window", videoUrl: "/videos/Jason_Cam_04.mov" },
 ];
+
+export function buildCamera(meta: Pick<SecurityCamera, "id" | "name" | "videoUrl" | "videoRotation">, pose: CameraPoseConfig, offset: number): SecurityCamera {
+  return {
+    ...meta,
+    position: [...pose.position] as SecurityCamera["position"],
+    target: poseTarget(pose),
+    yaw: pose.yaw,
+    pitch: pose.pitch,
+    roll: pose.roll,
+    fov: pose.fov,
+    offset,
+  };
+}
+
+/** Cameras as saved in the project files. For live (calibrating) values use `useCameras()` from the replay store. */
+export const securityCameras: SecurityCamera[] = CAMERA_META.map((m) => buildCamera(m, savedPoses[m.id], syncDefaults[m.id] ?? 0));
 
 export function getCamera(id: string | null | undefined) {
   return securityCameras.find((c) => c.id === id);
 }
-
-/** Aspect ratio used to draw coverage frustums (physical camera sensor aspect). */
-export const CCTV_ASPECT = 16 / 9;
-/** Length (m) of drawn coverage frustums. */
-export const FRUSTUM_LENGTH = 4;

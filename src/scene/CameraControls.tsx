@@ -3,8 +3,8 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { MOUSE } from "three";
-import { securityCameras } from "../config/cameras";
-import { useReplayStore } from "../store/useReplayStore";
+import { getCameras, useReplayStore } from "../store/useReplayStore";
+import { poseQuaternion, viewportFov } from "../lib/cameraMath";
 import { useViewStore } from "../store/useViewStore";
 import { homePose, type CameraPose } from "./cameraPoses";
 import { FreeFlyControls } from "./FreeFlyControls";
@@ -41,7 +41,7 @@ export function CameraControls() {
   const [settledPose, setSettledPose] = useState<CameraPose | null>(null);
   const [busy, setBusy] = useState(true);
 
-  const cctvCam = mode === "cctv" ? securityCameras.find((c) => c.id === selectedCameraId) : undefined;
+  const cctvCam = mode === "cctv" ? getCameras().find((c) => c.id === selectedCameraId) : undefined;
   const boundsKey = bounds ? bounds.size.map((v) => v.toFixed(2)).join(",") : "none";
   const lastMode = useRef<string | null>(null);
   const lastReset = useRef(resetToken);
@@ -68,13 +68,17 @@ export function CameraControls() {
     helperCam.position.set(...pose.position);
     helperCam.up.set(0, 1, 0);
     helperCam.lookAt(...pose.target);
+    // CCTV: exact calibrated orientation (incl. roll) and the FOV that makes the
+    // 16:9 sensor box in the viewport match the real recording's framing.
+    if (cctvCam) poseQuaternion(cctvCam, helperCam.quaternion);
+    const toFov = cctvCam ? viewportFov(cctvCam.fov, size.width, size.height) : pose.fov;
     transition.current = {
       fromPos: camera.position.clone(),
       toPos: helperCam.position.clone(),
       fromQuat: camera.quaternion.clone(),
       toQuat: helperCam.quaternion.clone(),
       fromFov: camera.fov,
-      toFov: pose.fov,
+      toFov,
       t: 0,
       duration: firstRun ? 0.01 : 0.9,
     };
@@ -85,7 +89,23 @@ export function CameraControls() {
 
   useFrame((_, dt) => {
     const tr = transition.current;
-    if (!tr) return;
+    if (!tr) {
+      // Locked to a CCTV camera: follow its live pose so calibration edits show instantly.
+      if (mode === "cctv") {
+        const s = useReplayStore.getState();
+        const pose = s.selectedCameraId ? s.cameraPoses[s.selectedCameraId] : null;
+        if (pose) {
+          camera.position.set(...pose.position);
+          poseQuaternion(pose, camera.quaternion);
+          const fov = viewportFov(pose.fov, size.width, size.height);
+          if (Math.abs(camera.fov - fov) > 1e-4) {
+            camera.fov = fov;
+            camera.updateProjectionMatrix();
+          }
+        }
+      }
+      return;
+    }
     tr.t = Math.min(tr.t + dt / tr.duration, 1);
     const e = ease(tr.t);
     camera.position.lerpVectors(tr.fromPos, tr.toPos, e);

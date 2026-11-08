@@ -1,8 +1,7 @@
 import { Suspense } from "react";
 import { Canvas } from "@react-three/fiber";
 import { roomConfig } from "../config/roomConfig";
-import { securityCameras } from "../config/cameras";
-import { useReplayStore } from "../store/useReplayStore";
+import { useCameras, useReplayStore } from "../store/useReplayStore";
 import { useViewStore, type RenderQuality } from "../store/useViewStore";
 import * as THREE from "three";
 import { ErrorBoundary } from "../lib/ErrorBoundary";
@@ -14,6 +13,7 @@ import { CameraControls } from "./CameraControls";
 import { DEFAULT_FOV } from "./cameraPoses";
 import { ViewportCameraProbe } from "./viewportCamera";
 import { PostFX } from "./PostFX";
+import { CalibrationControls } from "./CalibrationControls";
 
 function SceneLighting() {
   const l = roomConfig.lighting;
@@ -33,6 +33,7 @@ function SceneActorsBridge() {
   const sentryEnabled = useReplayStore((s) => s.sentryEnabled);
   const roomBounds = useViewStore((s) => s.roomBounds);
   const cameraOffsets = useReplayStore((s) => s.cameraOffsets);
+  const cameras = useCameras();
   return (
     <ErrorBoundary fallback={null}>
       <Suspense fallback={null}>
@@ -41,7 +42,7 @@ function SceneActorsBridge() {
           xrayEnabled={xrayEnabled}
           sentryEnabled={sentryEnabled}
           roomBounds={roomBounds}
-          cameras={securityCameras}
+          cameras={cameras}
           cameraOffsets={cameraOffsets}
         />
       </Suspense>
@@ -54,6 +55,12 @@ const DPR: Record<RenderQuality, number | [number, number]> = {
   balanced: [1, 2],
   ultra: Math.min(typeof window !== "undefined" ? window.devicePixelRatio * 1.25 : 2, 2.5),
 };
+
+function CalibrationBridge() {
+  const active = useReplayStore((s) => s.cameraMode === "cctv");
+  const calibrating = useViewStore((s) => s.calibrating);
+  return active && calibrating ? <CalibrationControls /> : null;
+}
 
 export function Scene3D() {
   const quality = useViewStore((s) => s.quality);
@@ -74,6 +81,7 @@ export function Scene3D() {
       <CameraMarkers />
       <SceneActorsBridge />
       <CameraControls />
+      <CalibrationBridge />
       <ViewportCameraProbe />
       <PostFX />
     </Canvas>

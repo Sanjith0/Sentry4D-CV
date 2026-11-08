@@ -30,12 +30,31 @@ export interface IncidentEvent {
 export const CAMERA_IDS = ["cam1", "cam2", "cam3", "cam4"] as const;
 export type CameraId = (typeof CAMERA_IDS)[number];
 
+/**
+ * Calibrated pose of a virtual camera (stored in src/config/camera-poses.json,
+ * edited live in the Calibrate panel). Angles in degrees, Euler order YXZ:
+ * yaw 0 looks toward -Z, positive yaw turns left; positive pitch looks up;
+ * positive roll rotates the image counter-clockwise.
+ */
+export interface CameraPoseConfig {
+  position: Vec3;
+  yaw: number;
+  pitch: number;
+  roll: number;
+  /** Vertical field of view of the 16:9 sensor, degrees. */
+  fov: number;
+}
+
 export interface SecurityCamera {
   id: CameraId;
   name: string;
   position: Vec3;
+  /** Point 3 m along the view direction (derived from yaw/pitch). */
   target: Vec3;
-  /** Vertical field of view in degrees. */
+  yaw: number;
+  pitch: number;
+  roll: number;
+  /** Vertical field of view in degrees (16:9 sensor). */
   fov: number;
   videoUrl: string;
   /**

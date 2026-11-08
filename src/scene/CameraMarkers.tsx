@@ -1,8 +1,13 @@
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Html, Line } from "@react-three/drei";
 import * as THREE from "three";
-import { CCTV_ASPECT, FRUSTUM_LENGTH, securityCameras } from "../config/cameras";
+import { CCTV_ASPECT, FRUSTUM_LENGTH } from "../config/cameras";
+import { useCameras } from "../store/useReplayStore";
+import { poseQuaternion } from "../lib/cameraMath";
+
+// Marker geometry opens along +Z; cameras look down -Z.
+const FLIP = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
 import { useReplayStore } from "../store/useReplayStore";
 import { useViewStore } from "../store/useViewStore";
 import type { SecurityCamera } from "../types/security";
@@ -35,13 +40,10 @@ function CameraMarker({ cam, index }: { cam: SecurityCamera; index: number }) {
   const setHovered = useViewStore((s) => s.setHoveredCamera);
   const showCoverage = useViewStore((s) => s.showCoverage);
 
-  const dist = useMemo(() => new THREE.Vector3(...cam.position).distanceTo(new THREE.Vector3(...cam.target)), [cam]);
-  const length = Math.min(FRUSTUM_LENGTH, dist);
+  const length = FRUSTUM_LENGTH;
   const { g, edges } = useMemo(() => frustumGeometry(cam.fov, CCTV_ASPECT, length), [cam.fov, length]);
 
-  useLayoutEffect(() => {
-    group.current?.lookAt(...cam.target);
-  }, [cam]);
+  const quaternion = useMemo(() => poseQuaternion(cam).multiply(FLIP), [cam]);
 
   useFrame(({ clock }) => {
     if (!ring.current) return;
@@ -54,7 +56,7 @@ function CameraMarker({ cam, index }: { cam: SecurityCamera; index: number }) {
 
   return (
     <group position={cam.position}>
-      <group ref={group} visible={!viewingThrough}>
+      <group ref={group} quaternion={quaternion} visible={!viewingThrough}>
         {/* Housing */}
         <group
           onClick={(e) => {
@@ -140,6 +142,7 @@ function CameraMarker({ cam, index }: { cam: SecurityCamera; index: number }) {
 
 export function CameraMarkers() {
   const show = useViewStore((s) => s.showMarkers);
+  const securityCameras = useCameras();
   if (!show) return null;
   return (
     <group name="CameraMarkers">

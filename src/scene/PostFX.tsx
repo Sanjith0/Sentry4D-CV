@@ -9,6 +9,7 @@ import { SharpenEffect } from "./effects/SharpenEffect";
 export function PostFX() {
   const quality = useViewStore((s) => s.quality);
   const cctv = useReplayStore((s) => s.cameraMode === "cctv");
+  const calibrating = useViewStore((s) => s.calibrating);
   const r = roomConfig.rendering;
   const sharpen = useMemo(() => new SharpenEffect(r.sharpen), [r.sharpen]);
   useEffect(() => () => sharpen.dispose(), [sharpen]);
@@ -32,7 +33,7 @@ export function PostFX() {
   if (r.sharpen > 0) effects.push(<primitive key="sharpen" object={sharpen} />);
   if (r.contrast) effects.push(<BrightnessContrast key="bc" contrast={r.contrast} />);
   if (r.saturation) effects.push(<HueSaturation key="hs" saturation={r.saturation} />);
-  if (cctv) effects.push(<Vignette key="vig" offset={0.3} darkness={0.6} />);
+  if (cctv && !calibrating) effects.push(<Vignette key="vig" offset={0.3} darkness={0.6} />);
 
   return <EffectComposer multisampling={quality === "ultra" ? 8 : 4}>{effects}</EffectComposer>;
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { ClipboardCopy, Pause, Play, RotateCcw, SlidersHorizontal, X } from "lucide-react";
+import { ClipboardCopy, Pause, Play, RotateCcw, Save, SlidersHorizontal, X } from "lucide-react";
+import { canSaveToProject, saveProjectConfig } from "../lib/saveConfig";
 import { securityCameras } from "../config/cameras";
 import { defaultOffsets, recordingWindow, useReplayStore } from "../store/useReplayStore";
 import { useViewStore } from "../store/useViewStore";
@@ -120,7 +121,9 @@ export function CameraSyncPanel() {
   const isPlaying = useReplayStore((s) => s.isPlaying);
   const offsets = useReplayStore((s) => s.cameraOffsets);
   const resetCameraOffsets = useReplayStore((s) => s.resetCameraOffsets);
+  const markOffsetsSaved = useReplayStore((s) => s.markOffsetsSaved);
   const [copied, setCopied] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const r = useReplayStore.getState;
   if (!open) return null;
 
@@ -182,8 +185,26 @@ export function CameraSyncPanel() {
             {label}
           </button>
         ))}
-        <span className="text-[11px] text-slate-500">videoTime = masterTime + offset · saved in this browser automatically</span>
+        <span className="text-[11px] text-slate-500">videoTime = masterTime + offset · auto-saved in this browser</span>
         <div className="ml-auto flex items-center gap-2">
+          {saveMsg && <span className={`max-w-[260px] text-[10px] ${saveMsg.ok ? "text-emerald-300" : "text-red-300"}`}>{saveMsg.text}</span>}
+          <button
+            type="button"
+            disabled={!canSaveToProject}
+            onClick={async () => {
+              try {
+                const file = await saveProjectConfig("camera-sync", offsets);
+                markOffsetsSaved();
+                setSaveMsg({ ok: true, text: `Saved to ${file}` });
+              } catch (e) {
+                setSaveMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
+              }
+            }}
+            title={canSaveToProject ? "Write offsets to src/config/camera-sync.json" : "Only available under npm run dev"}
+            className="flex h-8 items-center gap-1.5 rounded border border-amber-400/60 bg-amber-400/15 px-2.5 font-mono text-[11px] text-amber-100 hover:bg-amber-400/25 disabled:opacity-40"
+          >
+            <Save className="h-3.5 w-3.5" /> SAVE TO PROJECT
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -200,7 +221,7 @@ export function CameraSyncPanel() {
           <button
             type="button"
             onClick={resetCameraOffsets}
-            title="Restore offsets from src/config/camera-sync.json"
+            title="Restore offsets from src/config/camera-sync.json (discard browser-only changes)"
             className="flex h-8 items-center gap-1.5 rounded border border-ink-500 bg-ink-800 px-2.5 font-mono text-[11px] text-slate-300 hover:text-red-200"
           >
             <RotateCcw className="h-3.5 w-3.5" /> RESET
