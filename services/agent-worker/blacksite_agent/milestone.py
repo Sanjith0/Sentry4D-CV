@@ -8,13 +8,12 @@ Incident data is fixture data; the model call and tool execution are real.
 
 import secrets
 import sys
-from dataclasses import replace
 
-from .agent import AgentError, run_agent
+from .agent import AgentError, AgentRole, run_agent
 from .config import ConfigError, load_settings
 from .fixtures import FIXTURE_ALERT, FixtureDataSource
 from .llm import LLMError, NemotronClient
-from .orchestrator import INVESTIGATOR
+from .schemas import Finding
 from .tools import ToolContext, build_registry
 from .trace import Trace
 
@@ -35,9 +34,14 @@ def main() -> int:
     context = ToolContext(data=data)
     trace = Trace(secrets=(settings.api_key.get_secret_value(),))
     llm = NemotronClient(settings)
-    role = replace(
-        INVESTIGATOR,
+    role = AgentRole(
+        name="Investigator",
+        instructions=(
+            "You are a security investigator. Retrieve the events for the alert and cite "
+            "specific evidence. Separate confirmed facts from hypotheses."
+        ),
         tool_names=("get_security_events",),
+        output_model=Finding,
         required_tools=("get_security_events",),
     )
     briefing = (

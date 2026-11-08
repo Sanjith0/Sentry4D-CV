@@ -7,13 +7,24 @@ the frontend, and accept either camelCase or snake_case on input.
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 
 Severity = Literal["low", "medium", "high", "critical"]
 Confidence = Literal["low", "medium", "high"]
 Classification = Literal["informational", "suspicious", "confirmed_compromise"]
-StrategyId = Literal["immediate_isolation", "staged_failover_then_isolation"]
+# Every simulated action a training option can map to. Nothing here runs for real.
+StrategyId = Literal[
+    "immediate_isolation",
+    "staged_failover_then_isolation",
+    "block_traffic",
+    "reset_credentials",
+    "restore_from_backup",
+    "preserve_evidence",
+    "monitor_only",
+]
+StepId = Literal["triage", "contain", "recover"]
+OptionId = Literal["A", "B", "C", "D"]
 Level = Literal["low", "medium", "high"]
 
 
@@ -70,15 +81,6 @@ class Finding(Record):
     hypotheses: list[str] = Field(default_factory=list)
 
 
-class ImpactAssessment(Record):
-    incident_id: str
-    potentially_affected_assets: list[str]
-    confirmed_data_exposure: list[str]
-    suspected_data_exposure: list[str]
-    uncertainties: list[str]
-    evidence_ids: list[str] = Field(min_length=1)
-
-
 class SimulatedOutcome(Record):
     """Illustrative scenario assumptions, not real-world predictions."""
 
@@ -91,41 +93,12 @@ class SimulatedOutcome(Record):
     is_simulated: Literal[True] = True
 
 
-class StrategyComparison(Record):
-    incident_id: str
-    outcomes: list[SimulatedOutcome] = Field(min_length=2)
-    preferred_strategy: StrategyId
-    tradeoffs: str
-    is_simulated: Literal[True] = True
-
-
-class ResponsePlan(Record):
-    incident_id: str
-    incident_summary: str
-    confirmed_observations: list[str]
-    uncertainties: list[str]
-    affected_assets: list[str]
-    evidence_ids: list[str] = Field(min_length=1)
-    strategy_comparison: StrategyComparison
-    proposed_response: StrategyId
-    rationale: str
-    # Literals: a plan that skips human approval or claims real action fails validation.
-    human_approval_required: Literal[True] = True
-    is_simulated: Literal[True] = True
-
-
-class CommanderBrief(Record):
-    """The Commander's written judgement. Code merges it with the verified draft."""
-
-    incident_summary: str
-    confirmed_observations: list[str]
-    uncertainties: list[str]
-
-
 class AgentStep(Record):
     step: int
     role: str
-    kind: Literal["model_response", "tool_call", "tool_rejected", "final_output", "repair"]
+    kind: Literal[
+        "model_response", "tool_call", "tool_rejected", "final_output", "repair", "judgement"
+    ]
     latency_ms: int | None = None
     response_id: str | None = None
     served_model: str | None = None
@@ -186,3 +159,150 @@ class IncidentContext(Record):
     opened_at: datetime
     response_status: Literal["none", "proposed", "approved", "rejected"]
     is_fixture: bool = False
+
+
+class ScenarioStep(Record):
+    """One authored stage of an attack. Options and answers are never authored here."""
+
+    step_id: StepId
+    title: str
+    objective: str
+    # Authored guidance for the Judge only. Must never reach a learner or a pre-choice agent.
+    judging_principle: str
+    events: list[SecurityEvent]
+    evidence: list[Evidence]
+
+
+class Scenario(Record):
+    scenario_id: str
+    title: str
+    alert_id: str
+    incident_id: str
+    target_asset_id: str
+    steps: list[ScenarioStep] = Field(min_length=3, max_length=3)
+
+
+class GuideBriefing(Record):
+    narrative: str
+    leading_question: str
+    evidence_ids: list[str] = Field(min_length=1)
+
+
+class DesignedOption(Record):
+    label: str = Field(max_length=240)
+    action: StrategyId
+
+
+class OptionDraft(Record):
+    options: list[DesignedOption] = Field(min_length=4, max_length=4)
+
+    @model_validator(mode="after")
+    def _actions_are_distinct(self):
+        if len({o.action for o in self.options}) != 4:
+            raise ValueError("Each of the four options must use a different action.")
+        return self
+
+
+class TrainingOption(Record):
+    option_id: OptionId
+    label: str
+    action: StrategyId
+
+
+class StepPresentation(Record):
+    """What the learner sees before choosing. Contains no ruling."""
+
+    step_id: StepId
+    step_number: int
+    total_steps: int
+    title: str
+    objective: str
+    narrative: str
+    leading_question: str
+    evidence_ids: list[str]
+    options: list[TrainingOption] = Field(min_length=4, max_length=4)
+
+
+class OptionVerdict(Record):
+    option_id: OptionId
+    correct: bool
+    reasoning: str
+
+
+class StepJudgement(Record):
+    """The AI's single ruling on all four options for a step. Server-side only."""
+
+    verdicts: list[OptionVerdict] = Field(min_length=4, max_length=4)
+
+    @model_validator(mode="after")
+    def _exactly_one_correct(self):
+        if sorted(v.option_id for v in self.verdicts) != ["A", "B", "C", "D"]:
+            raise ValueError("verdicts must cover A, B, C and D exactly once.")
+        if sum(v.correct for v in self.verdicts) != 1:
+            raise ValueError("Exactly one option must be correct.")
+        return self
+
+    @property
+    def correct_option_id(self) -> str:
+        return next(v.option_id for v in self.verdicts if v.correct)
+
+    def verdict_for(self, option_id: str) -> OptionVerdict:
+        return next(v for v in self.verdicts if v.option_id == option_id)
+
+
+class ConsequenceFeedback(Record):
+    narrative: str
+    hint: str
+
+
+class Debrief(Record):
+    summary: str
+    strengths: list[str]
+    improvements: list[str]
+
+
+class Selection(Record):
+    step_id: StepId
+    attempt: int = Field(ge=1, le=3)
+    option_id: OptionId
+
+
+class ChoiceResult(Record):
+    selection: Selection
+    correct: bool
+    points: int
+    step_resolved: bool
+    consequence: SimulatedOutcome
+    explanation: str
+    hint: str | None = None
+    # Set only once the step is resolved, so a retry cannot read it.
+    correct_option_id: OptionId | None = None
+    total_score: int
+    session_complete: bool
+    ai_judged: Literal[True] = True
+
+
+class ScoreEvent(Record):
+    step_id: StepId
+    attempt: int
+    points: int
+
+
+class StepRecord(Record):
+    step_id: StepId
+    presentation: StepPresentation | None = None
+    judgement: StepJudgement | None = None
+    results: list[ChoiceResult] = Field(default_factory=list)
+    resolved: bool = False
+
+
+class TrainingSession(Record):
+    session_id: str
+    alert_id: str
+    scenario: Scenario
+    status: Literal["active", "complete"] = "active"
+    current_step_index: int = 0
+    score: int = 0
+    score_events: list[ScoreEvent] = Field(default_factory=list)
+    step_records: list[StepRecord]
+    debrief: Debrief | None = None

@@ -84,7 +84,7 @@ def get_security_events(args: GetSecurityEventsArgs, context: ToolContext) -> di
 
 def build_registry() -> ToolRegistry:
     # Each module owns its tools and exposes them as a TOOLS list.
-    from . import tools_context, tools_evidence, tools_plan, tools_strategy
+    from . import tools_context, tools_evidence, tools_strategy
 
     own = ToolDefinition(
         name="get_security_events",
@@ -93,5 +93,5 @@ def build_registry() -> ToolRegistry:
         handler=get_security_events,
     )
     return ToolRegistry(
-        [own, *tools_context.TOOLS, *tools_evidence.TOOLS, *tools_strategy.TOOLS, *tools_plan.TOOLS]
+        [own, *tools_context.TOOLS, *tools_evidence.TOOLS, *tools_strategy.TOOLS]
     )

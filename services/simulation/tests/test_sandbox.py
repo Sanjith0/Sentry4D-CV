@@ -60,3 +60,27 @@ def test_invalid_inputs_raise(args):
 def test_invalid_neighbour_raises(kw):
     with pytest.raises(ValueError):
         Neighbour("a", **kw)
+
+
+def test_every_catalogue_action_is_deterministic_and_labelled():
+    from blacksite_sim.sandbox import STRATEGIES
+
+    neighbours = [Neighbour("nas-1", "high", "shares_files_with", 1)]
+    assert len(STRATEGIES) == 7
+    for action in STRATEGIES:
+        first = simulate(action, "laptop-b", "medium", neighbours)
+        assert first == simulate(action, "laptop-b", "medium", neighbours)
+        assert any("illustrative" in a for a in first.assumptions)
+
+
+def test_monitor_only_leaves_dependents_untouched():
+    neighbours = [Neighbour("nas-1", "high", "shares_files_with", 1)]
+    result = simulate("monitor_only", "laptop-b", "medium", neighbours)
+    assert result.assets_affected == ["laptop-b"] and result.service_disruption == "low"
+
+
+def test_non_containing_action_does_not_imply_low_spread_risk():
+    neighbours = [Neighbour("nas-1", "high", "shares_files_with", 1)]
+    result = simulate("monitor_only", "laptop-b", "medium", neighbours)
+    assert not any("0 dependent" in a for a in result.assumptions)
+    assert any("not stopped" in a for a in result.assumptions)

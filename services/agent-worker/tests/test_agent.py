@@ -7,15 +7,18 @@ from types import SimpleNamespace as NS
 import pytest
 from pydantic import ValidationError
 
-from blacksite_agent.agent import AgentError, run_agent
-from blacksite_agent.fixtures import FIXTURE_ALERT, FixtureDataSource
-from blacksite_agent.orchestrator import INVESTIGATOR, Orchestrator, missing_tools
-from blacksite_agent.schemas import Finding, ResponsePlan
-from blacksite_agent.tools import ToolContext, ToolRegistry, build_registry
+from blacksite_agent.agent import AgentError, AgentRole, run_agent
+from blacksite_agent.fixtures import FixtureDataSource
+from blacksite_agent.schemas import Finding
+from blacksite_agent.tools import ToolContext, build_registry
 from blacksite_agent.trace import Trace, sanitize
 
-ROLE = replace(
-    INVESTIGATOR, tool_names=("get_security_events",), required_tools=("get_security_events",)
+ROLE = AgentRole(
+    name="Investigator",
+    instructions="Investigate.",
+    tool_names=("get_security_events",),
+    output_model=Finding,
+    required_tools=("get_security_events",),
 )
 EVIDENCE = "evidence-test"
 
@@ -113,24 +116,9 @@ def test_premature_answer_is_not_echoed_back():
     assert all(m["role"] != "assistant" for m in seen[1])
 
 
-def test_investigator_requires_security_tools_and_keeps_cv_optional():
-    assert set(INVESTIGATOR.required_tools) == {"get_security_events", "get_incident_context"}
-    assert "get_cv_observations" in INVESTIGATOR.tool_names
-
-
 def test_invented_evidence_is_rejected():
     _, trace = run([call(), answer(evidenceIds=["evidence-made-up"]), answer()])
     assert trace.count("repair") == 1
-
-
-def test_test_event_cannot_confirm_compromise():
-    _, trace = run([call(), answer(classification="confirmed_compromise"), answer()])
-    assert trace.count("repair") == 1
-
-
-def test_unverified_file_change_cannot_be_dismissed():
-    finding, trace = run([call(), answer(classification="informational"), answer()])
-    assert trace.count("repair") == 1 and finding.classification == "suspicious"
 
 
 def test_repairs_are_bounded():
@@ -175,32 +163,9 @@ def test_trace_redacts_tool_fields():
     assert "s3cret" not in trace.render()
 
 
-def test_plan_cannot_waive_human_approval():
-    with pytest.raises(ValidationError):
-        ResponsePlan.model_validate({"humanApprovalRequired": False})
-
-
 def test_finding_requires_evidence():
     with pytest.raises(ValidationError):
         Finding(
             incident_id="i", summary="s", evidence_ids=[], confidence="low",
             classification="suspicious", recommended_action="a",
         )
-
-
-def test_dedupe_and_agent_origin_are_skipped():
-    orch = Orchestrator(None, build_registry(), ToolContext(data=FixtureDataSource("t")))
-    assert orch.should_process(FIXTURE_ALERT)
-    orch.processed_alert_ids.add(FIXTURE_ALERT.alert_id)
-    assert not orch.should_process(FIXTURE_ALERT)
-    other = FIXTURE_ALERT.model_copy(update={"alert_id": "alert-2", "origin": "agent"})
-    assert not orch.should_process(other)
-
-
-def test_orchestrator_refuses_to_run_with_missing_tools():
-    registry = ToolRegistry([d for d in build_registry()._tools.values() if d.name != "simulate_response"])
-    assert missing_tools(registry) == {"Strategist": ["simulate_response"]}
-    orch = Orchestrator(None, registry, ToolContext(data=FixtureDataSource("t")))
-    with pytest.raises(NotImplementedError):
-        orch.investigate(FIXTURE_ALERT, Trace())
-    assert FIXTURE_ALERT.alert_id not in orch.processed_alert_ids

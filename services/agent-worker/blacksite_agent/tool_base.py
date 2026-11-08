@@ -14,10 +14,8 @@ class ToolContext:
     data: IncidentDataSource
     seen_evidence: dict[str, Evidence] = field(default_factory=dict)
     seen_events: dict[str, SecurityEvent] = field(default_factory=dict)
-    # Filled by simulate_response; read by draft_response_plan. Keyed by strategy id.
+    # Filled by simulate_response. Keyed by action id.
     simulated_outcomes: dict[str, SimulatedOutcome] = field(default_factory=dict)
-    # Latest output of draft_response_plan; the final plan is assembled from it.
-    plan_draft: dict | None = None
 
 
 class ToolRefused(Exception):

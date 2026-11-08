@@ -19,7 +19,8 @@ class NemotronClient:
             api_key=settings.api_key.get_secret_value(),
             base_url=settings.base_url,
             timeout=90.0,
-            max_retries=2,
+            # The client waits and retries on HTTP 429, honouring Retry-After when sent.
+            max_retries=5,
         )
 
     def is_model_listed(self) -> bool:
