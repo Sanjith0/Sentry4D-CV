@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "buildCommand": "npm run build:api && npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/api/investigator/status", "destination": "/api/investigate" }
+  ],
+  "functions": { "api/investigate.mjs": { "maxDuration": 300 } }
+}

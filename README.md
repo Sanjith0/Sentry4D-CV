@@ -200,3 +200,11 @@ An autonomous, tool-calling investigation agent (`server/investigator.ts`, serve
 2. `npm run dev`, click **AI INVESTIGATOR → ANALYZE INCIDENT**.
 
 Nemotron calls read-only tools over the project's real data (`getIncidentOverview`, `getIncidentEvents`, `getSubjectTrajectory`, `getCameraObservations`, `getObjectMovements`, `getEvidenceAtTime`, `getSpatialContext`) and finishes with `createInvestigationReport`, which is schema-validated (camera IDs, timestamps and event IDs must exist). The panel streams the real tool trace; clicking a report event seeks the shared master timeline. No footage is sent — only compact structured metadata. Bounded loop: 12 model turns / 16 tool calls, 90 s timeouts, retries on 429/5xx.
+
+### Deploying to Vercel
+
+`vercel.json` builds the static app (`dist/`) and deploys `api/investigate.mjs`, the AI Investigator agent pre-bundled into one file from `server/vercel/entry.ts` (rebuild it with `npm run build:api` after changing the server code or incident data).
+
+In the Vercel project settings, set **Environment Variables**: `NVIDIA_API_KEY` (required), `NVIDIA_MODEL`, `NVIDIA_FALLBACK_MODEL`, `NVIDIA_BASE_URL` (optional). The key stays server-side.
+
+The CCTV recordings (`public/videos/*.mov`) are not in git (private footage, about 240 MB). Without them the 3D room, tracking and AI Investigator work, but the CCTV feeds are empty. To show the feeds on a hosted demo, upload the videos to a private store and point `videoUrl` in `src/config/cameras.ts` at them.

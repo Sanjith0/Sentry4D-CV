@@ -61,8 +61,11 @@ interface IncidentData {
 
 const camLabel = (ids: string[]) => ids.map((c) => c.replace("cam", "CAM 0")).join(", ");
 
-export async function loadIncident(root: string, load: LoadModule, durationHint: number | null): Promise<IncidentData> {
-  const read = (p: string) => JSON.parse(fs.readFileSync(path.join(root, p), "utf8"));
+export type ReadJson = (p: string) => Any | null;
+const fsReader = (root: string): ReadJson => (p) => (fs.existsSync(path.join(root, p)) ? JSON.parse(fs.readFileSync(path.join(root, p), "utf8")) : null);
+
+export async function loadIncident(root: string, load: LoadModule, durationHint: number | null, readJson?: ReadJson): Promise<IncidentData> {
+  const read = readJson ?? fsReader(root);
   const [{ buildTrajectory }, { buildEvidenceIndex, evaluateEvidence }, subjMod, incMod, camMod, roomMod] = await Promise.all([
     load("/src/features/sentry/trajectory.ts"),
     load("/src/features/sentry/evidence.ts"),
@@ -136,9 +139,10 @@ export async function loadIncident(root: string, load: LoadModule, durationHint:
   // Human-reviewed carry windows (object handled/moved by the subject). Present only if the review file exists.
   const objects: IncidentData["objects"] = [];
   const carriedPath = "experiments/reconstruction/review/clip02-carried.json";
-  if (fs.existsSync(path.join(root, carriedPath))) {
+  const carried = read(carriedPath);
+  if (carried) {
     const firstSubject = [...tracks.keys()][0];
-    for (const w of read(carriedPath).windows ?? []) {
+    for (const w of carried.windows ?? []) {
       if (!num(w.t0) || !num(w.t1) || typeof w.label !== "string" || !firstSubject) continue;
       const id = `object-${w.label}`;
       objects.push({ id, label: w.label, t0: w.t0, t1: w.t1, subjectId: firstSubject, source: "human review of CCTV footage (carry window)" });
@@ -564,7 +568,7 @@ function safeArgs(name: string, raw: unknown) {
  * HTTP handler
  * -------------------------------------------------------------------------------------------- */
 
-export function investigatorMiddleware(opts: { root: string; load: LoadModule; env: Record<string, string | undefined> }) {
+export function investigatorMiddleware(opts: { root: string; load: LoadModule; env: Record<string, string | undefined>; readJson?: ReadJson }) {
   const model = () => opts.env.NVIDIA_MODEL || DEFAULT_MODEL;
   if (opts.env.NVIDIA_BASE_URL?.startsWith("https://")) NVIDIA_BASE = opts.env.NVIDIA_BASE_URL.replace(/\/$/, "");
   let running = 0;
@@ -615,7 +619,7 @@ export function investigatorMiddleware(opts: { root: string; load: LoadModule; e
     res.on("close", () => ctrl.abort());
     try {
       send({ type: "start", model: model() });
-      const data = await loadIncident(opts.root, opts.load, num(body.duration) ? body.duration : null);
+      const data = await loadIncident(opts.root, opts.load, num(body.duration) ? body.duration : null, opts.readJson);
       const out = await runInvestigation({ apiKey, model: model(), data, progress: send, signal: ctrl.signal, fallback: opts.env.NVIDIA_FALLBACK_MODEL || FALLBACK_MODEL, focus: typeof body.focus === "string" ? body.focus : undefined });
       send({ type: "report", report: out.report, meta: { model: out.model, toolCalls: out.toolCalls, turns: out.turns, incidentId: data.incidentId, generatedAt: new Date().toISOString() } });
     } catch (e) {

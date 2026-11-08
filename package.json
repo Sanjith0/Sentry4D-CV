@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:api": "rolldown server/vercel/entry.ts --platform node --format esm --file api/investigate.mjs --minify"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",
