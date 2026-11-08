@@ -1,14 +1,7 @@
 import type { Vec3 } from "../types/security";
 
-/**
- * Stable device IDs: the three laptops visible in the scan. These match the
- * `asset_id` values the BLACKSITE agent-worker (services/agent-worker) uses,
- * so a cyber alert's assetId maps straight onto a marker with no translation
- * table. "laptop-b" is the only one with an authored training scenario today
- * (see services/agent-worker/blacksite_agent/fixtures.py); "laptop-a" exists
- * as a backend asset with no scenario yet; "laptop-c" has neither yet.
- */
-export const DEVICE_IDS = ["laptop-a", "laptop-b", "laptop-c"] as const;
+/** Stable device IDs. The three laptops visible in the scan. */
+export const DEVICE_IDS = ["laptop1", "laptop2", "laptop3"] as const;
 export type DeviceId = (typeof DEVICE_IDS)[number];
 
 export interface DeviceConfig {
@@ -17,9 +10,9 @@ export interface DeviceConfig {
 }
 
 export const securityDevices: DeviceConfig[] = [
-  { id: "laptop-a", name: "LAPTOP A" },
-  { id: "laptop-b", name: "LAPTOP B" },
-  { id: "laptop-c", name: "LAPTOP C" },
+  { id: "laptop1", name: "LAPTOP 01" },
+  { id: "laptop2", name: "LAPTOP 02" },
+  { id: "laptop3", name: "LAPTOP 03" },
 ];
 
 export function getDevice(id: DeviceId | null): DeviceConfig | null {

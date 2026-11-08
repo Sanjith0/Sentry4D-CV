@@ -15,8 +15,6 @@ import { AnnotationPanel } from "../features/annotation/AnnotationPanel";
 import { useEvidenceSync } from "../features/sentry/useEvidence";
 import { EvidencePanel } from "../features/sentry/EvidencePanel";
 import { InvestigatorPanel } from "../features/investigator/InvestigatorPanel";
-import { useCyberAlertSocket } from "../features/devices/useCyberAlertSocket";
-import { CyberAlertPanel } from "../dashboard/CyberAlertPanel";
 
 function useShortcuts() {
   useEffect(() => {
@@ -107,39 +105,25 @@ if (import.meta.env.DEV) {
     import("../lib/videoRegistry"),
     import("../features/reconstruction/useAppearanceStore"),
     import("../features/devices/useDeviceStore"),
-    import("../features/devices/useCyberAlertStore"),
-  ]).then(
-    ([
-      { viewport },
+  ]).then(([{ viewport }, projection, { useAnnotationStore }, trajectory, registry, { useAppearanceStore }, { useDeviceStore }]) => {
+    (window as unknown as Record<string, unknown>).__sentry = {
+      replay: useReplayStore,
+      view: useViewStore,
+      viewport,
       projection,
-      { useAnnotationStore },
+      annotations: useAnnotationStore,
       trajectory,
       registry,
-      { useAppearanceStore },
-      { useDeviceStore },
-      { useCyberAlertStore },
-    ]) => {
-      (window as unknown as Record<string, unknown>).__sentry = {
-        replay: useReplayStore,
-        view: useViewStore,
-        viewport,
-        projection,
-        annotations: useAnnotationStore,
-        trajectory,
-        registry,
-        appearance: useAppearanceStore,
-        devices: useDeviceStore,
-        cyberAlert: useCyberAlertStore,
-      };
-    },
-  );
+      appearance: useAppearanceStore,
+      devices: useDeviceStore,
+    };
+  });
 }
 
 export default function App() {
   useMasterClock();
   useShortcuts();
   useEvidenceSync();
-  useCyberAlertSocket();
   const annotating = useViewStore((s) => s.annotating);
   return (
     <div className="flex h-full flex-col">
@@ -150,7 +134,6 @@ export default function App() {
           <Scene3D />
           <ViewportHud />
           {!annotating && <EvidencePanel />}
-          <CyberAlertPanel />
           <LoadingOverlay />
           <EnlargedFeed />
           <CameraSyncPanel />
