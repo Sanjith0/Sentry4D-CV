@@ -14,6 +14,7 @@ import { DEFAULT_FOV } from "./cameraPoses";
 import { ViewportCameraProbe } from "./viewportCamera";
 import { PostFX } from "./PostFX";
 import { CalibrationControls } from "./CalibrationControls";
+import { AnnotationLayer } from "../features/annotation/AnnotationLayer";
 
 function SceneLighting() {
   const l = roomConfig.lighting;
@@ -80,6 +81,7 @@ export function Scene3D() {
       <SupplementalGeometry />
       <CameraMarkers />
       <SceneActorsBridge />
+      <AnnotationLayer />
       <CameraControls />
       <CalibrationBridge />
       <ViewportCameraProbe />

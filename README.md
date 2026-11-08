@@ -41,6 +41,20 @@ Three of the recordings are iPhone HEVC (Main 10, HDR). They play in Chrome or S
 
 Saving goes through a small dev-server endpoint (`vite.config.ts`, `sentry3dConfigWriter`), so it only works under `npm run dev`. It accepts only the two whitelisted, validated JSON files. In a production build, use **COPY JSON** instead.
 
+## Annotating real subjects (video → 3D floor)
+
+**ANNOTATE SUBJECT** (header) pauses playback, opens the annotation panel beside the 3D view, and switches the 3D view to TOP.
+1. Pick a camera tab (or press **1–4**), step to a frame (**←/→** = ±1 frame, **Shift** = ±0.5 s, or the buttons), and click the person's **feet**.
+2. The point is projected onto the floor (y = 0) with the calibrated camera and appears in the 3D room as a cyan pillar, with a sight ray from the camera and a label (camera, master/video time, X/Y/Z, confidence).
+3. Verification:
+   - In the frame, the **cyan dot** is your click and the **dashed ring** is the 3D point projected back into that camera.
+   - An **amber ◆** shows another camera's annotation at the same time, projected into this view. If calibration and sync are right, it sits on the same person's feet.
+   - The confidence comes from the expected floor error for a 6 px click error. You get warnings near walls and at grazing angles, and when the ray hits scanned furniture or walls before reaching the floor.
+4. Correct: click ✎ on a row, then re-click in the video, or click the floor in the TOP view (`source: "manual-topdown"`). Delete with 🗑. **Undo** with the button or **Cmd/Ctrl+Z**.
+5. Annotations auto-save in this browser. **EXPORT JSON** downloads the active person (`{personId, observations:[{masterTime, cameraId, pixel, worldPosition, source}]}`). **IMPORT** accepts that format or `{datasets:[…]}`. **SAVE TO PROJECT** writes all persons to `src/data/person-annotations.json` (dev server); commit it. That file also seeds a browser that has no saved annotations. **RE-PROJECT** recomputes positions from the clicked pixels after a calibration change.
+
+Times are **master time** (`masterTime = videoTime − offset`). Pixels are normalized `[u, v]` in the upright displayed frame (0,0 = top-left). The math lives in `src/lib/videoProjection.ts` (`videoPixelToWorld`, `worldToVideoPixel`).
+
 ## Camera sync
 
 Open with the **SYNC** button in the CCTV panel header (or press **Y**).
@@ -104,5 +118,6 @@ interface SceneActorsProps {          // src/types/security.ts
   - `setSelectedEntity({ id, label, kind, details })`: incident panel "Selection"
 - Camera IDs are stable: `CAMERA_IDS = ["cam1","cam2","cam3","cam4"]` / `CameraId` (in `types/security.ts`). Use them in `PersonKeyframe.visibleCameras` and in `EntityCameraVisibility` (master time + normalized bbox per camera).
 - Video ↔ master time: `useReplayStore.getState().getVideoTime(cameraId, masterTime?)` and `getCameraCoverage(masterTime?)`, which tells you which cameras have footage at a given time. The store also has `cameraOffsets` and `feeds` (status + duration per camera). Tracking detected in a video at time `v` happened at master time `v - offset`.
+- Real-person annotations: `PersonObservation` / `PersonAnnotationDataset` (types/security.ts), live in `useAnnotationStore` (`features/annotation/`), committed in `src/data/person-annotations.json`. They are master-time floor positions from human clicks, not tracking output.
 - Coordinates: meters, Y-up, room floor at y = 0, same space as `config/cameras.ts`.
 - Dev console: `window.__sentry.replay.getState()` / `.view` / `.viewport.camera`.

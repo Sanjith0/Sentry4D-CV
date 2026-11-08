@@ -137,3 +137,29 @@ export interface SceneActorsProps {
   /** Live sync offsets by camera ID (videoTime = masterTime + offset). */
   cameraOffsets: Record<CameraId, number>;
 }
+
+/** How an annotation was produced. "manual" = clicked feet in a real video frame. */
+export type ObservationSource = "manual" | "manual-topdown";
+
+/**
+ * One annotated position of a real person, in MASTER time.
+ * (videoTime = masterTime + offset, so masterTime = videoTime - offset.)
+ */
+export interface PersonObservation {
+  id: string;
+  masterTime: number;
+  cameraId: CameraId;
+  /** Normalized [u, v] in the upright displayed video frame: (0,0) top-left, (1,1) bottom-right. */
+  pixel: [number, number];
+  /** Room-space floor position [x, 0, z] in meters. */
+  worldPosition: Vec3;
+  source: ObservationSource;
+  /** Video timestamp at annotation time (informational; masterTime is authoritative). */
+  videoTime?: number;
+}
+
+/** Export/import format for one person's annotations. */
+export interface PersonAnnotationDataset {
+  personId: string;
+  observations: PersonObservation[];
+}

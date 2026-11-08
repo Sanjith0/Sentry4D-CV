@@ -24,6 +24,23 @@ const CONFIGS: Record<string, { file: string; validate: (d: unknown) => void }> 
       if (Object.keys(o).some((k) => !CAMERA_IDS.includes(k))) throw new Error("unknown camera id");
     },
   },
+  "person-annotations": {
+    file: "src/data/person-annotations.json",
+    validate(d) {
+      const o = d as { version?: unknown; datasets?: unknown };
+      if (o?.version !== 1 || !Array.isArray(o.datasets)) throw new Error("expected {version: 1, datasets: [...]}");
+      for (const ds of o.datasets as Record<string, unknown>[]) {
+        if (typeof ds?.personId !== "string" || !Array.isArray(ds.observations)) throw new Error("dataset needs personId + observations");
+        for (const ob of ds.observations as Record<string, unknown>[]) {
+          if (!isNum(ob?.masterTime) || !CAMERA_IDS.includes(ob.cameraId as string)) throw new Error("observation needs masterTime + valid cameraId");
+          const px = ob.pixel as unknown[];
+          const wp = ob.worldPosition as unknown[];
+          if (!Array.isArray(px) || px.length !== 2 || !px.every(isNum)) throw new Error("observation.pixel invalid");
+          if (!Array.isArray(wp) || wp.length !== 3 || !wp.every(isNum)) throw new Error("observation.worldPosition invalid");
+        }
+      }
+    },
+  },
   "camera-sync": {
     file: "src/config/camera-sync.json",
     validate(d) {
@@ -56,7 +73,7 @@ function sentry3dConfigWriter(): Plugin {
         let raw = "";
         req.on("data", (chunk) => {
           raw += chunk;
-          if (raw.length > 64_000) req.destroy();
+          if (raw.length > 1_000_000) req.destroy();
         });
         req.on("end", () => {
           try {

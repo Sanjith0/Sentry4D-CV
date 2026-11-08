@@ -1,4 +1,4 @@
-import { Ghost, Radar, ScanEye, Users } from "lucide-react";
+import { Footprints, Ghost, Radar, ScanEye, Users } from "lucide-react";
 import { incidentConfig } from "../config/incident";
 import { useReplayStore } from "../store/useReplayStore";
 import { useViewStore } from "../store/useViewStore";
@@ -46,6 +46,8 @@ export function Header() {
   const sentry = useReplayStore((s) => s.sentryEnabled);
   const toggleXray = useReplayStore((s) => s.toggleXray);
   const toggleSentry = useReplayStore((s) => s.toggleSentry);
+  const annotating = useViewStore((s) => s.annotating);
+  const setAnnotating = useViewStore((s) => s.setAnnotating);
 
   return (
     <header className="relative z-10 flex h-14 shrink-0 items-center gap-5 whitespace-nowrap border-b border-ink-600/70 bg-ink-900/95 px-4">
@@ -92,6 +94,21 @@ export function Header() {
           <span className="font-mono text-sm text-slate-100">{subjects}</span>
           <span className="label">subjects</span>
         </div>
+        <ToolButton
+          active={annotating}
+          onClick={() => {
+            if (!annotating) {
+              const r = useReplayStore.getState();
+              r.pause();
+              useViewStore.getState().setAnnotationCamera(r.selectedCameraId ?? "cam1");
+              r.setCameraMode("topdown");
+            }
+            setAnnotating(!annotating);
+          }}
+          title="Click a real person's feet in the CCTV video to place them in the 3D room"
+        >
+          <Footprints className="h-3.5 w-3.5" /> ANNOTATE SUBJECT
+        </ToolButton>
         <ToolButton active={xray} onClick={toggleXray} title="Toggle X-ray tracking (X)">
           <Ghost className="h-3.5 w-3.5" /> X-RAY
         </ToolButton>

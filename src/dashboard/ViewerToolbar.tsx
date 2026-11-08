@@ -58,7 +58,7 @@ export function ViewerToolbar() {
   const resetView = useViewStore((s) => s.resetView);
 
   return (
-    <div className="glass pointer-events-auto absolute top-3 left-3 flex items-center gap-1.5 rounded-lg p-1.5 fade-in">
+    <div className="glass pointer-events-auto absolute top-3 right-3 left-3 flex w-fit max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1.5 rounded-lg p-1.5 fade-in">
       {MODES.map(({ mode: m, label, icon: Icon, key }) => (
         <ToolButton key={m} active={mode === m} onClick={() => setCameraMode(m)} title={`${label} camera (${key})`}>
           <Icon className="h-3.5 w-3.5" />

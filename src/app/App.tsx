@@ -11,6 +11,7 @@ import { ViewportHud } from "../dashboard/ViewerToolbar";
 import { LoadingOverlay } from "../dashboard/LoadingOverlay";
 import { EnlargedFeed } from "../dashboard/EnlargedFeed";
 import { CameraSyncPanel } from "../dashboard/CameraSyncPanel";
+import { AnnotationPanel } from "../features/annotation/AnnotationPanel";
 
 function useShortcuts() {
   useEffect(() => {
@@ -87,18 +88,22 @@ function useShortcuts() {
 
 if (import.meta.env.DEV) {
   // Debug handle for teammates: window.__sentry.replay.getState() etc.
-  import("../scene/viewportCamera").then(({ viewport }) => {
-    (window as unknown as Record<string, unknown>).__sentry = { replay: useReplayStore, view: useViewStore, viewport };
-  });
+  Promise.all([import("../scene/viewportCamera"), import("../lib/videoProjection"), import("../features/annotation/useAnnotationStore")]).then(
+    ([{ viewport }, projection, { useAnnotationStore }]) => {
+      (window as unknown as Record<string, unknown>).__sentry = { replay: useReplayStore, view: useViewStore, viewport, projection, annotations: useAnnotationStore };
+    },
+  );
 }
 
 export default function App() {
   useMasterClock();
   useShortcuts();
+  const annotating = useViewStore((s) => s.annotating);
   return (
     <div className="flex h-full flex-col">
       <Header />
       <div className="flex min-h-0 flex-1">
+        {annotating && <AnnotationPanel />}
         <main className="relative min-w-0 flex-1 bg-ink-950">
           <Scene3D />
           <ViewportHud />

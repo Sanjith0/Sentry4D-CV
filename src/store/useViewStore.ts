@@ -17,6 +17,9 @@ interface ViewState {
   focusedFeedId: CameraId | null;
   hoveredCameraId: CameraId | null;
   syncPanelOpen: boolean;
+  /** Subject annotation mode (click feet in real video → floor position). */
+  annotating: boolean;
+  annotationCameraId: CameraId;
   /** Calibration mode for the selected CCTV camera. */
   calibrating: boolean;
   /** Sidebar state to restore when calibration ends. */
@@ -43,6 +46,8 @@ interface ViewState {
   setHoveredCamera: (id: CameraId | null) => void;
   setSyncPanelOpen: (open: boolean) => void;
   setCalibrating: (v: boolean) => void;
+  setAnnotating: (v: boolean) => void;
+  setAnnotationCamera: (id: CameraId) => void;
   setGhostOpacity: (v: number) => void;
   setGhostBlend: (v: "normal" | "difference") => void;
   setPointerLocked: (v: boolean) => void;
@@ -64,6 +69,8 @@ export const useViewStore = create<ViewState>()((set) => ({
   hoveredCameraId: null,
   syncPanelOpen: false,
   calibrating: false,
+  annotating: false,
+  annotationCameraId: "cam1",
   collapsedBeforeCalibrate: false,
   ghostOpacity: 0.5,
   ghostBlend: "normal",
@@ -91,6 +98,21 @@ export const useViewStore = create<ViewState>()((set) => ({
           ? { calibrating, collapsedBeforeCalibrate: s.feedsCollapsed, feedsCollapsed: true }
           : { calibrating, feedsCollapsed: s.collapsedBeforeCalibrate },
     ),
+  // Annotating auto-collapses the CCTV sidebar (videos stay mounted) like calibration does.
+  setAnnotating: (annotating) =>
+    set((s) =>
+      annotating === s.annotating
+        ? {}
+        : annotating
+          ? {
+              annotating,
+              calibrating: false,
+              collapsedBeforeCalibrate: s.calibrating ? s.collapsedBeforeCalibrate : s.feedsCollapsed,
+              feedsCollapsed: true,
+            }
+          : { annotating, feedsCollapsed: s.collapsedBeforeCalibrate },
+    ),
+  setAnnotationCamera: (annotationCameraId) => set({ annotationCameraId }),
   setGhostOpacity: (ghostOpacity) => set({ ghostOpacity: Math.min(Math.max(ghostOpacity, 0), 1) }),
   setGhostBlend: (ghostBlend) => set({ ghostBlend }),
   setPointerLocked: (pointerLocked) => set({ pointerLocked }),
