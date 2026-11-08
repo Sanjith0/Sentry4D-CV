@@ -45,6 +45,9 @@ export const viewer = {
   /** Yaw (rad) added so "recenter" faces down the room. */
   yawOffset: 0,
   recenter: false,
+  /** Joystick (x = strafe, y = forward, each −1..1) and vertical fly (−1, 0, +1). */
+  stick: { x: 0, y: 0 },
+  fly: 0,
 };
 
 export function MagicWindowCamera() {
@@ -102,6 +105,19 @@ export function MagicWindowCamera() {
       viewer.position.x = THREE.MathUtils.clamp(viewer.position.x, -2.3, 2.3);
       viewer.position.z = THREE.MathUtils.clamp(viewer.position.z, -6.6, 6.6);
     }
+    // Joystick = WASD on the floor plane relative to where the phone faces; arrows fly up/down.
+    const { x, y } = viewer.stick;
+    if (x || y || viewer.fly) {
+      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).setY(0);
+      if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), viewer.yawOffset);
+      fwd.normalize();
+      const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0));
+      const step = 2.2 * Math.min(dt, 0.1); // m/s at full tilt
+      viewer.position.addScaledVector(fwd, y * step).addScaledVector(right, x * step);
+      viewer.position.y = THREE.MathUtils.clamp(viewer.position.y + viewer.fly * 1.5 * Math.min(dt, 0.1), 0.25, 3.0);
+      viewer.position.x = THREE.MathUtils.clamp(viewer.position.x, -2.3, 2.3);
+      viewer.position.z = THREE.MathUtils.clamp(viewer.position.z, -6.6, 6.6);
+    }
     camera.position.copy(viewer.position);
   });
   return null;
@@ -129,4 +145,62 @@ export function CameraFeed({ on }: { on: boolean }) {
   }, [on]);
   if (!on) return null;
   return <video ref={ref} playsInline muted className="fixed inset-0 h-full w-full object-cover" />;
+}
+
+/** Virtual thumbstick (bottom-left) + translucent up/down arrows (right), like pocket-edition creative mode. */
+export function MoveControls() {
+  const base = useRef<HTMLDivElement>(null);
+  const knob = useRef<HTMLDivElement>(null);
+  const R = 46;
+  const set = (dx: number, dy: number) => {
+    const len = Math.hypot(dx, dy);
+    const k = len > R ? R / len : 1;
+    const kx = dx * k;
+    const ky = dy * k;
+    if (knob.current) knob.current.style.transform = `translate(${kx}px, ${ky}px)`;
+    viewer.stick.x = kx / R;
+    viewer.stick.y = -ky / R;
+  };
+  const onDown = (e: React.PointerEvent) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    onMove(e);
+  };
+  const onMove = (e: React.PointerEvent) => {
+    if (!e.currentTarget.hasPointerCapture(e.pointerId) || !base.current) return;
+    const b = base.current.getBoundingClientRect();
+    set(e.clientX - (b.left + b.width / 2), e.clientY - (b.top + b.height / 2));
+  };
+  const onUp = () => set(0, 0);
+  const fly = (dir: number) => ({
+    onPointerDown: (e: React.PointerEvent) => {
+      e.currentTarget.setPointerCapture(e.pointerId);
+      viewer.fly = dir;
+    },
+    onPointerUp: () => (viewer.fly = 0),
+    onPointerCancel: () => (viewer.fly = 0),
+    onLostPointerCapture: () => (viewer.fly = 0),
+  });
+  const arrow = "pointer-events-auto grid h-14 w-14 select-none place-items-center rounded-xl border border-white/25 bg-white/10 text-2xl text-white/80 backdrop-blur-sm active:bg-white/30";
+  useEffect(() => () => {
+    viewer.stick.x = viewer.stick.y = 0;
+    viewer.fly = 0;
+  }, []);
+  return (
+    <div className="pointer-events-none flex items-end justify-between px-1" style={{ touchAction: "none" }}>
+      <div
+        ref={base}
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerCancel={onUp}
+        className="pointer-events-auto relative grid h-32 w-32 select-none place-items-center rounded-full border border-white/25 bg-white/10 backdrop-blur-sm"
+      >
+        <div ref={knob} className="h-14 w-14 rounded-full border border-white/40 bg-white/35 shadow-lg" />
+      </div>
+      <div className="flex flex-col gap-2">
+        <button type="button" aria-label="Fly up" className={arrow} {...fly(1)}>▲</button>
+        <button type="button" aria-label="Fly down" className={arrow} {...fly(-1)}>▼</button>
+      </div>
+    </div>
+  );
 }

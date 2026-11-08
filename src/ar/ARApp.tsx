@@ -11,7 +11,7 @@ import { RoomStage } from "../scene/RoomStage";
 import { WindowWall } from "../scene/WindowWall";
 import { AppearanceLayer } from "../features/reconstruction/AppearanceLayer";
 import { formatClock } from "../lib/format";
-import { CameraFeed, MagicWindowCamera, enableMotion, viewer } from "./MagicWindow";
+import { CameraFeed, MagicWindowCamera, MoveControls, enableMotion, viewer } from "./MagicWindow";
 
 /**
  * Phone-only AR viewer: the reconstructed room + the real person replay, viewed through the phone.
@@ -163,7 +163,7 @@ function Hud({ arSupported, inAR, placed, scaleMode, setScaleMode, onReplace, ma
           </div>
           <div className="font-mono text-[10px] text-slate-400">PERSON 01 · real footage replay</div>
           {magic && (
-            <div className="mt-1 max-w-[15rem] font-mono text-[9.5px] leading-snug text-slate-300">Turn your phone to look around · drag to walk</div>
+            <div className="mt-1 max-w-[15rem] font-mono text-[9.5px] leading-snug text-slate-300">Turn your phone to look · stick to move · ▲▼ to fly</div>
           )}
         </div>
       </div>
@@ -175,6 +175,7 @@ function Hud({ arSupported, inAR, placed, scaleMode, setScaleMode, onReplace, ma
       )}
 
       <div className="space-y-2">
+        {magic && <MoveControls />}
         <div className="pointer-events-auto flex items-center gap-2 rounded-xl border border-white/10 bg-black/55 px-3 py-2 backdrop-blur">
           <button type="button" className="text-cyan-200" onClick={() => useReplayStore.getState().togglePlay()} aria-label={playing ? "Pause" : "Play"}>
             {playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
