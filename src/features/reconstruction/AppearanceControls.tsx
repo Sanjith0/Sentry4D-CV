@@ -84,6 +84,10 @@ export function AppearanceControls() {
                   real pixels · CAM {status.cameraId?.slice(3).padStart(2, "0")} · {status.offSourceDeg}° from source
                   {status.feetHeightM != null && status.feetHeightM > 0.3 ? " · lower body not visible in this camera" : ""}
                 </span>
+                <span className="text-slate-500">
+                  Body volume is inferred from the silhouette (rounded thickness ≈ 0.6 × width). The back is shaded in the measured clothing colour, since no
+                  camera saw it. Neither is measured geometry.
+                </span>
                 {status.positionEstimated && (
                   <span className="text-amber-300">
                     Position ESTIMATED: no floor observation here, so the cut-out stands at the interpolated track position. Its pixels are real; its depth is not

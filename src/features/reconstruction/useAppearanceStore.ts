@@ -71,11 +71,12 @@ export function clipsAt(subjectId: string, t: number): AppearanceClipManifest[] 
  * Small LRU texture cache: only frames near the playhead live on the GPU.
  * Crops are tiny (≈5-15 KB WebP, ≈300×500 px), so ~120 resident textures ≈ 70 MB worst case.
  */
-const MAX_TEXTURES = 120;
+const MAX_TEXTURES = 240; // colour + height map per frame
 const cache = new Map<string, { tex: THREE.Texture | null; promise: Promise<THREE.Texture> }>();
 const loader = new THREE.TextureLoader();
 
-export function getTexture(clip: string, file: string): THREE.Texture | null {
+/** @param color true for footage (sRGB), false for data maps (height fields). */
+export function getTexture(clip: string, file: string, color = true): THREE.Texture | null {
   const key = `${clip}/${file}`;
   const hit = cache.get(key);
   if (hit) {
@@ -85,7 +86,7 @@ export function getTexture(clip: string, file: string): THREE.Texture | null {
   }
   const entry: { tex: THREE.Texture | null; promise: Promise<THREE.Texture> } = { tex: null, promise: null as never };
   entry.promise = loader.loadAsync(`${BASE_URL}/${key}`).then((t) => {
-    t.colorSpace = THREE.SRGBColorSpace;
+    t.colorSpace = color ? THREE.SRGBColorSpace : THREE.NoColorSpace;
     t.generateMipmaps = false;
     t.minFilter = THREE.LinearFilter;
     t.magFilter = THREE.LinearFilter;
@@ -106,7 +107,11 @@ export function getTexture(clip: string, file: string): THREE.Texture | null {
 export function prefetchAround(subjectId: string, t: number, seconds = 1) {
   for (const clip of clipsAt(subjectId, t)) {
     for (const [, cam] of Object.entries(clip.cameras)) {
-      for (const f of cam!.frames) if (f.file && Math.abs(f.masterTime - t) <= seconds) getTexture(clip.clip, f.file);
+      for (const f of cam!.frames)
+        if (f.file && Math.abs(f.masterTime - t) <= seconds) {
+          getTexture(clip.clip, f.file);
+          if (f.depthFile) getTexture(clip.clip, f.depthFile, false);
+        }
     }
   }
 }

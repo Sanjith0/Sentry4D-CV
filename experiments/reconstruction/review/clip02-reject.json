@@ -1,5 +1,30 @@
 {
-  "_note": "Frames rejected after visual review (2026-11-08). cam2 2-8: SAM latched onto bright floor before the person entered CAM 02's view (masked-pixel luminance ~180 vs ~30 for the person). cam4 102/107/108: background-subtraction fragments against the dark booth. Copy to data/clip02/reject.json.",
-  "cam2": [2, 3, 4, 5, 6, 7, 8],
-  "cam4": [102, 107, 108]
+  "_note": "Frames rejected after visual review (2026-11-08). cam2 2-8: SAM latched onto bright floor before the person entered CAM 02's view (masked-pixel luminance ~180 vs ~30 for the person). cam4 102/107/108: background-subtraction fragments against the dark booth. Copy to data/clip02/reject.json. cam1 273-277: SAM included a floor patch around the chair legs (>28% of cut-out is floor-bright). Second review pass (after head/carry fixes): cam1 80 shredded mask; cam2 9/73/108 fragmentary; cam4 133 pole fragment, 247 shredded.",
+  "cam2": [
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    73,
+    108
+  ],
+  "cam4": [
+    102,
+    107,
+    108,
+    133,
+    247
+  ],
+  "cam1": [
+    80,
+    273,
+    274,
+    275,
+    276,
+    277
+  ]
 }

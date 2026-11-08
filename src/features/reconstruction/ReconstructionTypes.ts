@@ -22,7 +22,12 @@ export interface AppearanceFrame {
   maskArea?: number;
   /** Lowest mask pixel [x, y] in source pixels (≈ feet when the legs are visible). */
   maskBottomPx?: [number, number];
-  maskMethod?: "sam2" | "sam2+background" | "background-subtraction" | "manual";
+  maskMethod?: string;
+  /** Inflated-silhouette height map (PNG, 0..255 of inflateMaxPx) used to give the cut-out volume. */
+  depthFile?: string;
+  inflateMaxPx?: number;
+  /** Mean sRGB colour of the person's pixels (shades surfaces no camera saw). */
+  meanColor?: [number, number, number];
   samVsBackgroundIoU?: number | null;
   backgroundDriftPx?: [number, number];
   reason?: string;

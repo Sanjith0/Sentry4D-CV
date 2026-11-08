@@ -46,13 +46,23 @@ def clean(mask, box, w, h):
     return keep * clip
 
 
-def foreground(img, plate, box, w, h, thr=22.0):
-    """Pixels that differ from the static background plate (CIE Lab distance), restricted to the box."""
-    if plate is None:
-        return None
+def fg_raw(img, plate, thr=22.0):
+    """Pixels that differ from the static background plate (CIE Lab), minus cast shadows
+    (darker but same chromaticity as the background)."""
     a = cv2.cvtColor(cv2.GaussianBlur(img, (5, 5), 0), cv2.COLOR_BGR2LAB).astype(np.float32)
     b = cv2.cvtColor(cv2.GaussianBlur(plate, (5, 5), 0), cv2.COLOR_BGR2LAB).astype(np.float32)
-    fg = (np.linalg.norm(a - b, axis=2) > thr).astype(np.uint8)
+    fg = np.linalg.norm(a - b, axis=2) > thr
+    ratio = (a[..., 0] + 1) / (b[..., 0] + 1)
+    chroma = np.linalg.norm(a[..., 1:] - b[..., 1:], axis=2)
+    shadow = (ratio > 0.45) & (ratio < 0.95) & (chroma < 9)
+    return (fg & ~shadow).astype(np.uint8)
+
+
+def foreground(img, plate, box, w, h, thr=22.0):
+    """Background-difference person blob restricted to the tracked box."""
+    if plate is None:
+        return None
+    fg = fg_raw(img, plate, thr)
     fg = cv2.morphologyEx(fg, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
     fg = cv2.morphologyEx(fg, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
     return clean(fg * 255, box, w, h)
@@ -108,6 +118,8 @@ def main():
     # Human review decisions: {"cam4": [102, 107, 108], ...} -> frames dropped from the export.
     rj = os.path.join(clip, "reject.json")
     reviewed_out = json.load(open(rj)) if os.path.exists(rj) else {}
+    cj = os.path.join(clip, "carried.json")
+    carry_windows = json.load(open(cj))["windows"] if os.path.exists(cj) else []
     out = os.path.join(ROOT, "public", "reconstruction", a.clip)
     shutil.rmtree(out, ignore_errors=True)
     web = {
@@ -166,6 +178,31 @@ def main():
                 method = "sam2"
                 fg = foreground(img, plate, box, w, h)
                 if fg is not None and fg.sum() > 500:
+                    # Leaks above the head (booth top, vending machine, window panel): in the band above
+                    # the projected head height, drop SAM pixels that are static background AND clearly
+                    # unlike the person's colours (dark hair against a dark booth survives). Done before
+                    # the agreement test so a leak doesn't get a good frame rejected.
+                    # Background leaks (booth top, vending machine) attached around the head/shoulders:
+                    # pixels in the upper half of the mask that MATCH the empty-room plate at that exact
+                    # spot (dE < 10) and are clearly unlike the person's clothing. Works while bending over
+                    # (head far below the projected head line). Skin/hair differ from the plate -> kept.
+                    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32)
+                    plab = cv2.cvtColor(plate, cv2.COLOR_BGR2LAB).astype(np.float32)
+                    ys_ = np.nonzero(m)[0]
+                    mid = int((ys_.min() + ys_.max()) / 2) if len(ys_) else 0
+                    band = np.zeros_like(m, dtype=bool)
+                    band[:mid, :] = True
+                    body = (m > 0) & ~band
+                    person_lab = np.median(lab[body], axis=0) if body.any() else lab[m > 0].mean(axis=0)
+                    unlike = np.linalg.norm(lab - person_lab, axis=2) > 40
+                    on_plate = np.linalg.norm(cv2.GaussianBlur(lab, (5, 5), 0) - cv2.GaussianBlur(plab, (5, 5), 0), axis=2) < 10
+                    cut = (m > 0) & band & unlike & on_plate
+                    trimmed = False
+                    if cut.sum() > 50:
+                        m = m.copy()
+                        m[cut] = 0
+                        m = clean(m * 255, box, w, h)
+                        trimmed = True
                     agreement = round(iou(m > 0, fg > 0), 3)
                     if agreement < 0.5:
                         ok_fg, _ = plausible(fg, box)
@@ -182,9 +219,41 @@ def main():
                             entries.append({"k": k, "masterTime": f["masterTime"], "videoTime": f["videoTime"], "file": None, "reason": f"SAM/background disagree (IoU {agreement})"})
                             continue
                     else:
-                        m2 = m * cv2.dilate(fg, np.ones((7, 7), np.uint8))
-                        m = clean(m2 * 255, box, w, h)
-                        method = "sam2+background"
+                        # SAM and the background agree: keep SAM's mask as-is. (Intersecting with the
+                        # background difference punched holes where clothing matches the furniture
+                        # behind it, e.g. a grey hoodie against a grey booth.)
+                        method = "sam2 (background-checked)"
+                    if trimmed:
+                        method += " head-band-trimmed"
+                carrying = [w_ for w_ in carry_windows if w_["t0"] <= f["masterTime"] <= w_["t1"]]
+                if plate is not None and m.sum() and carrying:
+                    # Carried objects (chair, laptop): moving regions physically attached to the person,
+                    # only inside reviewed carry windows, and only at hand height or below.
+                    pys = np.nonzero(m)[0]
+                    p_top, p_bot = pys.min(), pys.max()
+                    hand_line = p_top + 0.25 * (p_bot - p_top)
+                    x0, y0, x1, y1 = box
+                    ex, ey = (x1 - x0) * 0.6, (y1 - y0) * 0.25
+                    region = np.zeros_like(m)
+                    region[max(0, int(y0 - ey)) : min(h, int(y1 + ey)), max(0, int(x0 - ex)) : min(w, int(x1 + ex))] = 1
+                    mov = cv2.morphologyEx(fg_raw(img, plate) * region, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8))
+                    n_, lab, st, _ = cv2.connectedComponentsWithStats(mov, 8)
+                    touch = cv2.dilate(m, np.ones((15, 15), np.uint8))
+                    extra = np.zeros_like(m)
+                    for i in range(1, n_):
+                        comp = lab == i
+                        cy_ = st[i, cv2.CC_STAT_TOP] + st[i, cv2.CC_STAT_HEIGHT] / 2
+                        top_, bot_ = st[i, cv2.CC_STAT_TOP], st[i, cv2.CC_STAT_TOP] + st[i, cv2.CC_STAT_HEIGHT]
+                        ph = p_bot - p_top
+                        # a held object can't rise above the head or sink below the feet
+                        if top_ < p_top or bot_ > p_bot + 0.05 * ph or cy_ > p_bot - 0.12 * ph:
+                            continue  # (last test: floor reflections/patches sit at the feet)
+                        if st[i, cv2.CC_STAT_AREA] >= 150 and (touch[comp] > 0).any() and st[i, cv2.CC_STAT_AREA] <= 1.5 * m.sum() and cy_ > hand_line:
+                            extra[comp & (m == 0)] = 1
+                    if extra.sum() > 0.04 * m.sum():
+                        m = np.maximum(m, extra)
+                        m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+                        method += "+carried:" + carrying[0]["label"]
                 ok, why = plausible(m, box) if m.sum() else (False, "empty mask")
                 if not ok:
                     entries.append({"k": k, "masterTime": f["masterTime"], "videoTime": f["videoTime"], "file": None, "reason": why})
@@ -200,6 +269,19 @@ def main():
             rgba = np.dstack([img, alpha.clip(0, 255).astype(np.uint8)])[y0:y1, x0:x1]
             name = f"{k:04d}.webp"
             cv2.imwrite(os.path.join(out, cam, name), rgba, [cv2.IMWRITE_WEBP_QUALITY, 92])
+            # Volume: "inflated silhouette" height field (px). Circular cross-section on the medial
+            # axis, thinner limbs stay thinner. Encoded 0..255 relative to inflateMaxPx.
+            mc = m[y0:y1, x0:x1].astype(np.uint8)
+            # Height must be exactly 0 ON the outline so the front and back shells meet there and
+            # form one closed body (a steep/blurred edge left a see-through slot between them).
+            dist = np.clip(cv2.distanceTransform(mc, cv2.DIST_L2, 5) - 2.0, 0, None)
+            r0 = float(dist.max()) or 1.0
+            hgt = np.sqrt(np.clip(2 * r0 * dist - dist * dist, 0, None))
+            hgt = cv2.GaussianBlur(hgt, (0, 0), max(1.0, r0 * 0.06)) * (dist > 0)
+            hmax = float(hgt.max()) or 1.0
+            dname = f"{k:04d}_d.png"
+            cv2.imwrite(os.path.join(out, cam, dname), (hgt / hmax * 255).clip(0, 255).astype(np.uint8))
+            mean_bgr = img[m > 0].mean(axis=0)
             # feet = lowest mask row (only meaningful when the legs are unoccluded)
             bottom = int(ys.max())
             feet_x = float(xs[ys >= bottom - 3].mean())
@@ -210,6 +292,9 @@ def main():
                     "videoTime": f["videoTime"],
                     "sourcePts": f["sourcePts"],
                     "file": f"{cam}/{name}",
+                    "depthFile": f"{cam}/{dname}",
+                    "inflateMaxPx": round(hmax, 2),
+                    "meanColor": [int(mean_bgr[2]), int(mean_bgr[1]), int(mean_bgr[0])],
                     # normalized [u0, v0, u1, v1] of the crop in the full upright frame
                     "crop": [round(x0 / w, 6), round(y0 / h, 6), round(x1 / w, 6), round(y1 / h, 6)],
                     "cropPx": [int(x0), int(y0), int(x1), int(y1)],

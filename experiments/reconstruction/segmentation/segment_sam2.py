@@ -31,10 +31,12 @@ def device():
     return torch.device("cpu")
 
 
-def pad_box(b, w, h, frac=0.12):
+def pad_box(b, w, h, frac=0.12, top=0.2):
+    """Tracked box + margin. Extra headroom on top: with the calibration offset the real head
+    often sits above the box projected from 1.8 m, and SAM then drops hair (tested on frames)."""
     x0, y0, x1, y1 = b
     px, py = (x1 - x0) * frac, (y1 - y0) * frac
-    return [max(0, x0 - px), max(0, y0 - py), min(w - 1, x1 + px), min(h - 1, y1 + py)]
+    return [max(0, x0 - px), max(0, y0 - (y1 - y0) * top), min(w - 1, x1 + px), min(h - 1, y1 + py)]
 
 
 def overlay(img, mask, box=None):
@@ -54,6 +56,9 @@ def main():
     ap.add_argument("--test", action="store_true")
     ap.add_argument("--chunk", type=int, default=45, help="frames per propagation chunk (memory bound)")
     ap.add_argument("--min-in-frame", type=float, default=0.5, help="min fraction of the prompt box inside the frame")
+    # Extra headroom only where the calibration offset clipped the head (CAM 01). On CAM 03 the extra
+    # room made SAM swallow the window panel beside the head, so it keeps the original margin.
+    ap.add_argument("--headroom", default="cam1=0.2", help="per-camera top margin, e.g. cam1=0.2,cam4=0.15 (default 0.12)")
     a = ap.parse_args()
     clip = os.path.join(BASE, "data", a.clip)
     manifest = json.load(open(os.path.join(clip, "manifest.json")))
@@ -84,6 +89,7 @@ def main():
 
     from sam2.build_sam import build_sam2_video_predictor
 
+    head = {kv.split("=")[0]: float(kv.split("=")[1]) for kv in a.headroom.split(",") if "=" in kv}
     pred = build_sam2_video_predictor(CFG, CKPT, device=dev)
     from sam2.build_sam import build_sam2
     from sam2.sam2_image_predictor import SAM2ImagePredictor
@@ -108,7 +114,7 @@ def main():
             img = cv2.cvtColor(cv2.imread(os.path.join(clip, frames[k]["file"])), cv2.COLOR_BGR2RGB)
             with torch.inference_mode():
                 img_pred.set_image(img)
-                masks, scores, _ = img_pred.predict(box=np.array(pad_box(track[k]["boxes"][cam], w, h)), multimask_output=False)
+                masks, scores, _ = img_pred.predict(box=np.array(pad_box(track[k]["boxes"][cam], w, h, top=head.get(cam, 0.12))), multimask_output=False)
             m = (masks[0] > 0).astype(np.uint8) * 255
             if (m > 0).sum() > ar:
                 cv2.imwrite(os.path.join(mdir, f"{k:04d}.png"), m)
@@ -146,7 +152,7 @@ def main():
             with torch.inference_mode():
                 state = pred.init_state(video_path=jdir, offload_video_to_cpu=True)
                 for k in keys:
-                    pred.add_new_points_or_box(state, frame_idx=k - c0, obj_id=1, box=np.array(pad_box(track[k]["boxes"][cam], w, h), dtype=np.float32))
+                    pred.add_new_points_or_box(state, frame_idx=k - c0, obj_id=1, box=np.array(pad_box(track[k]["boxes"][cam], w, h, top=head.get(cam, 0.12)), dtype=np.float32))
                 for fi, _, logits in pred.propagate_in_video(state):
                     k = c0 + fi
                     if not promptable(k):
