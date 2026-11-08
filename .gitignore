@@ -25,3 +25,6 @@ dist-ssr
 
 *.zip
 /11_8_2026.glb
+
+# reconstruction experiment outputs (derived frames, masks, splats)
+experiments/reconstruction/data/
