@@ -5,40 +5,18 @@ is allowed. Nothing here runs shell commands or touches an endpoint.
 """
 
 import json
-from dataclasses import dataclass, field
-from typing import Callable
+from pydantic import Field, ValidationError
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
-
-from .fixtures import IncidentDataSource
-from .schemas import Evidence, SecurityEvent
+from .tool_base import (  # noqa: F401  (re-exported for callers)
+    ToolArgs,
+    ToolContext,
+    ToolDefinition,
+    ToolOutcome,
+    ToolRefused,
+    for_model,
+)
 
 MAX_EVENTS = 50
-
-
-@dataclass
-class ToolContext:
-    data: IncidentDataSource
-    seen_evidence: dict[str, Evidence] = field(default_factory=dict)
-    seen_events: dict[str, SecurityEvent] = field(default_factory=dict)
-
-
-class ToolArgs(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-
-@dataclass(frozen=True)
-class ToolDefinition:
-    name: str
-    description: str
-    args_model: type[ToolArgs]
-    handler: Callable[[ToolArgs, ToolContext], dict]
-
-
-@dataclass(frozen=True)
-class ToolOutcome:
-    ok: bool
-    content: str
 
 
 class ToolRegistry:
@@ -77,6 +55,8 @@ class ToolRegistry:
             return _rejected("Invalid arguments.", details)
         try:
             result = tool.handler(args, context)
+        except ToolRefused as exc:
+            return _rejected(str(exc))
         except Exception as exc:  # A tool failure is reported to the model, not raised.
             return _rejected(f"Tool failed: {type(exc).__name__}.")
         return ToolOutcome(ok=True, content=json.dumps(result))
@@ -99,24 +79,19 @@ def get_security_events(args: GetSecurityEventsArgs, context: ToolContext) -> di
     events, evidence = context.data.get_security_events(args.alert_id, MAX_EVENTS)
     context.seen_evidence.update({item.evidence_id: item for item in evidence})
     context.seen_events.update({item.event_id: item for item in events})
-    # is_fixture describes our test harness, not the incident, so the model never sees it.
-    hidden = {"is_fixture"}
-    return {
-        "events": [e.model_dump(mode="json", by_alias=True, exclude=hidden) for e in events],
-        "evidence": [e.model_dump(mode="json", by_alias=True, exclude=hidden) for e in evidence],
-    }
+    return {"events": [for_model(e) for e in events], "evidence": [for_model(e) for e in evidence]}
 
 
 def build_registry() -> ToolRegistry:
+    # Each module owns its tools and exposes them as a TOOLS list.
+    from . import tools_context, tools_evidence, tools_plan, tools_strategy
+
+    own = ToolDefinition(
+        name="get_security_events",
+        description="Retrieve the security events and evidence records linked to an alert.",
+        args_model=GetSecurityEventsArgs,
+        handler=get_security_events,
+    )
     return ToolRegistry(
-        [
-            ToolDefinition(
-                name="get_security_events",
-                description=(
-                    "Retrieve the security events and evidence records linked to an alert."
-                ),
-                args_model=GetSecurityEventsArgs,
-                handler=get_security_events,
-            )
-        ]
+        [own, *tools_context.TOOLS, *tools_evidence.TOOLS, *tools_strategy.TOOLS, *tools_plan.TOOLS]
     )

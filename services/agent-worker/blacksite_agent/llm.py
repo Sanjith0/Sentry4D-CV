@@ -34,7 +34,7 @@ class NemotronClient:
         tools: list[dict],
         trace: Trace,
         role: str,
-        tool_choice: str = "auto",
+        tool_choice: str | dict = "auto",
     ):
         started = time.monotonic()
         try:

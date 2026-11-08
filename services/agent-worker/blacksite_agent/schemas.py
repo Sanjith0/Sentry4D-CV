@@ -114,6 +114,14 @@ class ResponsePlan(Record):
     is_simulated: Literal[True] = True
 
 
+class CommanderBrief(Record):
+    """The Commander's written judgement. Code merges it with the verified draft."""
+
+    incident_summary: str
+    confirmed_observations: list[str]
+    uncertainties: list[str]
+
+
 class AgentStep(Record):
     step: int
     role: str
@@ -129,3 +137,52 @@ class AgentStep(Record):
     tool_arguments: str | None = None
     tool_result: str | None = None
     detail: str | None = None
+
+
+class Asset(Record):
+    asset_id: str
+    name: str
+    kind: Literal["laptop", "router", "storage", "camera", "server"]
+    criticality: Level
+    location: str
+    is_fixture: bool = False
+
+
+class RelatedAsset(Record):
+    """An asset connected to the queried asset. `direction` is relative to the query."""
+
+    asset: Asset
+    relation: Literal["connects_via", "shares_files_with", "backs_up_to"]
+    direction: Literal["outbound", "inbound"]
+    hops: int = Field(ge=1, le=2)
+
+
+class CvObservation(Record):
+    observation_id: str
+    asset_id: str
+    kind: Literal["qr_scan", "object_detection"]
+    description: str
+    observed_at: datetime
+    confidence: float = Field(ge=0, le=1)
+    is_fixture: bool = False
+
+
+class DataScope(Record):
+    asset_id: str
+    data_classes: list[str]
+    sensitivity: Level
+    backup_present: bool
+    notes: str
+    is_fixture: bool = False
+
+
+class IncidentContext(Record):
+    incident_id: str
+    title: str
+    status: Literal["open", "contained", "closed"]
+    primary_asset_id: str
+    alert_ids: list[str]
+    severity: Severity
+    opened_at: datetime
+    response_status: Literal["none", "proposed", "approved", "rejected"]
+    is_fixture: bool = False

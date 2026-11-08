@@ -11,10 +11,12 @@ from blacksite_agent.agent import AgentError, run_agent
 from blacksite_agent.fixtures import FIXTURE_ALERT, FixtureDataSource
 from blacksite_agent.orchestrator import INVESTIGATOR, Orchestrator, missing_tools
 from blacksite_agent.schemas import Finding, ResponsePlan
-from blacksite_agent.tools import ToolContext, build_registry
+from blacksite_agent.tools import ToolContext, ToolRegistry, build_registry
 from blacksite_agent.trace import Trace, sanitize
 
-ROLE = replace(INVESTIGATOR, tool_names=("get_security_events",))
+ROLE = replace(
+    INVESTIGATOR, tool_names=("get_security_events",), required_tools=("get_security_events",)
+)
 EVIDENCE = "evidence-test"
 
 
@@ -22,9 +24,11 @@ class ScriptedLLM:
     def __init__(self, replies):
         self.replies = list(replies)
         self.tool_choices = []
+        self.offered = []
 
     def complete(self, messages, tools, trace, role, tool_choice="auto"):
         self.tool_choices.append(tool_choice)
+        self.offered.append([t["function"]["name"] for t in tools])
         return self.replies.pop(0)
 
 
@@ -71,8 +75,47 @@ def test_rejected_tool_call_forces_a_retry():
     trace = Trace()
     context = ToolContext(data=FixtureDataSource("test"))
     run_agent(llm, ROLE, build_registry(), context, "go", trace)
-    assert llm.tool_choices == ["auto", "required", "auto"]
+    assert llm.tool_choices == ["required", "required", "auto"]
     assert trace.count("tool_rejected") == 1 and trace.count("tool_call") == 1
+
+
+def test_required_tool_is_forced_by_offering_only_that_tool():
+    role = replace(ROLE, tool_names=("get_security_events", "get_related_assets"))
+    llm = ScriptedLLM([call(), answer()])
+    context = ToolContext(data=FixtureDataSource("test"))
+    run_agent(llm, role, build_registry(), context, "go", Trace())
+    assert llm.offered == [["get_security_events"], ["get_security_events", "get_related_assets"]]
+
+
+def test_answer_format_is_withheld_until_required_tools_have_run():
+    seen = []
+
+    class Recorder(ScriptedLLM):
+        def complete(self, messages, tools, trace, role, tool_choice="auto"):
+            seen.append(json.dumps(messages))
+            return super().complete(messages, tools, trace, role, tool_choice)
+
+    context = ToolContext(data=FixtureDataSource("test"))
+    run_agent(Recorder([call(), answer()]), ROLE, build_registry(), context, "go", Trace())
+    assert "matching this schema" not in seen[0] and "matching this schema" in seen[1]
+
+
+def test_premature_answer_is_not_echoed_back():
+    seen = []
+
+    class Recorder(ScriptedLLM):
+        def complete(self, messages, tools, trace, role, tool_choice="auto"):
+            seen.append(list(messages))
+            return super().complete(messages, tools, trace, role, tool_choice)
+
+    context = ToolContext(data=FixtureDataSource("test"))
+    run_agent(Recorder([answer(), call(), answer()]), ROLE, build_registry(), context, "go", Trace())
+    assert all(m["role"] != "assistant" for m in seen[1])
+
+
+def test_investigator_requires_security_tools_and_keeps_cv_optional():
+    assert set(INVESTIGATOR.required_tools) == {"get_security_events", "get_incident_context"}
+    assert "get_cv_observations" in INVESTIGATOR.tool_names
 
 
 def test_invented_evidence_is_rejected():
@@ -154,9 +197,9 @@ def test_dedupe_and_agent_origin_are_skipped():
     assert not orch.should_process(other)
 
 
-def test_skeleton_refuses_to_run_with_missing_tools():
-    registry = build_registry()
-    assert "Strategist" in missing_tools(registry)
+def test_orchestrator_refuses_to_run_with_missing_tools():
+    registry = ToolRegistry([d for d in build_registry()._tools.values() if d.name != "simulate_response"])
+    assert missing_tools(registry) == {"Strategist": ["simulate_response"]}
     orch = Orchestrator(None, registry, ToolContext(data=FixtureDataSource("t")))
     with pytest.raises(NotImplementedError):
         orch.investigate(FIXTURE_ALERT, Trace())

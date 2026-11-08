@@ -35,7 +35,11 @@ def main() -> int:
     context = ToolContext(data=data)
     trace = Trace(secrets=(settings.api_key.get_secret_value(),))
     llm = NemotronClient(settings)
-    role = replace(INVESTIGATOR, tool_names=("get_security_events",))
+    role = replace(
+        INVESTIGATOR,
+        tool_names=("get_security_events",),
+        required_tools=("get_security_events",),
+    )
     briefing = (
         "A new alert needs investigation.\n"
         f"Alert: {FIXTURE_ALERT.model_dump_json(by_alias=True)}"
