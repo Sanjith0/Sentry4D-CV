@@ -24,7 +24,7 @@ Three of the recordings are iPhone HEVC (Main 10, HDR). They play in Chrome or S
 ## Configuration (all in `src/config/`)
 
 - **`roomConfig.ts`**: GLB transform (scale/rotation/offset), `interior` = the real room box in scan coordinates (the scan also contains stuff seen through the window wall; grounding, framing and the ceiling cut use this box, so the floor is y=0 and the room center is the origin), material mode (`unlit` shows the scan as captured; `standard` = lit PBR), lighting, ceiling cut height, supplemental floor/wall patches for scan holes, placeholder dimensions. The GLB file is never modified; materials are cloned in memory.
-- **`cameras.ts`**: the four `SecurityCamera`s (position, target, fov, videoUrl, timeOffset). Poses are estimates in the four interior corners (2.7 m high, aimed at the room center). To fine-tune one: free camera → fly to the camera spot → aim → click **POSE** in the toolbar → paste the JSON. The JSON is also logged to the console.
+- **`cameras.ts`**: the four `SecurityCamera`s (position, target, fov, videoUrl, offset). Poses are estimates in the four interior corners, 2.7 m high. Each has its own target; cam4 is aimed to its right for partial coverage. To fine-tune one: free camera → fly to the camera spot → aim → click **POSE** in the toolbar → paste the JSON. The JSON is also logged to the console.
   - `offset`: sync offset, **`videoTime = masterTime + offset`**. Defaults come from `src/config/camera-sync.json`.
 
 ## Camera sync
