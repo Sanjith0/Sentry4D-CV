@@ -1,6 +1,6 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useGLTF } from "@react-three/drei";
-import { useThree } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { roomConfig, type RoomConfig } from "../config/roomConfig";
 import { useViewStore } from "../store/useViewStore";
@@ -8,6 +8,7 @@ import { useReplayStore } from "../store/useReplayStore";
 import type { RoomBounds, Vec3 } from "../types/security";
 import { ceilingPlanes, setCeilingCut } from "./ceilingClip";
 import { applyWindowClip } from "./windowWallClip";
+import { applyBuildClip, finishBuild, makeBuildWireMaterial, primeBuild, shouldPlayBuild, stepBuild } from "./buildIntro";
 
 const DEG = Math.PI / 180;
 
@@ -73,7 +74,7 @@ export function RoomModel({ url = roomConfig.url, config = roomConfig, onLoaded 
   const cctvView = useReplayStore((s) => s.cameraMode === "cctv");
   const showCeiling = ceilingToggle || cctvView;
 
-  const { object, bounds, materials } = useMemo(() => {
+  const { object, wire, bounds, sweep, materials } = useMemo(() => {
     const root = gltf.scene.clone(true);
     const materials: THREE.Material[] = [];
     root.traverse((o) => {
@@ -82,6 +83,7 @@ export function RoomModel({ url = roomConfig.url, config = roomConfig, onLoaded 
       const prep = (m: THREE.Material) => {
         const n = prepareMaterial(m, config.materialMode, anisotropy);
         applyWindowClip(n);
+        applyBuildClip(n);
         materials.push(n);
         return n;
       };
@@ -115,8 +117,30 @@ export function RoomModel({ url = roomConfig.url, config = roomConfig, onLoaded 
     const box = roomBox.clone().translate(offset);
     const scan = boundsFromBox(scanBox.clone().translate(offset));
     console.info(`[Sentry3D] full scan extent incl. outside geometry: ${scan.size.map((v) => v.toFixed(2)).join(" × ")} m`);
-    return { object: outer, bounds: boundsFromBox(box), materials };
+    // Wireframe twin for the page-load build reveal (shares geometry; only mounted while it plays).
+    const wireMaterial = makeBuildWireMaterial(ceilingPlanes);
+    const wire = outer.clone(true);
+    wire.name = "RoomModelBuildWire";
+    wire.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (mesh.isMesh) {
+        mesh.material = wireMaterial;
+        mesh.raycast = () => null;
+      }
+    });
+    materials.push(wireMaterial);
+    return { object: outer, wire, bounds: boundsFromBox(box), sweep: [Math.min(box.min.y, scan.min[1]) - 0.05, box.max.y + 0.25] as const, materials };
   }, [gltf, config, anisotropy]);
+
+  const [building, setBuilding] = useState(() => shouldPlayBuild());
+  useEffect(() => {
+    if (building) primeBuild(sweep[0]);
+  }, [building, sweep]);
+  useEffect(() => () => finishBuild(), []);
+  useFrame((state) => {
+    if (!building) return;
+    if (!stepBuild(state.clock.elapsedTime, sweep[0], sweep[1])) setBuilding(false);
+  });
 
   useEffect(() => {
     onLoaded?.(bounds);
@@ -130,5 +154,10 @@ export function RoomModel({ url = roomConfig.url, config = roomConfig, onLoaded 
 
   useEffect(() => () => materials.forEach((m) => m.dispose()), [materials]);
 
-  return <primitive object={object} />;
+  return (
+    <>
+      <primitive object={object} />
+      {building && <primitive object={wire} />}
+    </>
+  );
 }

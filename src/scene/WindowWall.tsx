@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { roomConfig } from "../config/roomConfig";
 import { useViewStore } from "../store/useViewStore";
 import { setWindowClip } from "./windowWallClip";
+import { applyBuildClip, buildUniforms } from "./buildIntro";
 
 /**
  * Clean procedural replacement for the scanned glass wall (between CAM 01 and CAM 04) and the
@@ -13,7 +14,7 @@ import { setWindowClip } from "./windowWallClip";
 /** Fresnel glass: almost invisible face-on, a soft cool sheen at grazing angles. */
 function makeGlassMaterial(opacity = 0.07) {
   return new THREE.ShaderMaterial({
-    uniforms: { uTint: { value: new THREE.Color("#cfe9f5") }, uBase: { value: opacity } },
+    uniforms: { uTint: { value: new THREE.Color("#cfe9f5") }, uBase: { value: opacity }, uBuildTexY: buildUniforms.uBuildTexY },
     vertexShader: /* glsl */ `
       varying vec3 vN; varying vec3 vV; varying float vY;
       #include <common>
@@ -27,12 +28,13 @@ function makeGlassMaterial(opacity = 0.07) {
         #include <logdepthbuf_vertex>
       }`,
     fragmentShader: /* glsl */ `
-      uniform vec3 uTint; uniform float uBase;
+      uniform vec3 uTint; uniform float uBase; uniform float uBuildTexY;
       varying vec3 vN; varying vec3 vV; varying float vY;
       #include <common>
       #include <logdepthbuf_pars_fragment>
       void main() {
         #include <logdepthbuf_fragment>
+        if (vY > uBuildTexY) discard; // page-load build reveal
         float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 3.0);
         // faint vertical gradient: a touch brighter toward the top, like sky reflection
         float g = 0.85 + 0.15 * smoothstep(0.0, 3.0, vY);
@@ -88,6 +90,8 @@ export function WindowWall() {
     const frame = new THREE.MeshStandardMaterial({ color: "#2a2e35", roughness: 0.45, metalness: 0.6 });
     const concrete = makeConcreteTexture();
     const floor = new THREE.MeshStandardMaterial({ map: concrete, roughness: 0.95, metalness: 0 });
+    applyBuildClip(frame);
+    applyBuildClip(floor);
     return { glass, railGlass, frame, concrete, floor };
   }, []);
   useEffect(
