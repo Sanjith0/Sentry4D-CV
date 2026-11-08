@@ -3,6 +3,7 @@ import { Eye, Maximize2, Minimize2, VideoOff } from "lucide-react";
 import { useReplayStore } from "../store/useReplayStore";
 import { useViewStore } from "../store/useViewStore";
 import { videoRegistry } from "../lib/videoRegistry";
+import { CAMERA_STATE_COLOR, CAMERA_STATE_LABEL, useEvidenceStore } from "../features/sentry/useEvidence";
 import type { FeedStatus, SecurityCamera } from "../types/security";
 import { formatClock, formatWallClock } from "../lib/format";
 
@@ -145,6 +146,7 @@ export function CCTVFeed({ cam, index }: { cam: SecurityCamera; index: number })
   const setHovered = useViewStore((s) => s.setHoveredCamera);
   const setFocusedFeed = useViewStore((s) => s.setFocusedFeed);
   const range = useVideoSync(ref, cam, status);
+  const evidence = useEvidenceStore((s) => s.byCamera[cam.id]);
 
   useEffect(() => {
     videoRegistry.set(cam.id, ref.current);
@@ -253,6 +255,12 @@ export function CCTVFeed({ cam, index }: { cam: SecurityCamera; index: number })
       </div>
       <div className="flex items-center justify-between border-t border-ink-700 bg-ink-850 px-2 py-1">
         <span className={`truncate font-mono text-[10px] ${linked ? "text-cyan-200" : "text-slate-400"}`}>{cam.name}</span>
+        {evidence && evidence !== "no-evidence" && evidence !== "not-recording" && (
+          <span className="ml-auto mr-2 font-mono text-[9px] tracking-wider" style={{ color: CAMERA_STATE_COLOR[evidence] }} title="Person visibility evidence in this camera">
+            {evidence === "tracking" ? "◉ " : ""}
+            {CAMERA_STATE_LABEL[evidence]}
+          </span>
+        )}
         <span className={`font-mono text-[9px] ${offset ? "text-amber-300/80" : "text-slate-600"}`} title="Sync offset (videoTime = masterTime + offset)">
           {offset >= 0 ? "+" : ""}
           {offset.toFixed(2)}s

@@ -18,7 +18,9 @@ import {
   type PixelToWorldResult,
   type VideoFrameInfo,
 } from "../../lib/videoProjection";
-import type { CameraId, PersonObservation, Vec3 } from "../../types/security";
+import type { CameraId, PersonObservation, Vec3, VisibilityMark, VisibilityState } from "../../types/security";
+import { useVisibilityStore } from "./useVisibilityStore";
+import { CAMERA_STATE_COLOR, CAMERA_STATE_LABEL, useEvidenceStore } from "../sentry/useEvidence";
 import { parseDatasets, useActiveObservations, useAnnotationStore } from "./useAnnotationStore";
 import { useFrameState } from "./useFrameState";
 
@@ -371,6 +373,8 @@ export function AnnotationPanel() {
         </button>
       </div>
 
+      <VisibilityRow cameraId={cameraId} personId={activePersonId} canMark={!!fs.frame && fs.settled && !isPlaying} />
+
       {/* Focused observation details */}
       <div className="mx-3 mt-2 rounded-md border border-ink-600 bg-ink-850 px-2.5 py-1.5">
         {focus && focusDiag ? (
@@ -542,3 +546,79 @@ export function AnnotationPanel() {
     </section>
   );
 }
+
+const VIS_BUTTONS: { state: VisibilityState; label: string; title: string; cls: string }[] = [
+  { state: "observed", label: "OBSERVED", title: "Person visible in this camera (feet may be hidden). Clicking feet also counts as observed.", cls: "hover:border-cyan-400 hover:text-cyan-200" },
+  { state: "occluded", label: "OCCLUDED", title: "Person is within this camera's view but blocked (furniture, pillar, other person)", cls: "hover:border-amber-400 hover:text-amber-200" },
+  { state: "out-of-frame", label: "OUT OF FRAME", title: "Person is outside this camera's frame", cls: "hover:border-orange-400 hover:text-orange-200" },
+  { state: "unknown", label: "UNKNOWN", title: "Can't tell from this footage", cls: "hover:border-violet-400 hover:text-violet-200" },
+];
+
+/** Mark this camera's visibility of the person at the current master time. */
+function VisibilityRow({ cameraId, personId, canMark }: { cameraId: CameraId; personId: string; canMark: boolean }) {
+  const t = useReplayStore((s) => s.currentTime);
+  const marks = useVisibilityStore((s) => s.marks[personId] ?? EMPTY_MARKS);
+  const setMark = useVisibilityStore((s) => s.setMark);
+  const removeMark = useVisibilityStore((s) => s.remove);
+  const derived = useEvidenceStore((s) => s.byCamera[cameraId]);
+  const here = marks.filter((m) => m.cameraId === cameraId);
+  const atNow = here.find((m) => Math.abs(m.masterTime - t) <= 0.02);
+  const [showAll, setShowAll] = useState(false);
+  const r = useReplayStore.getState;
+
+  return (
+    <div className="mx-3 mt-2 rounded-md border border-ink-600 bg-ink-850 px-2.5 py-1.5">
+      <div className="flex items-center gap-1.5">
+        <span className="label mr-1 whitespace-nowrap">{camLabel(cameraId)} sees person?</span>
+        {VIS_BUTTONS.map((b) => (
+          <button
+            key={b.state}
+            type="button"
+            disabled={!canMark}
+            title={b.title}
+            onClick={() => setMark(personId, cameraId, Math.round(r().currentTime * 1000) / 1000, b.state)}
+            className={`h-6 flex-1 rounded border font-mono text-[10px] disabled:opacity-40 ${
+              atNow?.state === b.state ? "border-cyan-400/70 bg-cyan-400/15 text-cyan-100" : `border-ink-500 bg-ink-800 text-slate-300 ${b.cls}`
+            }`}
+          >
+            {b.label}
+          </button>
+        ))}
+      </div>
+      <div className="mt-1 flex items-center gap-2 font-mono text-[10px] text-slate-500">
+        <span>
+          now:{" "}
+          <span style={{ color: derived ? CAMERA_STATE_COLOR[derived] : undefined }}>{derived ? CAMERA_STATE_LABEL[derived] : "n/a"}</span>
+        </span>
+        <span>·</span>
+        <button type="button" onClick={() => setShowAll(!showAll)} className="underline-offset-2 hover:text-slate-300 hover:underline">
+          {here.length} mark{here.length === 1 ? "" : "s"} in {camLabel(cameraId)} {showAll ? "▴" : "▾"}
+        </button>
+        <span className="ml-auto">marks hold until the next evidence in this camera</span>
+      </div>
+      {showAll && here.length > 0 && (
+        <div className="mt-1 max-h-24 space-y-px overflow-y-auto">
+          {here.map((m) => (
+            <div key={m.id} className="flex items-center gap-2 font-mono text-[10px]">
+              <button
+                type="button"
+                className="text-slate-300 hover:text-cyan-200"
+                onClick={() => {
+                  r().pause();
+                  r().seek(m.masterTime);
+                }}
+              >
+                {formatClock(m.masterTime)}
+              </button>
+              <span style={{ color: CAMERA_STATE_COLOR[m.state === "observed" ? "tracking" : m.state] }}>{m.state.toUpperCase()}</span>
+              <button type="button" title="Delete mark" onClick={() => removeMark(personId, m.id)} className="ml-auto text-slate-500 hover:text-red-300">
+                <Trash2 className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+const EMPTY_MARKS: VisibilityMark[] = [];

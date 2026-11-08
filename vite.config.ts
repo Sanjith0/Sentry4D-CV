@@ -38,6 +38,13 @@ const CONFIGS: Record<string, { file: string; validate: (d: unknown) => void }> 
           if (!Array.isArray(px) || px.length !== 2 || !px.every(isNum)) throw new Error("observation.pixel invalid");
           if (!Array.isArray(wp) || wp.length !== 3 || !wp.every(isNum)) throw new Error("observation.worldPosition invalid");
         }
+        if (ds.visibility !== undefined) {
+          if (!Array.isArray(ds.visibility)) throw new Error("visibility must be an array");
+          for (const m of ds.visibility as Record<string, unknown>[]) {
+            if (!isNum(m?.masterTime) || !CAMERA_IDS.includes(m.cameraId as string)) throw new Error("visibility mark needs masterTime + valid cameraId");
+            if (!["observed", "occluded", "out-of-frame", "unknown"].includes(m.state as string)) throw new Error("visibility mark state invalid");
+          }
+        }
       }
     },
   },

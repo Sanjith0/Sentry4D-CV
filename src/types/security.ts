@@ -158,8 +158,25 @@ export interface PersonObservation {
   videoTime?: number;
 }
 
+/**
+ * Per-camera visibility evidence, in MASTER time. A feet click (PersonObservation)
+ * is implicit "observed" evidence; marks add explicit states, including negative
+ * ones. A camera recording at time t does NOT imply it sees the person.
+ */
+export type VisibilityState = "observed" | "occluded" | "out-of-frame" | "unknown";
+
+export interface VisibilityMark {
+  id: string;
+  masterTime: number;
+  cameraId: CameraId;
+  state: VisibilityState;
+  source: "manual";
+}
+
 /** Export/import format for one person's annotations. */
 export interface PersonAnnotationDataset {
   personId: string;
   observations: PersonObservation[];
+  /** Explicit per-camera visibility marks (optional for older files). */
+  visibility?: VisibilityMark[];
 }

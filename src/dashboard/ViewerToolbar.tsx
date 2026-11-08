@@ -127,7 +127,7 @@ function FreeHud() {
         </div>
       )}
       <div className="pointer-events-none absolute inset-0 rounded-sm ring-1 ring-cyan-400/30 ring-inset" />
-      <div className="glass pointer-events-auto absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-lg px-3 py-2 font-mono text-[11px] text-slate-300 fade-in">
+      <div className="glass pointer-events-auto absolute bottom-3 left-3 flex max-w-[calc(100%-300px)] flex-wrap items-center gap-3 rounded-lg px-3 py-2 font-mono text-[11px] text-slate-300 fade-in">
         <span className="flex items-center gap-1.5 whitespace-nowrap text-cyan-300">
           <Gamepad2 className="h-3.5 w-3.5" /> FREE CAM {locked ? "· LOOK ACTIVE" : ""}
         </span>
@@ -225,7 +225,7 @@ function CctvHud() {
 
 function TopHud() {
   return (
-    <div className="glass pointer-events-none absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-lg px-3 py-2 font-mono text-[11px] text-slate-400 fade-in">
+    <div className="glass pointer-events-none absolute bottom-3 left-3 flex max-w-[calc(100%-300px)] flex-wrap items-center gap-2 rounded-lg px-3 py-2 font-mono text-[11px] text-slate-400 fade-in">
       <Square className="h-3.5 w-3.5 text-cyan-300" /> OVERHEAD · drag to pan · wheel to zoom · <Kbd>R</Kbd> reset
     </div>
   );
@@ -233,7 +233,7 @@ function TopHud() {
 
 function OrbitHud() {
   return (
-    <div className="glass pointer-events-none absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-lg px-3 py-2 font-mono text-[11px] text-slate-400 fade-in">
+    <div className="glass pointer-events-none absolute bottom-3 left-3 flex max-w-[calc(100%-300px)] flex-wrap items-center gap-2 rounded-lg px-3 py-2 font-mono text-[11px] text-slate-400 fade-in">
       <Box className="h-3.5 w-3.5 text-cyan-300" /> ORBIT · drag rotate · right-drag pan · wheel zoom · click a camera to view through it
     </div>
   );

@@ -32,6 +32,8 @@ interface ViewState {
   pointerLocked: boolean;
   /** Free-camera base speed (m/s). */
   flySpeed: number;
+  /** One-shot request for the free camera to move to `position` and look at `target`. */
+  flyFocus: { position: [number, number, number]; target: [number, number, number]; token: number } | null;
   /** Incremented to request the current mode's home view. */
   resetToken: number;
   /** True while the camera rig animates between modes. */
@@ -56,6 +58,7 @@ interface ViewState {
   setPointerLocked: (v: boolean) => void;
   setFlySpeed: (v: number) => void;
   resetView: () => void;
+  focusFreeCamera: (position: [number, number, number], target: [number, number, number]) => void;
   setTransitioning: (v: boolean) => void;
   setQuality: (q: RenderQuality) => void;
 }
@@ -81,6 +84,7 @@ export const useViewStore = create<ViewState>()((set) => ({
   pointerLocked: false,
   flySpeed: 2.5,
   resetToken: 0,
+  flyFocus: null,
   transitioning: false,
   quality: "balanced",
 
@@ -123,6 +127,7 @@ export const useViewStore = create<ViewState>()((set) => ({
   setPointerLocked: (pointerLocked) => set({ pointerLocked }),
   setFlySpeed: (flySpeed) => set({ flySpeed: Math.min(Math.max(flySpeed, 0.25), 20) }),
   resetView: () => set((s) => ({ resetToken: s.resetToken + 1 })),
+  focusFreeCamera: (position, target) => set((s) => ({ flyFocus: { position, target, token: (s.flyFocus?.token ?? 0) + 1 } })),
   setTransitioning: (transitioning) => set({ transitioning }),
   setQuality: (quality) => set({ quality }),
 }));

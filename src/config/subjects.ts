@@ -16,7 +16,7 @@ export interface SubjectConfig {
 }
 
 export const subjects: SubjectConfig[] = [
-  { id: "subject-01", label: "SUBJECT 01", personId: "person_01", heightM: 1.75, build: 1, color: "#22d3ee" },
+  { id: "subject-01", label: "PERSON 01", personId: "person_01", heightM: 1.75, build: 1, color: "#22d3ee" },
 ];
 
 export const trajectoryConfig = {
@@ -30,6 +30,13 @@ export const trajectoryConfig = {
   standThreshold: 0.15,
   /** Movement trail length (s). 0 disables the trail. */
   trailSeconds: 6,
+  /**
+   * Visibility evidence: a camera counts as TRACKING within ±evidenceHold (s) of a real
+   * observation in that camera, and between two observations in the same camera that are
+   * at most evidenceBridge (s) apart (annotations are sparse samples of a continuous view).
+   */
+  evidenceHold: 0.5,
+  evidenceBridge: 2.0,
   /** Stride length (m) used for the walk cycle. */
   strideM: 0.75,
 };

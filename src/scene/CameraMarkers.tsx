@@ -4,6 +4,7 @@ import { Html, Line } from "@react-three/drei";
 import * as THREE from "three";
 import { CCTV_ASPECT, FRUSTUM_LENGTH } from "../config/cameras";
 import { useCameras } from "../store/useReplayStore";
+import { CAMERA_STATE_COLOR, CAMERA_STATE_LABEL, useEvidenceStore } from "../features/sentry/useEvidence";
 import { poseQuaternion } from "../lib/cameraMath";
 
 // Marker geometry opens along +Z; cameras look down -Z.
@@ -45,13 +46,17 @@ function CameraMarker({ cam, index }: { cam: SecurityCamera; index: number }) {
 
   const quaternion = useMemo(() => poseQuaternion(cam).multiply(FLIP), [cam]);
 
+  // Evidence: does this camera currently see a tracked person?
+  const evidence = useEvidenceStore((s) => s.byCamera[cam.id]);
+  const tracking = evidence === "tracking";
+
   useFrame(({ clock }) => {
     if (!ring.current) return;
-    const pulse = selected ? 0.6 + 0.4 * Math.sin(clock.elapsedTime * 5) : 0.5;
+    const pulse = selected || tracking ? 0.6 + 0.4 * Math.sin(clock.elapsedTime * (tracking ? 8 : 5)) : 0.5;
     ring.current.opacity = pulse;
   });
 
-  const active = selected || hovered;
+  const active = selected || hovered || tracking;
   const color = active ? CYAN : DIM;
 
   return (
@@ -133,6 +138,12 @@ function CameraMarker({ cam, index }: { cam: SecurityCamera; index: number }) {
           >
             CAM {String(index + 1).padStart(2, "0")}
             {selected && <span className="ml-1 text-cyan-300">● LINKED</span>}
+            {evidence && evidence !== "no-evidence" && evidence !== "not-recording" && (
+              <span className="ml-1" style={{ color: CAMERA_STATE_COLOR[evidence] }}>
+                {tracking ? "◉ " : ""}
+                {CAMERA_STATE_LABEL[evidence]}
+              </span>
+            )}
           </div>
         </Html>
       )}

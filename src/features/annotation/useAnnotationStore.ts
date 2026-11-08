@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { CAMERA_IDS, type CameraId, type PersonAnnotationDataset, type PersonObservation, type Vec3 } from "../../types/security";
 import projectFile from "../../data/person-annotations.json";
+import { parseVisibility, useVisibilityStore } from "./useVisibilityStore";
 
 const STORAGE_KEY = "sentry3d.annotations.v1";
 const UNDO_LIMIT = 50;
@@ -74,7 +75,7 @@ export function parseDatasets(json: unknown): PersonAnnotationDataset[] {
     const ds = d as Record<string, unknown>;
     const personId = typeof ds.personId === "string" && ds.personId.trim() ? ds.personId.trim() : `person_${String(k + 1).padStart(2, "0")}`;
     if (!Array.isArray(ds.observations)) throw new Error(`${personId}: observations must be an array`);
-    return { personId, observations: sortObs(ds.observations.map(parseObservation)) };
+    return { personId, observations: sortObs(ds.observations.map(parseObservation)), visibility: parseVisibility(ds.visibility) };
   });
 }
 
@@ -187,6 +188,7 @@ export const useAnnotationStore = create<AnnotationState>()((set, get) => {
         for (const d of datasets) {
           out[d.personId] = d.observations;
           n += d.observations.length;
+          useVisibilityStore.getState().importMarks(d.personId, d.visibility ?? []);
         }
         return out;
       }, datasets.length ? { activePersonId: datasets[0].personId, selectedId: null } : {});
@@ -195,15 +197,15 @@ export const useAnnotationStore = create<AnnotationState>()((set, get) => {
     exportDataset: (personId) => {
       const s = get();
       const id = personId ?? s.activePersonId;
-      return { personId: id, observations: sortObs(s.persons[id] ?? []) };
+      return { personId: id, observations: sortObs(s.persons[id] ?? []), visibility: useVisibilityStore.getState().marks[id] ?? [] };
     },
     exportAll: () => {
       const s = get();
       return {
         version: 1,
         datasets: Object.keys(s.persons)
-          .filter((k) => s.persons[k].length)
-          .map((k) => ({ personId: k, observations: sortObs(s.persons[k]) })),
+          .filter((k) => s.persons[k].length || useVisibilityStore.getState().marks[k]?.length)
+          .map((k) => ({ personId: k, observations: sortObs(s.persons[k]), visibility: useVisibilityStore.getState().marks[k] ?? [] })),
       };
     },
   };

@@ -35,6 +35,21 @@ export function FreeFlyControls() {
     velocity.current.set(0, 0, 0);
   }, [camera]);
 
+  // External "look here" requests (e.g. LOCATE in the evidence panel).
+  useEffect(
+    () =>
+      useViewStore.subscribe((s, p) => {
+        const f = s.flyFocus;
+        if (!f || f === p.flyFocus) return;
+        camera.position.set(...f.position);
+        const d = new THREE.Vector3(...f.target).sub(camera.position).normalize();
+        yaw.current = targetYaw.current = Math.atan2(-d.x, -d.z);
+        pitch.current = targetPitch.current = THREE.MathUtils.clamp(Math.asin(d.y), -PITCH_LIMIT, PITCH_LIMIT);
+        velocity.current.set(0, 0, 0);
+      }),
+    [camera],
+  );
+
   useEffect(() => {
     const el = gl.domElement;
     const view = useViewStore.getState;

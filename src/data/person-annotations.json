@@ -5,6 +5,7 @@
       "personId": "person_01",
       "observations": [
         {
+          "id": "obs_mw7ok8l0_w28ti",
           "masterTime": 4.326,
           "cameraId": "cam3",
           "pixel": [
@@ -17,10 +18,10 @@
             -6.405
           ],
           "source": "manual",
-          "videoTime": 4.326,
-          "id": "obs_mw7ok8l0_w28ti"
+          "videoTime": 4.326
         },
         {
+          "id": "obs_mw7olpwp_hnbi9",
           "masterTime": 5.759,
           "cameraId": "cam2",
           "pixel": [
@@ -33,10 +34,10 @@
             -5.765
           ],
           "source": "manual",
-          "videoTime": 5.759,
-          "id": "obs_mw7olpwp_hnbi9"
+          "videoTime": 5.759
         },
         {
+          "id": "obs_mw7okhtf_zenyo",
           "masterTime": 6.674,
           "cameraId": "cam3",
           "pixel": [
@@ -49,10 +50,10 @@
             -4.503
           ],
           "source": "manual",
-          "videoTime": 6.674,
-          "id": "obs_mw7okhtf_zenyo"
+          "videoTime": 6.674
         },
         {
+          "id": "obs_mw7oltpa_lxs39",
           "masterTime": 7.295,
           "cameraId": "cam2",
           "pixel": [
@@ -65,10 +66,10 @@
             -4.485
           ],
           "source": "manual",
-          "videoTime": 7.295,
-          "id": "obs_mw7oltpa_lxs39"
+          "videoTime": 7.295
         },
         {
+          "id": "obs_mw7op9e3_03elu",
           "masterTime": 8.355,
           "cameraId": "cam1",
           "pixel": [
@@ -81,10 +82,10 @@
             -3.072
           ],
           "source": "manual",
-          "videoTime": 8.355,
-          "id": "obs_mw7op9e3_03elu"
+          "videoTime": 8.355
         },
         {
+          "id": "obs_mw7olwp5_pn1ae",
           "masterTime": 8.613,
           "cameraId": "cam2",
           "pixel": [
@@ -97,10 +98,10 @@
             -3.366
           ],
           "source": "manual",
-          "videoTime": 8.613,
-          "id": "obs_mw7olwp5_pn1ae"
+          "videoTime": 8.613
         },
         {
+          "id": "obs_mw7opdpf_gbcck",
           "masterTime": 9.134,
           "cameraId": "cam1",
           "pixel": [
@@ -113,10 +114,10 @@
             -2.244
           ],
           "source": "manual",
-          "videoTime": 9.134,
-          "id": "obs_mw7opdpf_gbcck"
+          "videoTime": 9.134
         },
         {
+          "id": "obs_mw7ophhj_85xjp",
           "masterTime": 9.715,
           "cameraId": "cam1",
           "pixel": [
@@ -129,10 +130,10 @@
             -2.185
           ],
           "source": "manual",
-          "videoTime": 9.715,
-          "id": "obs_mw7ophhj_85xjp"
+          "videoTime": 9.715
         },
         {
+          "id": "obs_mw7okne4_h42hr",
           "masterTime": 9.879,
           "cameraId": "cam3",
           "pixel": [
@@ -145,10 +146,10 @@
             -2.303
           ],
           "source": "manual",
-          "videoTime": 9.879,
-          "id": "obs_mw7okne4_h42hr"
+          "videoTime": 9.879
         },
         {
+          "id": "obs_mw7opken_qlqcm",
           "masterTime": 10.195,
           "cameraId": "cam1",
           "pixel": [
@@ -161,10 +162,10 @@
             -1.626
           ],
           "source": "manual",
-          "videoTime": 10.195,
-          "id": "obs_mw7opken_qlqcm"
+          "videoTime": 10.195
         },
         {
+          "id": "obs_mw7opnf0_80gpw",
           "masterTime": 10.861,
           "cameraId": "cam1",
           "pixel": [
@@ -177,10 +178,10 @@
             -0.916
           ],
           "source": "manual",
-          "videoTime": 10.861,
-          "id": "obs_mw7opnf0_80gpw"
+          "videoTime": 10.861
         },
         {
+          "id": "obs_mw7onu0z_07cbc",
           "masterTime": 11.45,
           "cameraId": "cam4",
           "pixel": [
@@ -193,10 +194,10 @@
             -1.238
           ],
           "source": "manual",
-          "videoTime": 20.75,
-          "id": "obs_mw7onu0z_07cbc"
+          "videoTime": 20.75
         },
         {
+          "id": "obs_mw7opq1x_7zt86",
           "masterTime": 11.841,
           "cameraId": "cam1",
           "pixel": [
@@ -209,10 +210,10 @@
             0.246
           ],
           "source": "manual",
-          "videoTime": 11.841,
-          "id": "obs_mw7opq1x_7zt86"
+          "videoTime": 11.841
         },
         {
+          "id": "obs_mw7optef_au65y",
           "masterTime": 12.505,
           "cameraId": "cam1",
           "pixel": [
@@ -225,10 +226,10 @@
             0.518
           ],
           "source": "manual",
-          "videoTime": 12.505,
-          "id": "obs_mw7optef_au65y"
+          "videoTime": 12.505
         },
         {
+          "id": "obs_mw7okukx_t3msz",
           "masterTime": 12.899,
           "cameraId": "cam3",
           "pixel": [
@@ -241,10 +242,10 @@
             0.816
           ],
           "source": "manual",
-          "videoTime": 12.899,
-          "id": "obs_mw7okukx_t3msz"
+          "videoTime": 12.899
         },
         {
+          "id": "obs_mw7olevy_p75zn",
           "masterTime": 14.805,
           "cameraId": "cam2",
           "pixel": [
@@ -257,10 +258,10 @@
             1.621
           ],
           "source": "manual",
-          "videoTime": 14.805,
-          "id": "obs_mw7olevy_p75zn"
+          "videoTime": 14.805
         },
         {
+          "id": "obs_mw7omjxa_adofv",
           "masterTime": 19.43,
           "cameraId": "cam2",
           "pixel": [
@@ -273,10 +274,10 @@
             0.957
           ],
           "source": "manual",
-          "videoTime": 19.43,
-          "id": "obs_mw7omjxa_adofv"
+          "videoTime": 19.43
         },
         {
+          "id": "obs_mw7oqrup_1lywb",
           "masterTime": 20.402,
           "cameraId": "cam1",
           "pixel": [
@@ -289,10 +290,10 @@
             0.717
           ],
           "source": "manual",
-          "videoTime": 20.402,
-          "id": "obs_mw7oqrup_1lywb"
+          "videoTime": 20.402
         },
         {
+          "id": "obs_mw7oom8i_a5wh6",
           "masterTime": 21.498,
           "cameraId": "cam1",
           "pixel": [
@@ -305,10 +306,10 @@
             -0.968
           ],
           "source": "manual",
-          "videoTime": 21.498,
-          "id": "obs_mw7oom8i_a5wh6"
+          "videoTime": 21.498
         },
         {
+          "id": "obs_mw7ootx5_4zij0",
           "masterTime": 22.143,
           "cameraId": "cam1",
           "pixel": [
@@ -321,10 +322,10 @@
             -1.573
           ],
           "source": "manual",
-          "videoTime": 22.143,
-          "id": "obs_mw7ootx5_4zij0"
+          "videoTime": 22.143
         },
         {
+          "id": "obs_mw7ooww1_kizgv",
           "masterTime": 22.723,
           "cameraId": "cam1",
           "pixel": [
@@ -337,10 +338,10 @@
             -2.439
           ],
           "source": "manual",
-          "videoTime": 22.723,
-          "id": "obs_mw7ooww1_kizgv"
+          "videoTime": 22.723
         },
         {
+          "id": "obs_mw7on1xx_dkkt3",
           "masterTime": 22.745,
           "cameraId": "cam2",
           "pixel": [
@@ -353,10 +354,10 @@
             -2.559
           ],
           "source": "manual",
-          "videoTime": 22.745,
-          "id": "obs_mw7on1xx_dkkt3"
+          "videoTime": 22.745
         },
         {
+          "id": "obs_mw7on51p_7g03c",
           "masterTime": 23.491,
           "cameraId": "cam2",
           "pixel": [
@@ -369,10 +370,10 @@
             -4.167
           ],
           "source": "manual",
-          "videoTime": 23.491,
-          "id": "obs_mw7on51p_7g03c"
+          "videoTime": 23.491
         },
         {
+          "id": "obs_mw7on7d7_zcs34",
           "masterTime": 24.252,
           "cameraId": "cam2",
           "pixel": [
@@ -385,10 +386,10 @@
             -5.052
           ],
           "source": "manual",
-          "videoTime": 24.252,
-          "id": "obs_mw7on7d7_zcs34"
+          "videoTime": 24.252
         },
         {
+          "id": "obs_mw7onamk_4bn5b",
           "masterTime": 25.522,
           "cameraId": "cam2",
           "pixel": [
@@ -401,8 +402,44 @@
             -6.217
           ],
           "source": "manual",
-          "videoTime": 25.522,
-          "id": "obs_mw7onamk_4bn5b"
+          "videoTime": 25.522
+        }
+      ],
+      "visibility": [
+        {
+          "id": "vis_mw7pkhx5_fvk5g",
+          "masterTime": 4.33,
+          "cameraId": "cam1",
+          "state": "out-of-frame",
+          "source": "manual"
+        },
+        {
+          "id": "vis_mw7pkc5o_2i949",
+          "masterTime": 23.5,
+          "cameraId": "cam1",
+          "state": "observed",
+          "source": "manual"
+        },
+        {
+          "id": "vis_mw7pkdll_mhkid",
+          "masterTime": 24.25,
+          "cameraId": "cam1",
+          "state": "observed",
+          "source": "manual"
+        },
+        {
+          "id": "vis_mw7pkf1d_yz5my",
+          "masterTime": 25.35,
+          "cameraId": "cam1",
+          "state": "out-of-frame",
+          "source": "manual"
+        },
+        {
+          "id": "vis_mw7pkggc_e5tms",
+          "masterTime": 25.35,
+          "cameraId": "cam2",
+          "state": "observed",
+          "source": "manual"
         }
       ]
     }

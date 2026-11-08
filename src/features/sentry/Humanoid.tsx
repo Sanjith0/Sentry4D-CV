@@ -26,11 +26,13 @@ const REF_HEIGHT = 1.75;
 interface PartProps {
   skin: THREE.Material;
   hull: THREE.Material;
+  /** X-ray glow material, or null when X-ray is off. */
+  xray: THREE.Material | null;
   outline: number;
 }
 
 /** Capsule + outline hull. */
-function Capsule({ radius, length, position, scale, skin, hull, outline }: PartProps & { radius: number; length: number; position?: [number, number, number]; scale?: [number, number, number] }) {
+function Capsule({ radius, length, position, scale, skin, hull, xray, outline }: PartProps & { radius: number; length: number; position?: [number, number, number]; scale?: [number, number, number] }) {
   const len = Math.max(length - 2 * radius, 0.01);
   return (
     <group position={position} scale={scale}>
@@ -40,6 +42,11 @@ function Capsule({ radius, length, position, scale, skin, hull, outline }: PartP
       <mesh material={hull}>
         <capsuleGeometry args={[radius + outline, len, 6, 14]} />
       </mesh>
+      {xray && (
+        <mesh material={xray} renderOrder={1000}>
+          <capsuleGeometry args={[radius + outline, len, 6, 14]} />
+        </mesh>
+      )}
     </group>
   );
 }
@@ -66,7 +73,31 @@ export const Humanoid = forwardRef<HumanoidHandle, Props>(function Humanoid({ he
 
   const mats = useMemo(() => {
     const skin = new THREE.MeshStandardMaterial({ color: "#253246", roughness: 0.6, metalness: 0.05, emissive: new THREE.Color(color), emissiveIntensity: 0.04 });
-    const ghost = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.28, depthTest: false, depthWrite: false, toneMapped: false });
+    // X-ray: fresnel glow drawn ONLY where something is in front of the body
+    // (depthFunc GreaterDepth); depth testing for the rest of the scene is untouched.
+    const ghost = new THREE.ShaderMaterial({
+      uniforms: { uColor: { value: new THREE.Color(color) }, uStrength: { value: 1 } },
+      vertexShader: /* glsl */ `
+        varying vec3 vN; varying vec3 vV;
+        void main() {
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          vN = normalize(normalMatrix * normal);
+          vV = normalize(-mv.xyz);
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: /* glsl */ `
+        uniform vec3 uColor; uniform float uStrength;
+        varying vec3 vN; varying vec3 vV;
+        void main() {
+          float rim = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.0);
+          gl_FragColor = vec4(uColor * (0.35 + 1.6 * rim) * uStrength, 0.25 + 0.6 * rim);
+        }`,
+      transparent: true,
+      depthWrite: false,
+      depthFunc: THREE.GreaterDepth,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    });
     // Inverted hull: back faces of a slightly larger twin read as an outline.
     const hull = new THREE.MeshBasicMaterial({ color, side: THREE.BackSide, toneMapped: false });
     return { skin, ghost, hull };
@@ -90,6 +121,7 @@ export const Humanoid = forwardRef<HumanoidHandle, Props>(function Humanoid({ he
       mats.skin.opacity = estimated ? 0.55 : 1;
       // Estimated (no observation) → amber outline.
       mats.hull.color.set(estimated ? "#f59e0b" : color);
+      (mats.ghost.uniforms.uColor.value as THREE.Color).set(estimated ? "#f59e0b" : color);
     },
   }));
 
@@ -98,7 +130,7 @@ export const Humanoid = forwardRef<HumanoidHandle, Props>(function Humanoid({ he
   const k = heightM / REF_HEIGHT;
   const w = build;
 
-  const limb = { skin: mats.skin, hull: mats.hull, outline };
+  const limb = { skin: mats.skin, hull: mats.hull, xray: xray ? mats.ghost : null, outline };
 
   return (
     <group scale={[k, k, k]}>
@@ -119,6 +151,11 @@ export const Humanoid = forwardRef<HumanoidHandle, Props>(function Humanoid({ he
               <mesh position={[0, -0.44, 0.05]} material={mats.hull}>
                 <boxGeometry args={[0.09 + 2 * outline, 0.05 + 2 * outline, 0.22 + 2 * outline]} />
               </mesh>
+              {xray && (
+                <mesh position={[0, -0.44, 0.05]} material={mats.ghost} renderOrder={1000}>
+                  <boxGeometry args={[0.09 + 2 * outline, 0.05 + 2 * outline, 0.22 + 2 * outline]} />
+                </mesh>
+              )}
             </group>
           </group>
         ))}
@@ -138,6 +175,11 @@ export const Humanoid = forwardRef<HumanoidHandle, Props>(function Humanoid({ he
             <mesh material={mats.hull}>
               <sphereGeometry args={[0.105 + outline, 20, 16]} />
             </mesh>
+            {xray && (
+              <mesh material={mats.ghost} renderOrder={1000}>
+                <sphereGeometry args={[0.105 + outline, 20, 16]} />
+              </mesh>
+            )}
           </group>
           {/* visor: shows facing direction */}
           <mesh position={[0, 0.745, 0.095]} rotation-x={-0.1}>
@@ -156,17 +198,6 @@ export const Humanoid = forwardRef<HumanoidHandle, Props>(function Humanoid({ he
         </group>
       </group>
 
-      {/* X-ray silhouette: visible through walls */}
-      {xray && (
-        <group renderOrder={999}>
-          <mesh position={[0, 0.9, 0]} material={mats.ghost} renderOrder={999}>
-            <capsuleGeometry args={[0.2 * w, 1.35, 6, 16]} />
-          </mesh>
-          <mesh position={[0, 1.66, 0]} material={mats.ghost} renderOrder={999}>
-            <sphereGeometry args={[0.12, 16, 12]} />
-          </mesh>
-        </group>
-      )}
     </group>
   );
 });

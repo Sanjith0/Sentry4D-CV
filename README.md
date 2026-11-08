@@ -68,6 +68,29 @@ Trajectory (`src/features/sentry/trajectory.ts`, tunables in `trajectoryConfig`)
 Store: the header subject count, entry/gap/exit events (from real annotations only), live selection details (click the subject), and **X**-ray shows the subject through walls.
 CCTV view → **TRACKING DIAGNOSTICS** ghosts the real recording and marks the annotated feet (orange) and the projected 3D subject (cyan) with their pixel error.
 
+## Cross-camera evidence & X-ray (Phase 3)
+
+**Evidence ≠ recording ≠ field of view.** A camera only counts as seeing a person when there is real evidence:
+- Every feet click in the annotation panel is implicit **observed** evidence for that camera at that master time.
+- Explicit **visibility marks**: in ANNOTATE SUBJECT, the "CAM 0X sees person?" row has OBSERVED / OCCLUDED / OUT OF FRAME / UNKNOWN for the current camera and frame. A mark holds until the next evidence in that camera. Marks are stored in `src/data/person-annotations.json` (`visibility: [...]`) alongside the observations.
+
+Per camera at master time *t* (`src/features/sentry/evidence.ts`, tunables `evidenceHold` 0.5 s / `evidenceBridge` 2 s in `config/subjects.ts`):
+
+| State | Meaning |
+|---|---|
+| TRACKING | within ±0.5 s of an observation in this camera, or between two of them ≤ 2 s apart |
+| OCCLUDED / OUT OF FRAME / UNKNOWN | explicit mark (holds until the next evidence) |
+| NO DETECTION | seen earlier in this camera, no current evidence |
+| NO EVIDENCE / NOT RECORDING | never observed here / no footage at *t* |
+
+Person status: **OBSERVED** (≥ 1 camera tracking, listed by name) → otherwise **ESTIMATED** (with last-seen camera and time) or **LAST SEEN** after the final observation. An unobserved position is never shown as confirmed. The body and label turn amber when not observed.
+
+Where it shows: the **Camera evidence** panel (bottom-right of the 3D view; click a camera to view through it; **LOCATE** points the free camera at the person); camera markers and CCTV feed badges (◉ TRACKING pulses); dashed sight lines from tracking cameras to the person; the trail is cyan where observed and amber where estimated.
+
+**X-ray** (header toggle or **X**): each body part gets a fresnel glow shell parented to the animated limbs. It is drawn with `depthFunc: GreaterDepth`, so it appears only where scanned geometry hides the body. Scene depth testing is otherwise unchanged. Sight lines are drawn through walls while X-ray is on.
+
+Demo moment (verified in the real footage): **25.35 s**. CAM 01 is out of frame (person beside or below its mount), CAM 02 is tracking, so PERSON 01 is OBSERVED. Free-camera spot where they stand behind the bin and table: LOCATE, or `focusFreeCamera([1.2, 0.9, -2.2], [-0.94, 0.95, -6.06])` from dev tools.
+
 ## Camera sync
 
 Open with the **SYNC** button in the CCTV panel header (or press **Y**).

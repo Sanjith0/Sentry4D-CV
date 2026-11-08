@@ -12,6 +12,8 @@ import { LoadingOverlay } from "../dashboard/LoadingOverlay";
 import { EnlargedFeed } from "../dashboard/EnlargedFeed";
 import { CameraSyncPanel } from "../dashboard/CameraSyncPanel";
 import { AnnotationPanel } from "../features/annotation/AnnotationPanel";
+import { useEvidenceSync } from "../features/sentry/useEvidence";
+import { EvidencePanel } from "../features/sentry/EvidencePanel";
 
 function useShortcuts() {
   useEffect(() => {
@@ -110,6 +112,7 @@ if (import.meta.env.DEV) {
 export default function App() {
   useMasterClock();
   useShortcuts();
+  useEvidenceSync();
   const annotating = useViewStore((s) => s.annotating);
   return (
     <div className="flex h-full flex-col">
@@ -119,6 +122,7 @@ export default function App() {
         <main className="relative min-w-0 flex-1 bg-ink-950">
           <Scene3D />
           <ViewportHud />
+          {!annotating && <EvidencePanel />}
           <LoadingOverlay />
           <EnlargedFeed />
           <CameraSyncPanel />
