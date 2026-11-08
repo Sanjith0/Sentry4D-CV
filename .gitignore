@@ -28,3 +28,6 @@ dist-ssr
 
 # reconstruction experiment outputs (derived frames, masks, splats)
 experiments/reconstruction/data/
+
+# derived footage of real people (regenerate with experiments/reconstruction/segmentation/export_sprites.py)
+public/reconstruction/
