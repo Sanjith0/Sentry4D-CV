@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import { ChevronsLeft, ChevronsRight, Pause, Play, RotateCcw, SkipBack, SkipForward } from "lucide-react";
 import { securityCameras } from "../config/cameras";
 import { eventStyle } from "../config/incident";
-import { PLAYBACK_SPEEDS, useReplayStore } from "../store/useReplayStore";
+import { PLAYBACK_SPEEDS, recordingWindow, useReplayStore } from "../store/useReplayStore";
 import { formatClock, formatWallClock } from "../lib/format";
 
 function Scrubber() {
@@ -10,7 +10,8 @@ function Scrubber() {
   const duration = useReplayStore((s) => s.duration);
   const events = useReplayStore((s) => s.events);
   const seek = useReplayStore((s) => s.seek);
-  const videoDurations = useReplayStore((s) => s.videoDurations);
+  const feeds = useReplayStore((s) => s.feeds);
+  const offsets = useReplayStore((s) => s.cameraOffsets);
   const track = useRef<HTMLDivElement>(null);
   const [hoverT, setHoverT] = useState<number | null>(null);
   const dragging = useRef(false);
@@ -29,14 +30,14 @@ function Scrubber() {
 
   return (
     <div className="relative flex-1 select-none">
-      {/* Recording-coverage lanes: one per camera, from timeOffset to end of loaded video. */}
+      {/* Recording-coverage lanes: the master range each camera has footage for (videoTime = masterTime + offset). */}
       <div className="mb-1 space-y-[3px]">
         {securityCameras.map((c) => {
-          const d = videoDurations[c.id];
+          const win = recordingWindow(offsets[c.id] ?? 0, feeds[c.id].duration);
           return (
-            <div key={c.id} className="relative h-[3px] rounded-full bg-ink-700/70" title={`${c.name}${d ? "" : " · no recording"}`}>
-              {d ? (
-                <div className="absolute inset-y-0 rounded-full bg-cyan-400/40" style={{ left: pct(c.timeOffset), width: `calc(${pct(c.timeOffset + d)} - ${pct(c.timeOffset)})` }} />
+            <div key={c.id} className="relative h-[3px] rounded-full bg-ink-700/70" title={`${c.name}${win ? "" : " · no recording"}`}>
+              {win ? (
+                <div className="absolute inset-y-0 rounded-full bg-cyan-400/40" style={{ left: pct(win[0]), width: `calc(${pct(win[1])} - ${pct(win[0])})` }} />
               ) : null}
             </div>
           );

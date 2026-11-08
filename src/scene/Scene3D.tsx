@@ -32,6 +32,7 @@ function SceneActorsBridge() {
   const xrayEnabled = useReplayStore((s) => s.xrayEnabled);
   const sentryEnabled = useReplayStore((s) => s.sentryEnabled);
   const roomBounds = useViewStore((s) => s.roomBounds);
+  const cameraOffsets = useReplayStore((s) => s.cameraOffsets);
   return (
     <ErrorBoundary fallback={null}>
       <Suspense fallback={null}>
@@ -41,6 +42,7 @@ function SceneActorsBridge() {
           sentryEnabled={sentryEnabled}
           roomBounds={roomBounds}
           cameras={securityCameras}
+          cameraOffsets={cameraOffsets}
         />
       </Suspense>
     </ErrorBoundary>

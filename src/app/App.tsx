@@ -9,12 +9,20 @@ import { CCTVPanel } from "../dashboard/CCTVPanel";
 import { ReplayTimeline } from "../dashboard/ReplayTimeline";
 import { ViewportHud } from "../dashboard/ViewerToolbar";
 import { LoadingOverlay } from "../dashboard/LoadingOverlay";
+import { EnlargedFeed } from "../dashboard/EnlargedFeed";
+import { CameraSyncPanel } from "../dashboard/CameraSyncPanel";
 
 function useShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      if (e.code === "Escape") {
+        const v = useViewStore.getState();
+        if (v.syncPanelOpen) v.setSyncPanelOpen(false);
+        else if (v.focusedFeedId) v.setFocusedFeed(null);
+        return;
+      }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const r = useReplayStore.getState();
       const v = useViewStore.getState();
@@ -67,6 +75,9 @@ function useShortcuts() {
         case "KeyH":
           v.toggleCeiling();
           break;
+        case "KeyY":
+          v.setSyncPanelOpen(!v.syncPanelOpen);
+          break;
       }
     };
     window.addEventListener("keydown", onKey);
@@ -92,6 +103,8 @@ export default function App() {
           <Scene3D />
           <ViewportHud />
           <LoadingOverlay />
+          <EnlargedFeed />
+          <CameraSyncPanel />
         </main>
         <CCTVPanel />
       </div>

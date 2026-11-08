@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { RoomBounds } from "../types/security";
+import type { CameraId, RoomBounds } from "../types/security";
 
 export type RenderQuality = "performance" | "balanced" | "ultra";
 
@@ -13,8 +13,10 @@ interface ViewState {
   showCeiling: boolean;
   showMarkers: boolean;
   feedsCollapsed: boolean;
-  focusedFeedId: string | null;
-  hoveredCameraId: string | null;
+  /** Feed shown enlarged over the viewport. */
+  focusedFeedId: CameraId | null;
+  hoveredCameraId: CameraId | null;
+  syncPanelOpen: boolean;
   pointerLocked: boolean;
   /** Free-camera base speed (m/s). */
   flySpeed: number;
@@ -30,8 +32,9 @@ interface ViewState {
   toggleCeiling: () => void;
   toggleMarkers: () => void;
   toggleFeedsCollapsed: () => void;
-  setFocusedFeed: (id: string | null) => void;
-  setHoveredCamera: (id: string | null) => void;
+  setFocusedFeed: (id: CameraId | null) => void;
+  setHoveredCamera: (id: CameraId | null) => void;
+  setSyncPanelOpen: (open: boolean) => void;
   setPointerLocked: (v: boolean) => void;
   setFlySpeed: (v: number) => void;
   resetView: () => void;
@@ -49,6 +52,7 @@ export const useViewStore = create<ViewState>()((set) => ({
   feedsCollapsed: false,
   focusedFeedId: null,
   hoveredCameraId: null,
+  syncPanelOpen: false,
   pointerLocked: false,
   flySpeed: 2.5,
   resetToken: 0,
@@ -63,6 +67,7 @@ export const useViewStore = create<ViewState>()((set) => ({
   toggleFeedsCollapsed: () => set((s) => ({ feedsCollapsed: !s.feedsCollapsed })),
   setFocusedFeed: (focusedFeedId) => set({ focusedFeedId }),
   setHoveredCamera: (hoveredCameraId) => set({ hoveredCameraId }),
+  setSyncPanelOpen: (syncPanelOpen) => set({ syncPanelOpen }),
   setPointerLocked: (pointerLocked) => set({ pointerLocked }),
   setFlySpeed: (flySpeed) => set({ flySpeed: Math.min(Math.max(flySpeed, 0.25), 20) }),
   resetView: () => set((s) => ({ resetToken: s.resetToken + 1 })),
