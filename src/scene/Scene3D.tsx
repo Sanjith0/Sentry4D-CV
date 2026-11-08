@@ -19,7 +19,7 @@ import { CalibrationControls } from "./CalibrationControls";
 import { AnnotationLayer } from "../features/annotation/AnnotationLayer";
 import { AppearanceLayer } from "../features/reconstruction/AppearanceLayer";
 
-function SceneLighting() {
+export function SceneLighting() {
   const l = roomConfig.lighting;
   return (
     <>
@@ -31,7 +31,7 @@ function SceneLighting() {
 }
 
 /** Feeds replay state into the sentry feature. Isolated so its per-frame re-renders stay local. */
-function SceneActorsBridge() {
+export function SceneActorsBridge() {
   const currentTime = useReplayStore((s) => s.currentTime);
   const xrayEnabled = useReplayStore((s) => s.xrayEnabled);
   const sentryEnabled = useReplayStore((s) => s.sentryEnabled);
