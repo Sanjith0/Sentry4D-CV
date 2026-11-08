@@ -32,7 +32,14 @@ experiments/reconstruction/data/
 # derived footage of real people (regenerate with experiments/reconstruction/segmentation/export_sprites.py)
 public/reconstruction/
 
-# secrets
+# Secrets
 .env
 .env.*
 !.env.example
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
