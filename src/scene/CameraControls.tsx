@@ -51,7 +51,8 @@ export function CameraControls() {
     const pose = homePose(mode, bounds, aspect, cctvCam);
     const isReset = lastReset.current !== resetToken;
     const firstRun = lastMode.current === null;
-    const enteringFree = mode === "free" && lastMode.current !== "free" && !firstRun && !isReset;
+    // Stepping out of a CCTV view keeps that viewpoint; from orbit/top-down we fly into the room.
+    const enteringFree = mode === "free" && lastMode.current === "cctv" && !isReset;
     lastMode.current = mode;
     lastReset.current = resetToken;
 

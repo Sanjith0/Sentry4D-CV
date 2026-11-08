@@ -181,11 +181,34 @@ function OrbitHud() {
   );
 }
 
+function ModeBadges() {
+  const xray = useReplayStore((s) => s.xrayEnabled);
+  const sentry = useReplayStore((s) => s.sentryEnabled);
+  return (
+    <>
+      {sentry && <div className="pointer-events-none absolute inset-0 shadow-[inset_0_0_60px_-10px_rgba(239,68,68,0.55)] ring-1 ring-red-500/50 ring-inset" />}
+      <div className="absolute top-16 left-3 flex flex-col gap-1.5">
+        {sentry && (
+          <div className="glass flex items-center gap-2 rounded-md !border-red-500/60 px-2.5 py-1 font-mono text-[11px] text-red-200 fade-in">
+            <span className="rec-dot h-1.5 w-1.5 rounded-full bg-red-500" /> SENTRY MODE ARMED
+          </div>
+        )}
+        {xray && (
+          <div className="glass flex items-center gap-2 rounded-md !border-cyan-400/60 px-2.5 py-1 font-mono text-[11px] text-cyan-200 fade-in">
+            <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" /> X-RAY TRACKING
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 export function ViewportHud() {
   const mode = useReplayStore((s) => s.cameraMode);
   const transitioning = useViewStore((s) => s.transitioning);
   return (
     <div className="pointer-events-none absolute inset-0 z-30">
+      <ModeBadges />
       {!transitioning && mode === "free" && <FreeHud />}
       {mode === "cctv" && <CctvHud />}
       {!transitioning && mode === "topdown" && <TopHud />}

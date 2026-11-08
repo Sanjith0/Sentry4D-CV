@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { Html } from "@react-three/drei";
+import { Html, Line } from "@react-three/drei";
 import * as THREE from "three";
 import { CCTV_ASPECT, FRUSTUM_LENGTH, securityCameras } from "../config/cameras";
 import { useReplayStore } from "../store/useReplayStore";
@@ -101,6 +101,26 @@ function CameraMarker({ cam, index }: { cam: SecurityCamera; index: number }) {
           </group>
         )}
       </group>
+
+      {/* Sightline to the camera's aim point while its feed is linked */}
+      {selected && !viewingThrough && (
+        <group raycast={() => null}>
+          <Line
+            points={[[0, 0, 0], [cam.target[0] - cam.position[0], cam.target[1] - cam.position[1], cam.target[2] - cam.position[2]]]}
+            color="#22d3ee"
+            lineWidth={1.5}
+            dashed
+            dashSize={0.15}
+            gapSize={0.1}
+            transparent
+            opacity={0.85}
+          />
+          <mesh position={[cam.target[0] - cam.position[0], cam.target[1] - cam.position[1], cam.target[2] - cam.position[2]]}>
+            <sphereGeometry args={[0.06, 16, 16]} />
+            <meshBasicMaterial color="#22d3ee" toneMapped={false} />
+          </mesh>
+        </group>
+      )}
 
       {!viewingThrough && (
         <Html position={[0, 0.28, 0]} center zIndexRange={[20, 0]} style={{ pointerEvents: "none" }}>

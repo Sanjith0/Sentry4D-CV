@@ -13,12 +13,12 @@ function RoomStatusChip() {
     checking: ["text-slate-400", "Probing scan…"],
     loading: ["text-cyan-300", "Loading LiDAR scan…"],
     loaded: ["text-emerald-300", "LiDAR scan"],
-    missing: ["text-amber-300", "Placeholder room · room.glb missing"],
+    missing: ["text-amber-300", "Placeholder room"],
     error: ["text-red-300", "Scan failed · placeholder"],
   } as const;
   const [cls, text] = map[status];
   return (
-    <div className="flex items-center gap-2 font-mono text-[11px]" title={err ?? undefined}>
+    <div className="flex shrink-0 items-center gap-2 font-mono text-[11px]" title={err ?? undefined}>
       <span className={`h-1.5 w-1.5 rounded-full bg-current ${cls}`} />
       <span className={cls}>{text}</span>
       {b && (
@@ -48,8 +48,8 @@ export function Header() {
   const toggleSentry = useReplayStore((s) => s.toggleSentry);
 
   return (
-    <header className="relative z-10 flex h-14 shrink-0 items-center gap-6 border-b border-ink-600/70 bg-ink-900/95 px-4">
-      <div className="flex items-center gap-2.5">
+    <header className="relative z-10 flex h-14 shrink-0 items-center gap-5 whitespace-nowrap border-b border-ink-600/70 bg-ink-900/95 px-4">
+      <div className="flex shrink-0 items-center gap-2.5">
         <div className="grid h-8 w-8 place-items-center rounded-md border border-cyan-400/40 bg-cyan-400/10">
           <ScanEye className="h-4.5 w-4.5 text-cyan-300" />
         </div>
@@ -63,12 +63,12 @@ export function Header() {
 
       <div className="h-8 w-px bg-ink-600" />
 
-      <div className="min-w-0 leading-tight">
+      <div className="min-w-0 shrink leading-tight">
         <div className="label">Incident</div>
         <div className="truncate text-[13px] font-medium text-slate-200">{incidentConfig.name}</div>
       </div>
 
-      <div className="flex items-center gap-2 rounded-md border border-ink-600 bg-ink-850 px-2.5 py-1">
+      <div className="flex shrink-0 items-center gap-2 rounded-md border border-ink-600 bg-ink-850 px-2.5 py-1">
         {isPlaying ? (
           <>
             <span className="rec-dot h-2 w-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.9)]" />
@@ -86,7 +86,7 @@ export function Header() {
 
       <RoomStatusChip />
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex shrink-0 items-center gap-2">
         <div className="mr-2 flex items-center gap-2 rounded-md border border-ink-600 bg-ink-850 px-2.5 py-1" title="Active subjects (from tracking module)">
           <Users className="h-3.5 w-3.5 text-cyan-300" />
           <span className="font-mono text-sm text-slate-100">{subjects}</span>

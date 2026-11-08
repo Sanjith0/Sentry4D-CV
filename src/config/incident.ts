@@ -4,7 +4,7 @@ export const incidentConfig = {
   name: "INC-2026-1108 · Room Scan Investigation",
   /** Wall-clock start of master time 0, used to render recording timestamps. */
   recordingStart: "2026-11-08T00:00:00",
-  /** Minimum master duration (s). Extended automatically to cover loaded videos. */
+  /** Master duration (s) used until videos/events load; then duration = their full extent. */
   minDuration: 60,
 };
 

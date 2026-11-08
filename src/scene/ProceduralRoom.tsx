@@ -28,7 +28,7 @@ export function ProceduralRoom({ width = roomConfig.placeholder.width, height = 
     <group name="ProceduralRoom">
       <mesh position={[0, height / 2, 0]}>
         <boxGeometry args={[width, height, depth]} />
-        <meshStandardMaterial color="#1a2230" side={THREE.BackSide} roughness={0.95} clippingPlanes={ceilingPlanes} />
+        <meshStandardMaterial color="#3a4a60" side={THREE.BackSide} roughness={0.95} clippingPlanes={ceilingPlanes} />
       </mesh>
       <Grid
         position={[0, 0.002, 0]}

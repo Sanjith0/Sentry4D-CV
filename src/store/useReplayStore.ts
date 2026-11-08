@@ -49,14 +49,15 @@ export interface ReplayState {
 
 const clamp = (t: number, d: number) => Math.min(Math.max(t, 0), d);
 
+/** Duration covers all loaded recordings and events; falls back to minDuration when nothing is loaded. */
 function computeDuration(videoDurations: Record<string, number>, events: IncidentEvent[]) {
-  let d = incidentConfig.minDuration;
+  let d = 0;
   for (const cam of securityCameras) {
     const vd = videoDurations[cam.id];
     if (vd && Number.isFinite(vd)) d = Math.max(d, cam.timeOffset + vd);
   }
   for (const e of events) d = Math.max(d, e.time);
-  return d;
+  return d > 0 ? d : incidentConfig.minDuration;
 }
 
 export const useReplayStore = create<ReplayState>()((set, get) => ({
