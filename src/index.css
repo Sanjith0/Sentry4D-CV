@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink-950: #04070c;
+  --color-ink-900: #070c14;
+  --color-ink-850: #0a111b;
+  --color-ink-800: #0d1622;
+  --color-ink-700: #142030;
+  --color-ink-600: #1c2b3f;
+  --color-ink-500: #2a3b52;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--color-ink-950);
+  color: #cbd5e1;
+  font-family: var(--font-sans);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #1c2b3f transparent;
+}
+
+.panel {
+  background: linear-gradient(180deg, rgba(13, 22, 34, 0.92), rgba(7, 12, 20, 0.92));
+  border: 1px solid rgba(42, 59, 82, 0.6);
+}
+
+.glass {
+  background: rgba(7, 12, 20, 0.72);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(42, 59, 82, 0.7);
+}
+
+.label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.scanlines {
+  background-image: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 3px);
+  pointer-events: none;
+}
+
+.vignette {
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
+  pointer-events: none;
+}
+
+@keyframes rec-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+.rec-dot {
+  animation: rec-blink 1.2s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.fade-in {
+  animation: fade-in 0.25s ease-out;
+}
