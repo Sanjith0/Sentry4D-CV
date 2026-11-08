@@ -1,6 +1,13 @@
 import { create } from "zustand";
 import { useReplayStore } from "../../store/useReplayStore";
 import type { InvestigationReport, ReportMeta, TraceStep } from "./types";
+import recordedRun from "./recordedRun.json";
+
+/** A real earlier Nemotron run (trace + validated report), replayed only if the live call fails. */
+function loadRecorded(reason: string) {
+  const r = recordedRun as unknown as { recordedAt: string; trace: TraceStep[]; report: InvestigationReport; meta: ReportMeta };
+  useInvestigatorStore.setState({ status: "done", trace: r.trace, report: r.report, meta: r.meta, modelTurns: r.meta.turns, error: null, recorded: { at: r.recordedAt, reason } });
+}
 
 type Status = "idle" | "running" | "done" | "error";
 
@@ -15,6 +22,8 @@ interface InvestigatorState {
   meta: ReportMeta | null;
   error: string | null;
   savedAt: string | null;
+  /** Set when the panel shows the recorded run instead of a live one. */
+  recorded: { at: string; reason: string } | null;
   toggle: () => void;
   setOpen: (open: boolean) => void;
   checkStatus: () => Promise<void>;
@@ -36,6 +45,7 @@ export const useInvestigatorStore = create<InvestigatorState>((set, get) => ({
   meta: null,
   error: null,
   savedAt: null,
+  recorded: null,
   toggle: () => {
     const open = !get().open;
     set({ open });
@@ -56,7 +66,7 @@ export const useInvestigatorStore = create<InvestigatorState>((set, get) => ({
     if (get().status === "running") return;
     controller?.abort();
     controller = new AbortController();
-    set({ status: "running", trace: [], report: null, meta: null, error: null, modelTurns: 0, savedAt: null });
+    set({ status: "running", trace: [], report: null, meta: null, error: null, modelTurns: 0, savedAt: null, recorded: null });
     try {
       const res = await fetch("/api/investigate", {
         method: "POST",
@@ -83,6 +93,9 @@ export const useInvestigatorStore = create<InvestigatorState>((set, get) => ({
             case "start":
               set({ model: String(ev.model) });
               break;
+            case "fallback":
+              set({ model: `${String(ev.model)} (fallback: primary rate-limited)` });
+              break;
             case "model":
               set({ modelTurns: Number(ev.turn) });
               break;
@@ -100,15 +113,16 @@ export const useInvestigatorStore = create<InvestigatorState>((set, get) => ({
               break;
             case "error":
               finished = true;
-              set({ status: "error", error: String(ev.error) });
+              loadRecorded(String(ev.error));
               break;
           }
         }
       }
-      if (!finished) set({ status: "error", error: "Connection closed before the investigation finished." });
+      if (!finished) loadRecorded("connection closed before the investigation finished");
     } catch (e) {
       const aborted = e instanceof DOMException && e.name === "AbortError";
-      set({ status: aborted ? "idle" : "error", error: aborted ? null : e instanceof Error ? e.message : String(e) });
+      if (aborted) set({ status: "idle", error: null });
+      else loadRecorded(e instanceof Error ? e.message : String(e));
     }
   },
 }));

@@ -1,0 +1,344 @@
+{
+ "recordedAt": "2026-11-08T18:11:01.532Z",
+ "trace": [
+  {
+   "id": "call-2619518b-5212-4d22-a354-c4e12682137f",
+   "name": "getIncidentOverview",
+   "label": "Retrieving incident overview",
+   "args": "{}",
+   "status": "ok",
+   "ms": 0,
+   "summary": "INC-2026-1108: 4 cameras, 1 subject(s), 40.0 s"
+  },
+  {
+   "id": "call-bbcae090-4263-49bc-a7d3-2898bf896d6c",
+   "name": "getIncidentEvents",
+   "label": "Retrieving incident timeline",
+   "args": "{\"startTime\":0,\"endTime\":40}",
+   "status": "ok",
+   "ms": 1,
+   "summary": "19 events in window"
+  },
+  {
+   "id": "call-2b1b4499-31b1-4299-b3c2-76e0b371a23f",
+   "name": "getSubjectTrajectory",
+   "label": "Inspecting subject movements",
+   "args": "{\"subjectId\":\"subject-01\",\"startTime\":0,\"endTime\":40}",
+   "status": "ok",
+   "ms": 1,
+   "summary": "32 observed samples (32 returned), 1 missing-data interval(s)"
+  },
+  {
+   "id": "call-a4b47720-976a-47ae-bc26-b9ed354c4d5c",
+   "name": "getObjectMovements",
+   "label": "Reviewing object movements",
+   "args": "{}",
+   "status": "ok",
+   "ms": 0,
+   "summary": "2 reviewed object movement(s): laptop, chair"
+  },
+  {
+   "id": "call-09da6bb3-768b-45d2-8229-81699b7b5443",
+   "name": "getSpatialContext",
+   "label": "Loading spatial context",
+   "args": "{}",
+   "status": "ok",
+   "ms": 0,
+   "summary": "room 4.80\u00d73.13\u00d713.55 m, 4 calibrated cameras"
+  },
+  {
+   "id": "call-7b88b026-73ed-4800-814c-766ebdbd2071",
+   "name": "getCameraObservations",
+   "label": "Cross-referencing CCTV observations",
+   "args": "{\"subjectId\":\"subject-01\",\"timestamp\":4.22}",
+   "status": "ok",
+   "ms": 1,
+   "summary": "t=4.2s: observed by cam3"
+  },
+  {
+   "id": "call-3717f1b1-682f-4feb-a97a-bf4f7743f804",
+   "name": "getCameraObservations",
+   "label": "Cross-referencing CCTV observations",
+   "args": "{\"subjectId\":\"subject-01\",\"timestamp\":8.36}",
+   "status": "ok",
+   "ms": 0,
+   "summary": "t=8.4s: observed by cam1, cam2"
+  },
+  {
+   "id": "call-d9cbb4da-8809-4db3-aac9-f7811ef4ed74",
+   "name": "getEvidenceAtTime",
+   "label": "Checking evidence at a key moment",
+   "args": "{\"timestamp\":12}",
+   "status": "ok",
+   "ms": 1,
+   "summary": "t=12.0s: subject-01 observed; 5 nearby event(s)"
+  },
+  {
+   "id": "call-f9bcbc49-599d-4810-9b9b-ece3fcfcb9d2",
+   "name": "getEvidenceAtTime",
+   "label": "Checking evidence at a key moment",
+   "args": "{\"timestamp\":14.8}",
+   "status": "ok",
+   "ms": 0,
+   "summary": "t=14.8s: subject-01 observed; 4 nearby event(s)"
+  },
+  {
+   "id": "call-b11208f7-eeb3-44e3-8267-6ddd93174f0d",
+   "name": "createInvestigationReport",
+   "label": "Generating report",
+   "args": "{\u2026report\u2026}",
+   "status": "error",
+   "ms": 1,
+   "summary": "keyEvents must be an array"
+  },
+  {
+   "id": "call-6b5326d9-52e9-44d7-aa18-bb4e61e8f872",
+   "name": "createInvestigationReport",
+   "label": "Generating report",
+   "args": "{\u2026report\u2026}",
+   "status": "ok",
+   "ms": 2,
+   "summary": "draft report validated: 8 key events"
+  }
+ ],
+ "report": {
+  "title": "INC-2026-1108 \u2014 PERSON 01 Room Scan: Entry, Object Handling, and Tracking Gap",
+  "summary": "PERSON 01 entered the Polycam LiDAR scanned room at ~4.22\u202fs and was last seen exiting at ~25.13\u202fs (40\u2011second recording). The subject was observed across all four cameras but with highly uneven coverage: cam3 provided the initial observation, cam2 had the second\u2011longest continuous runs (5.4\u20138.2\u202fs and later 14.4\u201316.5\u202fs, 22.4\u201325.1\u202fs), and cam1 had the longest single continuous observation (8.4\u201315.6\u202fs). cam4 captured only two brief visibility windows (11.2\u202fs and 13.4\u202fs). \n\nTwo human\u2011reviewed object\u2011handling windows were identified: a laptop carried from 12.0\u202fs to 14.6\u202fs, and a chair carried from 14.8\u202fs to 24.8\u202fs (moved from near the NW side to the far SE zone, z \u2248 \u20135.87\u202fm). A 2.1\u2011s tracking gap (16.51\u201318.57\u202fs) has ESTIMATED (interpolated) positions only; the subject was not observed by any camera in this interval.\n\nNotable events: entry (cam3, 4.22\u202fs), first laptop handling (12\u201314.6\u202fs), chair handling begins (14.8\u202fs), tracking gap (16.51\u201318.57\u202fs), exit (cam2, 25.13\u202fs). Evidence status distinguishes observed camera annotations from interpolated positions in the gap.",
+  "keyEvents": [
+   {
+    "title": "Subject entry",
+    "timestamp": 4.22,
+    "description": "PERSON 01 first observed by CAM 03",
+    "cameraIds": [
+     "cam3"
+    ],
+    "evidenceStatus": "observed",
+    "evidence": [
+     {
+      "cameraId": "cam3",
+      "timestamp": 4.22,
+      "eventId": "subject-01-entry",
+      "evidenceType": "event"
+     }
+    ]
+   },
+   {
+    "title": "CAM 02 first observation",
+    "timestamp": 5.37,
+    "description": "CAM 02 begins observing PERSON 01",
+    "cameraIds": [
+     "cam2"
+    ],
+    "evidenceStatus": "observed",
+    "evidence": [
+     {
+      "cameraId": "cam2",
+      "timestamp": 5.37,
+      "eventId": "subject-01-cam2-run-0",
+      "evidenceType": "event"
+     }
+    ]
+   },
+   {
+    "title": "CAM 01 long observation begins",
+    "timestamp": 8.36,
+    "description": "CAM 01 observes PERSON 01 continuously from 8.4\u202fs to 15.6\u202fs",
+    "cameraIds": [
+     "cam1"
+    ],
+    "evidenceStatus": "observed",
+    "evidence": [
+     {
+      "cameraId": "cam1",
+      "timestamp": 8.36,
+      "eventId": "subject-01-cam1-run-0",
+      "evidenceType": "event"
+     }
+    ]
+   },
+   {
+    "title": "Laptop handling window",
+    "timestamp": 12,
+    "description": "Subject carries a laptop from 12\u202fs to 14.6\u202fs (human\u2011reviewed)",
+    "cameraIds": [],
+    "evidenceStatus": "human-reviewed",
+    "evidence": [
+     {
+      "cameraId": null,
+      "timestamp": 12,
+      "eventId": "object-laptop-handled",
+      "evidenceType": "object-review"
+     }
+    ]
+   },
+   {
+    "title": "Chair handling window starts",
+    "timestamp": 14.8,
+    "description": "Subject carries a chair from 14.8\u202fs to 24.8\u202fs (human\u2011reviewed)",
+    "cameraIds": [],
+    "evidenceStatus": "human-reviewed",
+    "evidence": [
+     {
+      "cameraId": null,
+      "timestamp": 14.8,
+      "eventId": "object-chair-handled",
+      "evidenceType": "object-review"
+     }
+    ]
+   },
+   {
+    "title": "Tracking gap begins",
+    "timestamp": 16.51,
+    "description": "PERSON 01 not observed by any camera for 2.1\u202fs; position estimated by interpolation",
+    "cameraIds": [],
+    "evidenceStatus": "estimated",
+    "evidence": [
+     {
+      "cameraId": null,
+      "timestamp": 17.03,
+      "eventId": null,
+      "evidenceType": "estimate"
+     },
+     {
+      "cameraId": null,
+      "timestamp": 17.54,
+      "eventId": null,
+      "evidenceType": "estimate"
+     },
+     {
+      "cameraId": null,
+      "timestamp": 18.06,
+      "eventId": null,
+      "evidenceType": "estimate"
+     }
+    ]
+   },
+   {
+    "title": "Tracking gap ends, CAM 02 resumes",
+    "timestamp": 18.57,
+    "description": "CAM 02 relocates PERSON 01",
+    "cameraIds": [
+     "cam2"
+    ],
+    "evidenceStatus": "observed",
+    "evidence": [
+     {
+      "cameraId": "cam2",
+      "timestamp": 18.57,
+      "eventId": "subject-01-cam2-run-2",
+      "evidenceType": "event"
+     }
+    ]
+   },
+   {
+    "title": "Exit",
+    "timestamp": 25.13,
+    "description": "PERSON 01 last observed by CAM 02 exiting the room",
+    "cameraIds": [
+     "cam2"
+    ],
+    "evidenceStatus": "observed",
+    "evidence": [
+     {
+      "cameraId": "cam2",
+      "timestamp": 25.13,
+      "eventId": "subject-01-exit",
+      "evidenceType": "event"
+     }
+    ]
+   }
+  ],
+  "cameraEvidence": [
+   {
+    "cameraId": "cam1",
+    "summary": "Longest continuous observation (8.4\u201315.6\u202fs); 14 manual annotations; tracked subject from near\u2011entry to far\u2011wall zone. Brief out\u2011of\u2011frame mark at 4.33\u202fs and outlier rejection at 22.14\u202fs and 22.72\u202fs.",
+    "timestamps": [
+     4.33,
+     8.36,
+     12,
+     14.8,
+     22.14,
+     22.72
+    ]
+   },
+   {
+    "cameraId": "cam2",
+    "summary": "Three observation runs: 5.4\u20138.2\u202fs, 14.4\u201316.5\u202fs, 22.4\u201325.1\u202fs; total ~7\u202fs of observed time; last seen at exit (25.13\u202fs). Rejected observation at 14.41\u202fs conflicted with cam1 track.",
+    "timestamps": [
+     5.37,
+     8.22,
+     14.41,
+     16.51,
+     18.57,
+     22.35,
+     25.13
+    ]
+   },
+   {
+    "cameraId": "cam3",
+    "summary": "Initial entry observation (4.22\u202fs); three brief re\u2011observations at 6.56\u202fs, 9.77\u202fs, 12.79\u202fs; last at 12.79\u202fs. Limited coverage after subject moved toward cam1's view.",
+    "timestamps": [
+     4.22,
+     6.56,
+     9.77,
+     12.79
+    ]
+   },
+   {
+    "cameraId": "cam4",
+    "summary": "Two very brief observations only: 11.18\u202fs and 13.36\u202fs (each ~1\u202fs window). Subject largely outside cam4's narrower FOV (40.7\u00b0).",
+    "timestamps": [
+     11.18,
+     13.36
+    ]
+   }
+  ],
+  "uncertainties": [
+   {
+    "description": "Tracking gap 16.51\u201318.57\u202fs: subject not observed by any camera; positions at 17.03\u202fs, 17.54\u202fs, 18.06\u202fs are ESTIMATED (interpolated, NOT observed).",
+    "timestamp": 16.51,
+    "endTimestamp": 18.57,
+    "cameraIds": []
+   },
+   {
+    "description": "Object positions (laptop, chair) are derived from subject carrier position at start/end of each carry window; the objects themselves are not independently tracked.",
+    "timestamp": 12,
+    "endTimestamp": 14.6,
+    "cameraIds": []
+   },
+   {
+    "description": "Two rejected observations in the fused trajectory: obs_mw7ootx5_4zij0 (cam1, 22.14\u202fs, outlier 0.54\u202fm off track, implies >3\u202fm/s) and obs_mw7ooww1_kizgv (cam1, 22.72\u202fs, outlier 0.94\u202fm off track, implies >3\u202fm/s).",
+    "timestamp": 22.14,
+    "endTimestamp": 22.72,
+    "cameraIds": [
+     "cam1"
+    ]
+   }
+  ],
+  "recommendedActions": [
+   {
+    "action": "Review footage from the tracking gap (16.51\u201318.57\u202fs) to confirm interpolated trajectory and check for any missed camera coverage.",
+    "priority": "medium",
+    "timestamp": 16.51
+   },
+   {
+    "action": "Verify laptop and chair handoff positions with independent object tracking if available; currently positions are subject\u2011derived estimates.",
+    "priority": "medium",
+    "timestamp": 12
+   },
+   {
+    "action": "Investigate the two rejected cam1 outliers (22.14\u202fs, 22.72\u202fs) to determine whether they represent genuine speed spikes or annotation errors.",
+    "priority": "low",
+    "timestamp": 22.14,
+    "cameraId": "cam1"
+   }
+  ]
+ },
+ "meta": {
+  "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+  "toolCalls": 11,
+  "turns": 11,
+  "incidentId": "INC-2026-1108",
+  "generatedAt": "2026-11-08T18:11:01.532Z"
+ }
+}

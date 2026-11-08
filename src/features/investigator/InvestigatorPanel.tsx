@@ -237,6 +237,7 @@ export function InvestigatorPanel() {
   const analyze = useInvestigatorStore((s) => s.analyze);
   const cancel = useInvestigatorStore((s) => s.cancel);
   const setOpen = useInvestigatorStore((s) => s.setOpen);
+  const recorded = useInvestigatorStore((s) => s.recorded);
   if (!open) return null;
   const running = status === "running";
   return (
@@ -255,7 +256,7 @@ export function InvestigatorPanel() {
         <div className="px-4 py-3">
           <button
             type="button"
-            disabled={configured === false}
+            disabled={false}
             onClick={running ? cancel : analyze}
             className={`flex h-10 w-full items-center justify-center gap-2 rounded-md border font-mono text-[12px] font-semibold tracking-widest transition disabled:opacity-40 ${
               running ? "border-red-400/60 bg-red-500/10 text-red-200" : "border-[#76b900]/70 bg-[#76b900]/15 text-[#c5ef7a] shadow-[0_0_18px_-6px_rgba(118,185,0,0.9)] hover:bg-[#76b900]/25"
@@ -270,6 +271,11 @@ export function InvestigatorPanel() {
           {configured === false && (
             <div className="mt-2 rounded border border-amber-400/40 bg-amber-400/5 p-2 font-mono text-[10.5px] text-amber-200">
               NVIDIA_API_KEY is not configured on the server. Add it to <b>.env</b> (see .env.example) and restart <b>npm run dev</b>.
+            </div>
+          )}
+          {recorded && (
+            <div className="mt-2 rounded border border-sky-400/40 bg-sky-400/5 p-2 font-mono text-[10.5px] text-sky-200">
+              RECORDED RUN · live Nemotron call unavailable ({recorded.reason.slice(0, 90)}). Showing a real earlier Nemotron run from {new Date(recorded.at).toLocaleString()}.
             </div>
           )}
           {error && (

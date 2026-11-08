@@ -16,10 +16,13 @@ type LoadModule = (id: string) => Promise<Record<string, Any>>;
 
 const CAMERA_IDS = ["cam1", "cam2", "cam3", "cam4"] as const;
 type CameraId = (typeof CAMERA_IDS)[number];
-const NVIDIA_BASE = "https://integrate.api.nvidia.com/v1";
-export const DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b";
+let NVIDIA_BASE = "https://integrate.api.nvidia.com/v1";
+export const DEFAULT_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b";
+export const FALLBACK_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b";
 const MAX_TOOL_CALLS = 16;
-const MAX_TURNS = 12;
+const MAX_TURNS = 16;
+/** After this many tool calls (or near the turn limit) only the report tool is offered. */
+const REPORT_DEADLINE_CALLS = 10;
 const REQUEST_TIMEOUT_MS = 90_000;
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
@@ -405,7 +408,7 @@ export function runTool(name: string, args: Any, d: IncidentData): { result: Any
 
 const SYSTEM_PROMPT = `You are Sentry4D's forensic security investigation agent. You reconstruct an evidence-backed timeline of a recorded incident in a LiDAR-scanned room watched by four calibrated CCTV cameras (cam1..cam4).
 
-Work autonomously with the provided tools. Plan: get the overview, inspect events, inspect each subject's trajectory, cross-check camera observations at the important timestamps, review object movements, check evidence at key moments, then call createInvestigationReport exactly once.
+Work autonomously with the provided tools. You may request several independent tools in one turn. Plan: get the overview, inspect events, inspect each subject's trajectory, cross-check camera observations at the important timestamps, review object movements, check evidence at key moments, then call createInvestigationReport exactly once.
 
 Rules:
 - Use ONLY facts returned by tools. Never fabricate incidents, people, objects, camera observations, IDs or timestamps.
@@ -422,9 +425,9 @@ interface Progress {
   (ev: Record<string, unknown>): void;
 }
 
-async function callNemotron(apiKey: string, model: string, messages: Any[], signal: AbortSignal) {
+async function callNemotron(apiKey: string, model: string, messages: Any[], signal: AbortSignal, onRetry?: (status: number, waitMs: number) => void, maxAttempts = 6, reportOnly = false) {
   let lastErr = "";
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
     const onAbort = () => ctrl.abort();
@@ -435,7 +438,7 @@ async function callNemotron(apiKey: string, model: string, messages: Any[], sign
         headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json", accept: "application/json" },
         body: JSON.stringify({
           model, messages, temperature: 0.2, top_p: 0.95, max_tokens: 4096,
-          tools: TOOL_DEFS.map((t) => ({ type: "function", function: t })), tool_choice: "auto",
+          tools: TOOL_DEFS.filter((t) => !reportOnly || t.name === "createInvestigationReport").map((t) => ({ type: "function", function: t })), tool_choice: "auto",
         }),
         signal: ctrl.signal,
       });
@@ -443,7 +446,10 @@ async function callNemotron(apiKey: string, model: string, messages: Any[], sign
       const body = (await res.text()).slice(0, 300);
       lastErr = `NVIDIA API ${res.status}: ${body}`;
       if (res.status === 429 || res.status >= 500) {
-        await new Promise((r) => setTimeout(r, 1500 * 2 ** attempt));
+        const ra = Number(res.headers.get("retry-after"));
+        const wait = Number.isFinite(ra) && ra > 0 ? Math.min(ra * 1000, 20_000) : Math.min(2000 * 2 ** attempt, 16_000);
+        onRetry?.(res.status, wait);
+        await new Promise((r) => setTimeout(r, wait));
         continue;
       }
       throw new Error(lastErr);
@@ -470,7 +476,7 @@ const STEP_LABEL: Record<string, string> = {
   createInvestigationReport: "Generating report",
 };
 
-export async function runInvestigation(opts: { apiKey: string; model: string; data: IncidentData; progress: Progress; signal: AbortSignal; focus?: string }) {
+export async function runInvestigation(opts: { apiKey: string; model: string; fallback?: string; data: IncidentData; progress: Progress; signal: AbortSignal; focus?: string }) {
   const { apiKey, model, data, progress, signal } = opts;
   const messages: Any[] = [
     { role: "system", content: SYSTEM_PROMPT },
@@ -481,10 +487,28 @@ export async function runInvestigation(opts: { apiKey: string; model: string; da
   ];
   let toolCalls = 0;
   let nudged = false;
+  let activeModel = model;
+  let deadlineSent = false;
+  const fallback = opts.fallback ?? FALLBACK_MODEL;
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     progress({ type: "thinking", turn: turn + 1 });
     const t = Date.now();
-    const resp = await callNemotron(apiKey, model, messages, signal);
+    const reportOnly = toolCalls >= REPORT_DEADLINE_CALLS || turn >= MAX_TURNS - 3;
+    if (reportOnly && !deadlineSent) {
+      deadlineSent = true;
+      messages.push({ role: "user", content: "Evidence gathering budget reached. Call createInvestigationReport now with the evidence you have; list anything unchecked under uncertainties." });
+    }
+    const onRetry = (status: number, waitMs: number) => progress({ type: "retry", status, waitMs, model: activeModel });
+    let resp: Any;
+    try {
+      resp = await callNemotron(apiKey, activeModel, messages, signal, onRetry, activeModel === fallback ? 6 : 2, reportOnly);
+    } catch (e) {
+      // Primary model rate-limited or unavailable: continue the SAME conversation on the fallback Nemotron model.
+      if (activeModel === fallback || !/ (429|404):/.test(String(e))) throw e;
+      activeModel = fallback;
+      progress({ type: "fallback", model: activeModel, reason: String(e).slice(0, 80) });
+      resp = await callNemotron(apiKey, activeModel, messages, signal, onRetry, 6, reportOnly);
+    }
     const msg = resp?.choices?.[0]?.message;
     if (!msg) throw new Error("NVIDIA API returned no message");
     progress({ type: "model", turn: turn + 1, ms: Date.now() - t, toolCalls: msg.tool_calls?.length ?? 0, usage: resp.usage ?? null });
@@ -517,7 +541,7 @@ export async function runInvestigation(opts: { apiKey: string; model: string; da
         progress({ type: "tool-done", id, name, status: "ok", ms: Date.now() - started, summary: out.summary });
         if (out.report) {
           messages.push({ role: "tool", tool_call_id: id, content });
-          return { report: out.report, toolCalls, turns: turn + 1, model };
+          return { report: out.report, toolCalls, turns: turn + 1, model: activeModel };
         }
       } catch (e) {
         const err = e instanceof ToolError ? e.message : "internal tool error";
@@ -542,6 +566,7 @@ function safeArgs(name: string, raw: unknown) {
 
 export function investigatorMiddleware(opts: { root: string; load: LoadModule; env: Record<string, string | undefined> }) {
   const model = () => opts.env.NVIDIA_MODEL || DEFAULT_MODEL;
+  if (opts.env.NVIDIA_BASE_URL?.startsWith("https://")) NVIDIA_BASE = opts.env.NVIDIA_BASE_URL.replace(/\/$/, "");
   let running = 0;
   return async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     const url = req.url ?? "";
@@ -591,7 +616,7 @@ export function investigatorMiddleware(opts: { root: string; load: LoadModule; e
     try {
       send({ type: "start", model: model() });
       const data = await loadIncident(opts.root, opts.load, num(body.duration) ? body.duration : null);
-      const out = await runInvestigation({ apiKey, model: model(), data, progress: send, signal: ctrl.signal, focus: typeof body.focus === "string" ? body.focus : undefined });
+      const out = await runInvestigation({ apiKey, model: model(), data, progress: send, signal: ctrl.signal, fallback: opts.env.NVIDIA_FALLBACK_MODEL || FALLBACK_MODEL, focus: typeof body.focus === "string" ? body.focus : undefined });
       send({ type: "report", report: out.report, meta: { model: out.model, toolCalls: out.toolCalls, turns: out.turns, incidentId: data.incidentId, generatedAt: new Date().toISOString() } });
     } catch (e) {
       // Never echo the key: errors are API status/body text or our own messages.

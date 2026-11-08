@@ -124,7 +124,7 @@ function sentry4dInvestigator(env: Record<string, string>): Plugin {
         investigatorMiddleware({
           root: server.config.root,
           load: (id) => server.ssrLoadModule(id),
-          env: { NVIDIA_API_KEY: env.NVIDIA_API_KEY || process.env.NVIDIA_API_KEY, NVIDIA_MODEL: env.NVIDIA_MODEL || process.env.NVIDIA_MODEL },
+          env: { NVIDIA_API_KEY: env.NVIDIA_API_KEY || process.env.NVIDIA_API_KEY, NVIDIA_MODEL: env.NVIDIA_MODEL || process.env.NVIDIA_MODEL, NVIDIA_BASE_URL: env.NVIDIA_BASE_URL || process.env.NVIDIA_BASE_URL, NVIDIA_FALLBACK_MODEL: env.NVIDIA_FALLBACK_MODEL || process.env.NVIDIA_FALLBACK_MODEL },
         }),
       );
     },
