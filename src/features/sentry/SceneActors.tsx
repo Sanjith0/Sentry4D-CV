@@ -20,6 +20,8 @@ import { useReplayStore } from "../../store/useReplayStore";
 import { formatClock } from "../../lib/format";
 import { CAMERA_IDS, type IncidentEvent, type SceneActorsProps } from "../../types/security";
 import { evidenceAt } from "./useEvidence";
+import { appearanceActive } from "../reconstruction/AppearanceLayer";
+import { useAppearanceStore } from "../reconstruction/useAppearanceStore";
 import type { SubjectEvidence } from "./evidence";
 import { Humanoid, type HumanoidHandle } from "./Humanoid";
 import { useSubjectTracks, type SubjectTrack } from "./useSubjectTracks";
@@ -71,6 +73,7 @@ const SubjectActor = memo(function SubjectActor({ track, xray }: { track: Subjec
   const { subject, trajectory } = track;
   const root = useRef<THREE.Group>(null);
   const humanoid = useRef<HumanoidHandle>(null);
+  const body = useRef<THREE.Group>(null);
   const ring = useRef<THREE.Mesh>(null);
   const statusEl = useRef<HTMLDivElement>(null);
   const labelEl = useRef<HTMLDivElement>(null);
@@ -122,6 +125,7 @@ const SubjectActor = memo(function SubjectActor({ track, xray }: { track: Subjec
     const g = root.current;
     if (!g) return;
     g.visible = st.visible;
+    if (body.current) body.current.visible = !appearanceActive(subject.id);
     // drei <Html> ignores parent visibility: hide the tag explicitly when absent.
     if (labelEl.current) labelEl.current.style.display = st.visible ? "" : "none";
     if (st.visible) {
@@ -140,6 +144,11 @@ const SubjectActor = memo(function SubjectActor({ track, xray }: { track: Subjec
             ? `ESTIMATED · LAST SEEN CAM ${camList([ev.lastSeen.cameraId])} ${(t - ev.lastSeen.t).toFixed(1)}s ago`
             : "ESTIMATED";
         statusEl.current.style.color = observed ? "#a5f3fc" : "#fcd34d";
+        // Appearance provenance: whose pixels are shown, and whether this is the recorded view.
+        const ap = useAppearanceStore.getState().status[subject.id];
+        if (ap?.active && ap.cameraId) {
+          statusEl.current.textContent += ` · FOOTAGE CAM ${ap.cameraId.slice(3).padStart(2, "0")} · ${ap.evidence === "observed" ? "OBSERVED VIEW" : `RECONSTRUCTED VIEW ${ap.offSourceDeg}°`}`;
+        }
       }
       if (labelEl.current) labelEl.current.style.borderColor = observed ? subject.color : "#f59e0b";
       if (ring.current) {
@@ -217,7 +226,10 @@ const SubjectActor = memo(function SubjectActor({ track, xray }: { track: Subjec
           onPointerOver={() => (document.body.style.cursor = "pointer")}
           onPointerOut={() => (document.body.style.cursor = "")}
         >
-          <Humanoid ref={humanoid} heightM={subject.heightM} build={subject.build} color={subject.color} highlighted={selected} xray={xray} />
+          {/* Debug avatar body; hidden while the REAL APPEARANCE renderer draws this subject. */}
+          <group ref={body}>
+            <Humanoid ref={humanoid} heightM={subject.heightM} build={subject.build} color={subject.color} highlighted={selected} xray={xray} />
+          </group>
           {/* generous invisible hit volume */}
           <mesh position={[0, subject.heightM / 2, 0]}>
             <cylinderGeometry args={[0.32, 0.32, subject.heightM, 10]} />

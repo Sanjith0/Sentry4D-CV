@@ -15,6 +15,7 @@ import { ViewportCameraProbe } from "./viewportCamera";
 import { PostFX } from "./PostFX";
 import { CalibrationControls } from "./CalibrationControls";
 import { AnnotationLayer } from "../features/annotation/AnnotationLayer";
+import { AppearanceLayer } from "../features/reconstruction/AppearanceLayer";
 
 function SceneLighting() {
   const l = roomConfig.lighting;
@@ -82,6 +83,7 @@ export function Scene3D() {
       <CameraMarkers />
       <SceneActorsBridge />
       <AnnotationLayer />
+      <AppearanceLayer />
       <CameraControls />
       <CalibrationBridge />
       <ViewportCameraProbe />

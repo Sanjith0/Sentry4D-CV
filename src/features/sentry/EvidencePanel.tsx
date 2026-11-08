@@ -1,4 +1,5 @@
 import { Radar } from "lucide-react";
+import { AppearanceControls } from "../reconstruction/AppearanceControls";
 import { securityCameras } from "../../config/cameras";
 import { subjects } from "../../config/subjects";
 import { useReplayStore } from "../../store/useReplayStore";
@@ -45,12 +46,13 @@ export function EvidencePanel() {
   if (!tracked.length) return null;
 
   return (
-    <div className="glass pointer-events-auto absolute right-3 bottom-3 z-10 w-[268px] rounded-lg p-2.5 font-mono text-[11px] fade-in">
+    <div className="glass pointer-events-auto absolute right-3 bottom-3 z-10 w-[300px] rounded-lg p-2.5 font-mono text-[11px] fade-in">
       <div className="mb-1.5 flex items-center gap-1.5">
         <Radar className="h-3.5 w-3.5 text-cyan-300" />
         <span className="label !text-slate-300">Camera evidence</span>
         {xray && <span className="ml-auto rounded bg-cyan-400/20 px-1 text-[9px] text-cyan-200">X-RAY</span>}
       </div>
+      <AppearanceControls />
       {tracked.map((sub) => {
         const ev = bySubject[sub.id];
         const word =

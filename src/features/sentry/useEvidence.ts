@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import { create } from "zustand";
 import { subjects } from "../../config/subjects";
 import { useReplayStore } from "../../store/useReplayStore";
-import type { CameraId } from "../../types/security";
+import type { CameraId, VisibilityMark } from "../../types/security";
+import { useAppearanceStore } from "../reconstruction/useAppearanceStore";
 import { useAnnotationStore } from "../annotation/useAnnotationStore";
 import { useVisibilityStore } from "../annotation/useVisibilityStore";
 import { buildEvidenceIndex, evaluateEvidence, type CameraEvidenceState, type EvidenceIndex, type SubjectEvidence } from "./evidence";
@@ -47,7 +48,21 @@ export function useEvidenceSync() {
     const rebuild = () => {
       const persons = useAnnotationStore.getState().persons;
       const marks = useVisibilityStore.getState().marks;
-      indexCache = Object.fromEntries(subjects.map((s) => [s.id, buildEvidenceIndex(persons[s.personId] ?? [], marks[s.personId] ?? [])]));
+      const clips = Object.values(useAppearanceStore.getState().clips);
+      indexCache = Object.fromEntries(
+        subjects.map((s) => {
+          // Automatic evidence: a usable person segmentation in a camera's real frame = observed.
+          // Listed before manual marks so a manual mark on the same frame overrides it.
+          const auto: VisibilityMark[] = clips
+            .filter((c) => c.personId === s.personId)
+            .flatMap((c) =>
+              (Object.keys(c.cameras) as CameraId[]).flatMap((cam) =>
+                c.cameras[cam]!.frames.filter((f) => f.file).map((f) => ({ id: `seg-${c.clip}-${cam}-${f.k}`, masterTime: f.masterTime, cameraId: cam, state: "observed" as const, source: "manual" as const })),
+              ),
+            );
+          return [s.id, buildEvidenceIndex(persons[s.personId] ?? [], [...auto, ...(marks[s.personId] ?? [])])];
+        }),
+      );
       lastKey = "";
       evaluate();
     };
@@ -74,6 +89,7 @@ export function useEvidenceSync() {
     rebuild();
     const u1 = useAnnotationStore.subscribe((s, p) => s.persons !== p.persons && rebuild());
     const u2 = useVisibilityStore.subscribe((s, p) => s.marks !== p.marks && rebuild());
+    const u4 = useAppearanceStore.subscribe((s, p) => s.clips !== p.clips && rebuild());
     const u3 = useReplayStore.subscribe((s, p) => {
       if (s.currentTime !== p.currentTime || s.feeds !== p.feeds || s.cameraOffsets !== p.cameraOffsets) evaluate();
     });
@@ -81,6 +97,7 @@ export function useEvidenceSync() {
       u1();
       u2();
       u3();
+      u4();
     };
   }, []);
 }

@@ -27,6 +27,10 @@ interface ViewState {
   /** Opacity of the real recording overlaid on the virtual CCTV view (0..1). */
   ghostOpacity: number;
   ghostBlend: "normal" | "difference";
+  /** How tracked subjects are drawn: real segmented footage (default) or the debug avatar. */
+  subjectRenderMode: "footage" | "avatar";
+  /** Which camera's footage to show: "auto" = closest to the viewing direction. */
+  appearanceSource: "auto" | CameraId;
   /** CCTV view: overlay real footage + annotated video point vs. projected 3D subject. */
   trackingDiagnostics: boolean;
   pointerLocked: boolean;
@@ -55,6 +59,8 @@ interface ViewState {
   setGhostOpacity: (v: number) => void;
   setGhostBlend: (v: "normal" | "difference") => void;
   toggleTrackingDiagnostics: () => void;
+  setSubjectRenderMode: (m: "footage" | "avatar") => void;
+  setAppearanceSource: (s: "auto" | CameraId) => void;
   setPointerLocked: (v: boolean) => void;
   setFlySpeed: (v: number) => void;
   resetView: () => void;
@@ -81,6 +87,8 @@ export const useViewStore = create<ViewState>()((set) => ({
   ghostOpacity: 0.5,
   ghostBlend: "normal",
   trackingDiagnostics: false,
+  subjectRenderMode: "footage",
+  appearanceSource: "auto",
   pointerLocked: false,
   flySpeed: 2.5,
   resetToken: 0,
@@ -124,6 +132,8 @@ export const useViewStore = create<ViewState>()((set) => ({
   setGhostOpacity: (ghostOpacity) => set({ ghostOpacity: Math.min(Math.max(ghostOpacity, 0), 1) }),
   setGhostBlend: (ghostBlend) => set({ ghostBlend }),
   toggleTrackingDiagnostics: () => set((s) => ({ trackingDiagnostics: !s.trackingDiagnostics })),
+  setSubjectRenderMode: (subjectRenderMode) => set({ subjectRenderMode }),
+  setAppearanceSource: (appearanceSource) => set({ appearanceSource }),
   setPointerLocked: (pointerLocked) => set({ pointerLocked }),
   setFlySpeed: (flySpeed) => set({ flySpeed: Math.min(Math.max(flySpeed, 0.25), 20) }),
   resetView: () => set((s) => ({ resetToken: s.resetToken + 1 })),

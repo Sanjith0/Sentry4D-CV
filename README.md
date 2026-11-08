@@ -91,7 +91,41 @@ Where it shows: the **Camera evidence** panel (bottom-right of the 3D view; clic
 
 Demo moment (verified in the real footage): **25.35 s**. CAM 01 is out of frame (person beside or below its mount), CAM 02 is tracking, so PERSON 01 is OBSERVED. Free-camera spot where they stand behind the bin and table: LOCATE, or `focusFreeCamera([1.2, 0.9, -2.2], [-0.94, 0.95, -6.06])` from dev tools.
 
+## Real appearance (segmented footage in 3D)
+
+The **Camera evidence** panel has a **SUBJECT** selector:
+- **REAL APPEARANCE** (default): the person is drawn with their actual segmented pixels.
+- **TRACKING DEBUG:** the generic avatar.
+
+How REAL APPEARANCE works (`src/features/reconstruction/`):
+- Per master-time frame, the crop is placed on a vertical plane at the tracked position, facing its **source camera**, and projectively textured from that camera.
+  - Seen from the source camera it reproduces the footage exactly.
+  - From elsewhere it is a flat cut-out at the person's real location.
+  - Nothing is invented for unseen sides.
+- **SOURCE:** AUTO picks the camera closest to your viewing direction, with hysteresis; C1–C4 force one.
+- **Labels:** **OBSERVED VIEW** (≤3° from the source camera) or **RECONSTRUCTED PERSPECTIVE** (with the angle); above 45° a low-support warning is shown.
+- The LiDAR room occludes the cut-out. **X-ray** shows the real silhouette in cyan wherever geometry hides it.
+- Outside processed clips, the avatar is shown automatically.
+- A usable segmentation in a camera counts as observed evidence for that camera.
+
+Crops are generated locally and are **not committed**, because they are footage of a real person. From `experiments/reconstruction/`:
+
+```bash
+python3.12 -m venv .venv && .venv/bin/pip install -r requirements.lock.txt   # Homebrew Python 3.12 (needs lzma)
+curl -L -o checkpoints/sam2.1_hiera_small.pt https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_small.pt
+.venv/bin/python preprocess/extract_clip.py --clip clip01 --t0 8.6 --t1 10.4 --fps 15 --cams cam1,cam2
+# data/clip01/track.json: tracked boxes per frame (exported from the app's trajectory; see segmentation/segment_sam2.py)
+.venv/bin/python segmentation/segment_sam2.py --clip clip01 --cams cam1,cam2 --test   # check 3 frames first
+.venv/bin/python segmentation/segment_sam2.py --clip clip01 --cams cam1,cam2
+.venv/bin/python segmentation/background_plate.py --cams cam1,cam2
+.venv/bin/python segmentation/export_sprites.py --clip clip01 --cams cam1,cam2      # -> public/reconstruction/clip01/
+```
+
+Review `data/<clip>/review_<cam>.jpg`. To override a bad mask, put a PNG in `data/<clip>/masks_manual/<cam>/<k>.png`.
+
 ## Camera sync
+
+Current offsets were measured from audio, using three claps heard by all four cameras plus GCC-PHAT (see `experiments/reconstruction/REPORT.md`). The earlier manual values are kept in `experiments/reconstruction/calibration/camera-sync.manual-original.json`, and annotations were re-timed to keep their video frames.
 
 Open with the **SYNC** button in the CCTV panel header (or press **Y**).
 1. Scrub or frame-step the master time to a sharp moment that every camera sees (a clap, a door closing, an object set down).
