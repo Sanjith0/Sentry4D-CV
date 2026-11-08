@@ -4,24 +4,37 @@ import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { securityDevices, type DeviceConfig } from "../config/devices";
 import { useDeviceStore } from "../features/devices/useDeviceStore";
+import { useCyberAlertStore, type AlertStage } from "../features/devices/useCyberAlertStore";
 import { useReplayStore } from "../store/useReplayStore";
 import type { Vec3 } from "../types/security";
 
-const CYAN = new THREE.Color("#22d3ee");
-const DIM = new THREE.Color("#64748b");
+const STAGE_COLOR: Record<AlertStage, THREE.Color> = {
+  idle: new THREE.Color("#64748b"),
+  alert: new THREE.Color("#ef4444"),
+  investigating: new THREE.Color("#f59e0b"),
+  resolved: new THREE.Color("#34d399"),
+};
+const STAGE_PULSE_HZ: Record<AlertStage, number> = { idle: 5, alert: 9, investigating: 6, resolved: 2 };
+const HOVER_COLOR = new THREE.Color("#22d3ee");
 
 function DeviceMarker({ device, position }: { device: DeviceConfig; position: Vec3 }) {
   const ring = useRef<THREE.MeshBasicMaterial>(null);
   const [hovered, setHovered] = useState(false);
   const selected = useReplayStore((s) => s.selectedEntity?.id === device.id);
   const setSelectedEntity = useReplayStore((s) => s.setSelectedEntity);
+  const stage = useCyberAlertStore((s) => s.stages[device.id]);
+  const sessionId = useCyberAlertStore((s) =>
+    Object.values(s.sessions).find((sess) => sess.deviceId === device.id)?.summary.sessionId,
+  );
+  const openSession = useCyberAlertStore((s) => s.openSession);
 
-  const active = selected || hovered;
-  const color = active ? CYAN : DIM;
+  const highlighted = selected || hovered || stage !== "idle";
+  const color = hovered || selected ? HOVER_COLOR : STAGE_COLOR[stage];
+  const pulseHz = STAGE_PULSE_HZ[stage];
 
   useFrame(({ clock }) => {
     if (!ring.current) return;
-    ring.current.opacity = active ? 0.6 + 0.4 * Math.sin(clock.elapsedTime * 5) : 0.5;
+    ring.current.opacity = highlighted ? 0.6 + 0.4 * Math.sin(clock.elapsedTime * pulseHz) : 0.5;
   });
 
   return (
@@ -29,7 +42,13 @@ function DeviceMarker({ device, position }: { device: DeviceConfig; position: Ve
       <group
         onClick={(e) => {
           e.stopPropagation();
-          setSelectedEntity({ id: device.id, label: device.name, kind: "object", details: { type: "Device" } });
+          setSelectedEntity({
+            id: device.id,
+            label: device.name,
+            kind: "object",
+            details: { type: "Device", status: stage.toUpperCase() },
+          });
+          if (sessionId) openSession(sessionId);
         }}
         onPointerOver={(e) => {
           e.stopPropagation();
@@ -43,11 +62,11 @@ function DeviceMarker({ device, position }: { device: DeviceConfig; position: Ve
       >
         <mesh>
           <sphereGeometry args={[0.07, 20, 20]} />
-          <meshStandardMaterial color="#020617" emissive={color} emissiveIntensity={active ? 1.2 : 0.3} />
+          <meshStandardMaterial color="#020617" emissive={color} emissiveIntensity={highlighted ? 1.2 : 0.3} />
         </mesh>
         <mesh rotation-x={Math.PI / 2}>
           <ringGeometry args={[0.1, 0.13, 24]} />
-          <meshBasicMaterial ref={ring} color={active ? "#22d3ee" : "#64748b"} transparent side={THREE.DoubleSide} toneMapped={false} />
+          <meshBasicMaterial ref={ring} color={color} transparent side={THREE.DoubleSide} toneMapped={false} />
         </mesh>
         {/* Larger invisible hit target */}
         <mesh>
@@ -57,11 +76,15 @@ function DeviceMarker({ device, position }: { device: DeviceConfig; position: Ve
       </group>
       <Html position={[0, 0.2, 0]} center zIndexRange={[20, 0]} style={{ pointerEvents: "none" }}>
         <div
-          className={`whitespace-nowrap rounded border px-1.5 py-0.5 font-mono text-[10px] tracking-wider backdrop-blur-sm transition-colors ${
-            active ? "border-cyan-400/80 bg-cyan-400/20 text-cyan-200" : "border-slate-600/60 bg-slate-900/70 text-slate-300"
-          }`}
+          className="whitespace-nowrap rounded border px-1.5 py-0.5 font-mono text-[10px] tracking-wider backdrop-blur-sm transition-colors"
+          style={{
+            borderColor: highlighted ? `#${color.getHexString()}cc` : "rgba(71,85,105,0.6)",
+            background: highlighted ? `#${color.getHexString()}33` : "rgba(15,23,42,0.7)",
+            color: highlighted ? `#${color.getHexString()}` : "#cbd5e1",
+          }}
         >
           {device.name}
+          {stage !== "idle" && <span className="ml-1">● {stage.toUpperCase()}</span>}
         </div>
       </Html>
     </group>

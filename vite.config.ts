@@ -6,7 +6,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 const CAMERA_IDS = ["cam1", "cam2", "cam3", "cam4"];
-const DEVICE_IDS = ["laptop1", "laptop2", "laptop3"];
+const DEVICE_IDS = ["laptop-a", "laptop-b", "laptop-c"];
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
 /** Whitelisted config files the app may rewrite in dev, with validation. */
