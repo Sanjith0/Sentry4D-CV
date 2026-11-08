@@ -13,6 +13,7 @@ import { CameraMarkers } from "./CameraMarkers";
 import { CameraControls } from "./CameraControls";
 import { DEFAULT_FOV } from "./cameraPoses";
 import { ViewportCameraProbe } from "./viewportCamera";
+import { PostFX } from "./PostFX";
 
 function SceneLighting() {
   const l = roomConfig.lighting;
@@ -72,6 +73,7 @@ export function Scene3D() {
       <SceneActorsBridge />
       <CameraControls />
       <ViewportCameraProbe />
+      <PostFX />
     </Canvas>
   );
 }

@@ -162,13 +162,15 @@ function CctvHud() {
   const setCameraMode = useReplayStore((s) => s.setCameraMode);
   const viewThroughCamera = useReplayStore((s) => s.viewThroughCamera);
   const t = useReplayStore((s) => Math.floor(s.currentTime));
+  // The post-processing chain draws the vignette except in performance mode.
+  const cssVignette = useViewStore((s) => s.quality === "performance");
   const idx = securityCameras.findIndex((c) => c.id === id);
   const cam = securityCameras[idx];
   if (!cam) return null;
   return (
     <>
       <div className="scanlines absolute inset-0" />
-      <div className="vignette absolute inset-0" />
+      {cssVignette && <div className="vignette absolute inset-0" />}
       {/* Corner brackets */}
       {["top-14 left-3 border-t-2 border-l-2", "top-14 right-3 border-t-2 border-r-2", "bottom-3 left-3 border-b-2 border-l-2", "bottom-3 right-3 border-b-2 border-r-2"].map((c) => (
         <div key={c} className={`pointer-events-none absolute h-6 w-6 border-cyan-300/70 ${c}`} />
