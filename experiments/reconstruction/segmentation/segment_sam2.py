@@ -12,7 +12,7 @@ Usage:
   .venv/bin/python segmentation/segment_sam2.py --clip clip01 --cams cam1,cam2 --test
   .venv/bin/python segmentation/segment_sam2.py --clip clip01 --cams cam1,cam2
 """
-import argparse, json, os, sys, time
+import argparse, json, os, shutil, sys, time
 
 os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 import cv2
@@ -52,6 +52,8 @@ def main():
     ap.add_argument("--clip", default="clip01")
     ap.add_argument("--cams", default="cam1,cam2")
     ap.add_argument("--test", action="store_true")
+    ap.add_argument("--chunk", type=int, default=45, help="frames per propagation chunk (memory bound)")
+    ap.add_argument("--min-in-frame", type=float, default=0.5, help="min fraction of the prompt box inside the frame")
     a = ap.parse_args()
     clip = os.path.join(BASE, "data", a.clip)
     manifest = json.load(open(os.path.join(clip, "manifest.json")))
@@ -83,31 +85,84 @@ def main():
     from sam2.build_sam import build_sam2_video_predictor
 
     pred = build_sam2_video_predictor(CFG, CKPT, device=dev)
+    from sam2.build_sam import build_sam2
+    from sam2.sam2_image_predictor import SAM2ImagePredictor
+
+    img_pred = SAM2ImagePredictor(build_sam2(CFG, CKPT, device=dev))
+
+    def repair_collapsed(cam, frames, mdir, ks, w, h):
+        """Video propagation sometimes collapses to a speck on one frame. Re-segment frames whose
+        mask is < 40% of the chunk median with the image predictor + the same box prompt."""
+        areas = {}
+        for k in ks:
+            f = os.path.join(mdir, f"{k:04d}.png")
+            if os.path.exists(f):
+                areas[k] = int((cv2.imread(f, cv2.IMREAD_GRAYSCALE) > 0).sum())
+        if len(areas) < 3:
+            return 0
+        med = float(np.median(list(areas.values())))
+        fixed = 0
+        for k, ar in areas.items():
+            if ar >= 0.4 * med:
+                continue
+            img = cv2.cvtColor(cv2.imread(os.path.join(clip, frames[k]["file"])), cv2.COLOR_BGR2RGB)
+            with torch.inference_mode():
+                img_pred.set_image(img)
+                masks, scores, _ = img_pred.predict(box=np.array(pad_box(track[k]["boxes"][cam], w, h)), multimask_output=False)
+            m = (masks[0] > 0).astype(np.uint8) * 255
+            if (m > 0).sum() > ar:
+                cv2.imwrite(os.path.join(mdir, f"{k:04d}.png"), m)
+                fixed += 1
+        return fixed
+
     for cam in a.cams.split(","):
         frames = manifest["cameras"][cam]["frames"]
-        # SAM2's video loader wants a folder of JPEGs named <int>.jpg
-        jdir = os.path.join(clip, "_jpg", cam)
-        os.makedirs(jdir, exist_ok=True)
-        for f in frames:
-            cv2.imwrite(os.path.join(jdir, f"{f['k']:05d}.jpg"), cv2.imread(os.path.join(clip, f["file"])), [cv2.IMWRITE_JPEG_QUALITY, 95])
         h, w = cv2.imread(os.path.join(clip, frames[0]["file"])).shape[:2]
-        t0 = time.time()
-        with torch.inference_mode():
-            state = pred.init_state(video_path=jdir)
-            n = len(frames)
-            # Box prompts on a few keyframes (from the tracked position) keep the object locked on.
-            for k in sorted({0, n // 3, (2 * n) // 3, n - 1}):
-                pred.add_new_points_or_box(state, frame_idx=k, obj_id=1, box=np.array(pad_box(track[k]["boxes"][cam], w, h), dtype=np.float32))
-            masks = {}
-            for fi, _, logits in pred.propagate_in_video(state):
-                masks[fi] = (logits[0, 0] > 0).cpu().numpy().astype(np.uint8) * 255
         mdir = os.path.join(clip, "masks", cam)
         os.makedirs(mdir, exist_ok=True)
-        for k, m in masks.items():
-            cv2.imwrite(os.path.join(mdir, f"{k:04d}.png"), m)
-        areas = [int((masks[k] > 0).sum()) for k in sorted(masks)]
-        print(f"{cam}: {len(masks)} masks in {time.time() - t0:.1f}s, area min/median/max = {min(areas)}/{int(np.median(areas))}/{max(areas)} px")
-        pred.reset_state(state)
+
+        def promptable(k):
+            row = track[k]
+            b = row["boxes"].get(cam)
+            inside = row.get("boxInFrame", {}).get(cam, 1.0)
+            return row.get("visible", True) and b is not None and inside >= a.min_in_frame
+
+        t0 = time.time()
+        written = 0
+        repaired = 0
+        n = len(frames)
+        for c0 in range(0, n, a.chunk):
+            ks = list(range(c0, min(n, c0 + a.chunk)))
+            prompts = [k for k in ks if promptable(k)]
+            if not prompts:
+                continue  # person not (projected) in this camera for the whole chunk
+            jdir = os.path.join(clip, "_jpg", cam)
+            shutil.rmtree(jdir, ignore_errors=True)
+            os.makedirs(jdir)
+            for i, k in enumerate(ks):
+                cv2.imwrite(os.path.join(jdir, f"{i:05d}.jpg"), cv2.imread(os.path.join(clip, frames[k]["file"])), [cv2.IMWRITE_JPEG_QUALITY, 95])
+            # Box prompts every ~0.5 s on frames where the person projects inside the image.
+            keys = sorted({prompts[0], prompts[-1], *prompts[:: max(1, int(manifest["fps"] // 2))]})
+            with torch.inference_mode():
+                state = pred.init_state(video_path=jdir, offload_video_to_cpu=True)
+                for k in keys:
+                    pred.add_new_points_or_box(state, frame_idx=k - c0, obj_id=1, box=np.array(pad_box(track[k]["boxes"][cam], w, h), dtype=np.float32))
+                for fi, _, logits in pred.propagate_in_video(state):
+                    k = c0 + fi
+                    if not promptable(k):
+                        continue  # never emit masks for frames where the person can't be in view
+                    cv2.imwrite(os.path.join(mdir, f"{k:04d}.png"), (logits[0, 0] > 0).cpu().numpy().astype(np.uint8) * 255)
+                    written += 1
+                # also propagate backwards from the first prompt so early frames are covered
+                if keys[0] > c0:
+                    for fi, _, logits in pred.propagate_in_video(state, reverse=True):
+                        k = c0 + fi
+                        if promptable(k):
+                            cv2.imwrite(os.path.join(mdir, f"{k:04d}.png"), (logits[0, 0] > 0).cpu().numpy().astype(np.uint8) * 255)
+                pred.reset_state(state)
+            repaired += repair_collapsed(cam, frames, mdir, ks, w, h)
+        shutil.rmtree(os.path.join(clip, "_jpg"), ignore_errors=True)
+        print(f"{cam}: {written} masks / {n} frames in {time.time() - t0:.0f}s (repaired {repaired} collapsed frames)")
 
 
 if __name__ == "__main__":

@@ -63,6 +63,22 @@ def iou(a, b):
     return float(np.logical_and(a, b).sum() / u) if u else 0.0
 
 
+def plausible(m, box):
+    """Person-sized blob centred in the tracked box."""
+    x0, y0, x1, y1 = box
+    ba = max(1, (x1 - x0) * (y1 - y0))
+    area = int(m.sum())
+    if not (0.06 * ba <= area <= 0.85 * ba):
+        return False, f"mask area {area / ba:.2f} of box"
+    ys, xs = np.nonzero(m)
+    cx, cy = xs.mean(), ys.mean()
+    # tolerance = known calibration error (tens of px): box may be offset from the real person
+    tx, ty = 0.25 * (x1 - x0), 0.25 * (y1 - y0)
+    if not (x0 - tx <= cx <= x1 + tx and y0 - ty <= cy <= y1 + ty):
+        return False, "mask centroid outside tracked box"
+    return True, None
+
+
 def drift(ref, img):
     """Vertical/horizontal shift of the ceiling band (static background) in px."""
     a = cv2.cvtColor(ref[: ref.shape[0] // 4], cv2.COLOR_BGR2GRAY).astype(np.float32)
@@ -78,6 +94,7 @@ def main():
     ap.add_argument("--margin", type=int, default=12)
     ap.add_argument("--person", default="person_01", help="annotation dataset this clip shows")
     ap.add_argument("--subject", default="subject-01", help="config/subjects.ts id")
+    ap.add_argument("--min-in-frame", type=float, default=0.5)
     # Only cameras verified static (stabilization_check.py) get background refinement: CAM 02's mount
     # sags ~12 px over the recording, so its median plate is blurred and would damage good SAM masks.
     ap.add_argument("--bg-cams", default="cam1,cam3,cam4")
@@ -85,6 +102,9 @@ def main():
     clip = os.path.join(BASE, "data", a.clip)
     man = json.load(open(os.path.join(clip, "manifest.json")))
     track = json.load(open(os.path.join(clip, "track.json")))
+    # Explicit manual visibility marks (occluded / out-of-frame) override automatic segmentation.
+    ann = json.load(open(os.path.join(ROOT, "src", "data", "person-annotations.json")))
+    marks = [m for d in ann["datasets"] if d["personId"] == a.person for m in d.get("visibility", [])]
     out = os.path.join(ROOT, "public", "reconstruction", a.clip)
     shutil.rmtree(out, ignore_errors=True)
     web = {
@@ -112,9 +132,26 @@ def main():
             k = f["k"]
             img = cv2.imread(os.path.join(clip, f["file"]))
             manual = os.path.join(clip, "masks_manual", cam, f"{k:04d}.png")
-            src = manual if os.path.exists(manual) else os.path.join(clip, "masks", cam, f"{k:04d}.png")
+            sam_path = os.path.join(clip, "masks", cam, f"{k:04d}.png")
+            row = track[k]
+            box = row["boxes"].get(cam)
+            reject = None
+            if not os.path.exists(manual):
+                neg = [m for m in marks if m["cameraId"] == cam and m["state"] in ("occluded", "out-of-frame") and abs(m["masterTime"] - f["masterTime"]) <= 1.5 / man["fps"]]
+                if not row.get("visible", True) or box is None:
+                    reject = "subject not tracked here"
+                elif row.get("boxInFrame", {}).get(cam, 1) < a.min_in_frame:
+                    reject = "tracked box mostly outside this camera's frame"
+                elif neg:
+                    reject = f"manual mark: {neg[0]['state']}"
+                elif not os.path.exists(sam_path):
+                    reject = "no SAM mask"
+            if reject:
+                entries.append({"k": k, "masterTime": f["masterTime"], "videoTime": f["videoTime"], "file": None, "reason": reject})
+                continue
+            img = cv2.imread(os.path.join(clip, f["file"]))
+            src = manual if os.path.exists(manual) else sam_path
             raw = cv2.imread(src, cv2.IMREAD_GRAYSCALE)
-            box = track[k]["boxes"][cam]
             method = "manual"
             agreement = None
             if src == manual:
@@ -126,14 +163,20 @@ def main():
                 if fg is not None and fg.sum() > 500:
                     agreement = round(iou(m > 0, fg > 0), 3)
                     if agreement < 0.5:
-                        # SAM latched onto the wrong region: use the background-subtraction mask instead.
+                        ok_fg, _ = plausible(fg, box)
+                        if not ok_fg:
+                            entries.append({"k": k, "masterTime": f["masterTime"], "videoTime": f["videoTime"], "file": None, "reason": f"SAM/background disagree (IoU {agreement})"})
+                            continue
+                        # SAM latched onto the wrong region; the background-difference blob is person-like.
                         m, method = fg, "background-subtraction"
                     else:
-                        # Drop static pixels (booth/floor) SAM attached to the person; keep a
-                        # 7 px tolerance so dark clothing edges against dark furniture survive.
                         m2 = m * cv2.dilate(fg, np.ones((7, 7), np.uint8))
                         m = clean(m2 * 255, box, w, h)
                         method = "sam2+background"
+                ok, why = plausible(m, box) if m.sum() else (False, "empty mask")
+                if not ok:
+                    entries.append({"k": k, "masterTime": f["masterTime"], "videoTime": f["videoTime"], "file": None, "reason": why})
+                    continue
             area = int(m.sum())
             if area < 500:
                 entries.append({"k": k, "masterTime": f["masterTime"], "videoTime": f["videoTime"], "file": None, "reason": "no mask"})
@@ -184,6 +227,11 @@ def main():
         cv2.imwrite(os.path.join(clip, f"review_{cam}.jpg"), np.vstack(rows))
         d = [e["backgroundDriftPx"] for e in entries if e.get("file")]
         size = sum(os.path.getsize(os.path.join(out, e["file"])) for e in entries if e.get("file"))
+        rejected = {}
+        for e in entries:
+            if not e.get("file"):
+                rejected[e["reason"]] = rejected.get(e["reason"], 0) + 1
+        print(f"{cam}: rejected {rejected}")
         methods = {}
         for e in entries:
             methods[e.get("maskMethod", "none")] = methods.get(e.get("maskMethod", "none"), 0) + 1
