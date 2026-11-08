@@ -27,7 +27,8 @@ const CONFIGS: Record<string, { file: string; validate: (d: unknown) => void }> 
   "person-annotations": {
     file: "src/data/person-annotations.json",
     validate(d) {
-      const o = d as { version?: unknown; datasets?: unknown };
+      const o = d as { version?: unknown; datasets?: unknown; syncOffsets?: Record<string, unknown> };
+      if (o?.syncOffsets !== undefined && !CAMERA_IDS.every((id) => isNum(o.syncOffsets?.[id]))) throw new Error("syncOffsets invalid");
       if (o?.version !== 1 || !Array.isArray(o.datasets)) throw new Error("expected {version: 1, datasets: [...]}");
       for (const ds of o.datasets as Record<string, unknown>[]) {
         if (typeof ds?.personId !== "string" || !Array.isArray(ds.observations)) throw new Error("dataset needs personId + observations");

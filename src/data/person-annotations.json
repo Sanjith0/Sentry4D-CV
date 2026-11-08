@@ -6,7 +6,7 @@
       "observations": [
         {
           "id": "obs_mw7ok8l0_w28ti",
-          "masterTime": 4.326,
+          "masterTime": 4.215,
           "cameraId": "cam3",
           "pixel": [
             0.7351,
@@ -22,7 +22,7 @@
         },
         {
           "id": "obs_mw7olpwp_hnbi9",
-          "masterTime": 5.759,
+          "masterTime": 5.365,
           "cameraId": "cam2",
           "pixel": [
             0.6562,
@@ -38,7 +38,7 @@
         },
         {
           "id": "obs_mw7okhtf_zenyo",
-          "masterTime": 6.674,
+          "masterTime": 6.563,
           "cameraId": "cam3",
           "pixel": [
             0.7088,
@@ -54,7 +54,7 @@
         },
         {
           "id": "obs_mw7oltpa_lxs39",
-          "masterTime": 7.295,
+          "masterTime": 6.901,
           "cameraId": "cam2",
           "pixel": [
             0.5563,
@@ -67,6 +67,22 @@
           ],
           "source": "manual",
           "videoTime": 7.295
+        },
+        {
+          "id": "obs_mw7olwp5_pn1ae",
+          "masterTime": 8.219,
+          "cameraId": "cam2",
+          "pixel": [
+            0.509,
+            0.6013
+          ],
+          "worldPosition": [
+            -1.538,
+            0,
+            -3.366
+          ],
+          "source": "manual",
+          "videoTime": 8.613
         },
         {
           "id": "obs_mw7op9e3_03elu",
@@ -83,22 +99,6 @@
           ],
           "source": "manual",
           "videoTime": 8.355
-        },
-        {
-          "id": "obs_mw7olwp5_pn1ae",
-          "masterTime": 8.613,
-          "cameraId": "cam2",
-          "pixel": [
-            0.509,
-            0.6013
-          ],
-          "worldPosition": [
-            -1.538,
-            0,
-            -3.366
-          ],
-          "source": "manual",
-          "videoTime": 8.613
         },
         {
           "id": "obs_mw7opdpf_gbcck",
@@ -134,7 +134,7 @@
         },
         {
           "id": "obs_mw7okne4_h42hr",
-          "masterTime": 9.879,
+          "masterTime": 9.768,
           "cameraId": "cam3",
           "pixel": [
             0.6913,
@@ -182,7 +182,7 @@
         },
         {
           "id": "obs_mw7onu0z_07cbc",
-          "masterTime": 11.45,
+          "masterTime": 11.183,
           "cameraId": "cam4",
           "pixel": [
             0.0201,
@@ -246,7 +246,7 @@
         },
         {
           "id": "obs_mw7okukx_t3msz",
-          "masterTime": 12.899,
+          "masterTime": 12.788,
           "cameraId": "cam3",
           "pixel": [
             0.6842,
@@ -259,6 +259,22 @@
           ],
           "source": "manual",
           "videoTime": 12.899
+        },
+        {
+          "masterTime": 13.361,
+          "cameraId": "cam4",
+          "pixel": [
+            0.1585,
+            0.9938
+          ],
+          "worldPosition": [
+            0.765,
+            0,
+            -0.569
+          ],
+          "source": "manual",
+          "videoTime": 22.928,
+          "id": "obs_mw7qd4tg_rk0e3"
         },
         {
           "id": "obs_mw7q913t_a53e2",
@@ -275,22 +291,6 @@
           ],
           "source": "manual",
           "videoTime": 13.399
-        },
-        {
-          "masterTime": 13.628,
-          "cameraId": "cam4",
-          "pixel": [
-            0.1585,
-            0.9938
-          ],
-          "worldPosition": [
-            0.765,
-            0,
-            -0.569
-          ],
-          "source": "manual",
-          "videoTime": 22.928,
-          "id": "obs_mw7qd4tg_rk0e3"
         },
         {
           "id": "obs_mw7q964v_jouf1",
@@ -326,7 +326,7 @@
         },
         {
           "id": "obs_mw7olevy_p75zn",
-          "masterTime": 14.805,
+          "masterTime": 14.411,
           "cameraId": "cam2",
           "pixel": [
             0.2882,
@@ -373,6 +373,22 @@
           "videoTime": 15.113
         },
         {
+          "masterTime": 15.383,
+          "cameraId": "cam2",
+          "pixel": [
+            0.2777,
+            0.405
+          ],
+          "worldPosition": [
+            0.496,
+            0,
+            1.16
+          ],
+          "source": "manual",
+          "videoTime": 15.777,
+          "id": "obs_mw7qbtbc_0ve2e"
+        },
+        {
           "id": "obs_mw7q9jco_5mbj7",
           "masterTime": 15.649,
           "cameraId": "cam1",
@@ -389,23 +405,7 @@
           "videoTime": 15.649
         },
         {
-          "masterTime": 15.777,
-          "cameraId": "cam2",
-          "pixel": [
-            0.2777,
-            0.405
-          ],
-          "worldPosition": [
-            0.496,
-            0,
-            1.16
-          ],
-          "source": "manual",
-          "videoTime": 15.777,
-          "id": "obs_mw7qbtbc_0ve2e"
-        },
-        {
-          "masterTime": 16.906,
+          "masterTime": 16.512,
           "cameraId": "cam2",
           "pixel": [
             0.2777,
@@ -421,7 +421,7 @@
           "id": "obs_mw7qby3g_aiz0o"
         },
         {
-          "masterTime": 18.965,
+          "masterTime": 18.571,
           "cameraId": "cam2",
           "pixel": [
             0.283,
@@ -438,7 +438,7 @@
         },
         {
           "id": "obs_mw7omjxa_adofv",
-          "masterTime": 19.43,
+          "masterTime": 19.036,
           "cameraId": "cam2",
           "pixel": [
             0.2795,
@@ -453,7 +453,7 @@
           "videoTime": 19.43
         },
         {
-          "masterTime": 19.887,
+          "masterTime": 19.493,
           "cameraId": "cam2",
           "pixel": [
             0.2847,
@@ -565,6 +565,22 @@
           "videoTime": 22.143
         },
         {
+          "id": "obs_mw7on1xx_dkkt3",
+          "masterTime": 22.351,
+          "cameraId": "cam2",
+          "pixel": [
+            0.4792,
+            0.5514
+          ],
+          "worldPosition": [
+            -1.562,
+            0,
+            -2.559
+          ],
+          "source": "manual",
+          "videoTime": 22.745
+        },
+        {
           "id": "obs_mw7ooww1_kizgv",
           "masterTime": 22.723,
           "cameraId": "cam1",
@@ -581,24 +597,8 @@
           "videoTime": 22.723
         },
         {
-          "id": "obs_mw7on1xx_dkkt3",
-          "masterTime": 22.745,
-          "cameraId": "cam2",
-          "pixel": [
-            0.4792,
-            0.5514
-          ],
-          "worldPosition": [
-            -1.562,
-            0,
-            -2.559
-          ],
-          "source": "manual",
-          "videoTime": 22.745
-        },
-        {
           "id": "obs_mw7on51p_7g03c",
-          "masterTime": 23.491,
+          "masterTime": 23.097,
           "cameraId": "cam2",
           "pixel": [
             0.5441,
@@ -613,7 +613,7 @@
           "videoTime": 23.491
         },
         {
-          "masterTime": 24.123,
+          "masterTime": 23.729,
           "cameraId": "cam2",
           "pixel": [
             0.5563,
@@ -630,7 +630,7 @@
         },
         {
           "id": "obs_mw7on7d7_zcs34",
-          "masterTime": 24.252,
+          "masterTime": 23.858,
           "cameraId": "cam2",
           "pixel": [
             0.5774,
@@ -646,7 +646,7 @@
         },
         {
           "id": "obs_mw7onamk_4bn5b",
-          "masterTime": 25.522,
+          "masterTime": 25.128,
           "cameraId": "cam2",
           "pixel": [
             0.6545,
@@ -691,20 +691,26 @@
           "source": "manual"
         },
         {
+          "id": "vis_mw7pkggc_e5tms",
+          "masterTime": 24.956,
+          "cameraId": "cam2",
+          "state": "observed",
+          "source": "manual"
+        },
+        {
           "id": "vis_mw7pkf1d_yz5my",
           "masterTime": 25.35,
           "cameraId": "cam1",
           "state": "out-of-frame",
           "source": "manual"
-        },
-        {
-          "id": "vis_mw7pkggc_e5tms",
-          "masterTime": 25.35,
-          "cameraId": "cam2",
-          "state": "observed",
-          "source": "manual"
         }
       ]
     }
-  ]
+  ],
+  "syncOffsets": {
+    "cam1": 0,
+    "cam2": 0.394,
+    "cam3": 0.111,
+    "cam4": 9.567
+  }
 }

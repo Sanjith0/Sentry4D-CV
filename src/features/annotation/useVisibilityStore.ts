@@ -1,8 +1,10 @@
 import { create } from "zustand";
 import { CAMERA_IDS, type CameraId, type VisibilityMark, type VisibilityState } from "../../types/security";
 import projectFile from "../../data/person-annotations.json";
+import { retimeMarkV1toV2 } from "../../lib/syncMigration";
 
-const STORAGE_KEY = "sentry3d.visibility.v1";
+const STORAGE_KEY = "sentry3d.visibility.v2";
+const LEGACY_KEY_V1 = "sentry3d.visibility.v1";
 export const VISIBILITY_STATES: VisibilityState[] = ["observed", "occluded", "out-of-frame", "unknown"];
 /** Marks closer than this (s) on the same camera replace each other. */
 const SAME_FRAME = 0.02;
@@ -45,10 +47,13 @@ export function parseVisibility(list: unknown): VisibilityMark[] {
 
 function load(): Marks {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const legacy = localStorage.getItem(STORAGE_KEY) ? null : localStorage.getItem(LEGACY_KEY_V1);
+    const raw = localStorage.getItem(STORAGE_KEY) ?? legacy;
     if (raw) {
       const p = JSON.parse(raw) as Marks;
-      return Object.fromEntries(Object.entries(p).map(([k, v]) => [k, parseVisibility(v)]));
+      return Object.fromEntries(
+        Object.entries(p).map(([k, v]) => [k, legacy ? parseVisibility(v).map(retimeMarkV1toV2) : parseVisibility(v)]),
+      );
     }
   } catch (e) {
     console.warn("[Sentry3D] could not restore visibility marks", e);

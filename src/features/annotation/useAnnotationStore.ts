@@ -2,8 +2,12 @@ import { create } from "zustand";
 import { CAMERA_IDS, type CameraId, type PersonAnnotationDataset, type PersonObservation, type Vec3 } from "../../types/security";
 import projectFile from "../../data/person-annotations.json";
 import { parseVisibility, useVisibilityStore } from "./useVisibilityStore";
+import { retimeObservationV1toV2 } from "../../lib/syncMigration";
+import { useReplayStore } from "../../store/useReplayStore";
 
-const STORAGE_KEY = "sentry3d.annotations.v1";
+const STORAGE_KEY = "sentry3d.annotations.v2";
+/** v1 = timed with the manual sync offsets; migrated (re-timed) once into v2. */
+const LEGACY_KEY_V1 = "sentry3d.annotations.v1";
 const UNDO_LIMIT = 50;
 
 type Persons = Record<string, PersonObservation[]>;
@@ -32,7 +36,7 @@ export interface AnnotationState extends Persisted {
   /** Replace/merge datasets (import). Returns number of observations imported. */
   importDatasets: (datasets: PersonAnnotationDataset[]) => number;
   exportDataset: (personId?: string) => PersonAnnotationDataset;
-  exportAll: () => { version: 1; datasets: PersonAnnotationDataset[] };
+  exportAll: () => { version: 1; syncOffsets: Record<CameraId, number>; datasets: PersonAnnotationDataset[] };
 }
 
 const newId = () => `obs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
@@ -81,9 +85,14 @@ export function parseDatasets(json: unknown): PersonAnnotationDataset[] {
 
 function load(): Persisted {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const legacy = localStorage.getItem(STORAGE_KEY) ? null : localStorage.getItem(LEGACY_KEY_V1);
+    const raw = localStorage.getItem(STORAGE_KEY) ?? legacy;
     if (raw) {
       const p = JSON.parse(raw) as Persisted;
+      if (legacy) {
+        for (const k of Object.keys(p.persons ?? {})) p.persons[k] = p.persons[k].map(retimeObservationV1toV2);
+        console.info("[Sentry3D] migrated browser annotations to the audio-corrected sync offsets");
+      }
       if (p && p.persons && typeof p.activePersonId === "string") {
         const persons: Persons = {};
         for (const [k, v] of Object.entries(p.persons)) persons[k] = sortObs(v.map(parseObservation));
@@ -203,6 +212,8 @@ export const useAnnotationStore = create<AnnotationState>()((set, get) => {
       const s = get();
       return {
         version: 1,
+        /** Sync offsets these master times are based on (videoTime = masterTime + offset). */
+        syncOffsets: { ...useReplayStore.getState().cameraOffsets },
         datasets: Object.keys(s.persons)
           .filter((k) => s.persons[k].length || useVisibilityStore.getState().marks[k]?.length)
           .map((k) => ({ personId: k, observations: sortObs(s.persons[k]), visibility: useVisibilityStore.getState().marks[k] ?? [] })),

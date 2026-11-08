@@ -15,7 +15,8 @@ import { incidentConfig, initialEvents } from "../config/incident";
 import { buildCamera, savedPoses, securityCameras } from "../config/cameras";
 
 export const PLAYBACK_SPEEDS = [0.5, 1, 2] as const;
-const OFFSETS_STORAGE_KEY = "sentry3d.cameraOffsets.v1";
+// v2: offsets corrected from audio; browser copies of the manual v1 offsets are ignored.
+const OFFSETS_STORAGE_KEY = "sentry3d.cameraOffsets.v2";
 
 export interface ReplayState {
   /** THE master timestamp (seconds). Drives videos, 3D replay, tracking, events. */
