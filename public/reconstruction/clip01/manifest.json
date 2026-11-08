@@ -1,0 +1,1705 @@
+{
+ "clip": "clip01",
+ "personId": "person_01",
+ "subjectId": "subject-01",
+ "fps": 15.0,
+ "t0": 8.6,
+ "t1": 10.4,
+ "frameCount": 27,
+ "syncOffsets": {
+  "cam1": 0,
+  "cam2": 0.394,
+  "cam3": 0.111,
+  "cam4": 9.567
+ },
+ "evidence": "observed-pixels",
+ "note": "RGBA crops of the original recordings (SAM 2.1 mask). Pixels are unmodified footage; only alpha is computed.",
+ "cameras": {
+  "cam1": {
+   "width": 1920,
+   "height": 1080,
+   "frames": [
+    {
+     "k": 0,
+     "masterTime": 8.6,
+     "videoTime": 8.6,
+     "sourcePts": 8.57,
+     "file": "cam1/0000.webp",
+     "crop": [
+      0.554167,
+      0.589815,
+      0.635938,
+      1.0
+     ],
+     "cropPx": [
+      1064,
+      637,
+      1221,
+      1080
+     ],
+     "maskArea": 32710,
+     "maskBottomPx": [
+      1097.4,
+      1079
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.736,
+     "backgroundDriftPx": [
+      -0.0,
+      -0.0
+     ]
+    },
+    {
+     "k": 1,
+     "masterTime": 8.6667,
+     "videoTime": 8.6667,
+     "sourcePts": 8.6367,
+     "file": "cam1/0001.webp",
+     "crop": [
+      0.552604,
+      0.586111,
+      0.639062,
+      1.0
+     ],
+     "cropPx": [
+      1061,
+      633,
+      1227,
+      1080
+     ],
+     "maskArea": 33433,
+     "maskBottomPx": [
+      1101.6,
+      1079
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.73,
+     "backgroundDriftPx": [
+      -0.04,
+      -0.0
+     ]
+    },
+    {
+     "k": 2,
+     "masterTime": 8.7333,
+     "videoTime": 8.7333,
+     "sourcePts": 8.7033,
+     "file": "cam1/0002.webp",
+     "crop": [
+      0.552083,
+      0.583333,
+      0.641667,
+      1.0
+     ],
+     "cropPx": [
+      1060,
+      630,
+      1232,
+      1080
+     ],
+     "maskArea": 34537,
+     "maskBottomPx": [
+      1098.9,
+      1079
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.74,
+     "backgroundDriftPx": [
+      -0.04,
+      0.01
+     ]
+    },
+    {
+     "k": 3,
+     "masterTime": 8.8,
+     "videoTime": 8.8,
+     "sourcePts": 8.77,
+     "file": "cam1/0003.webp",
+     "crop": [
+      0.553646,
+      0.582407,
+      0.645312,
+      1.0
+     ],
+     "cropPx": [
+      1063,
+      629,
+      1239,
+      1080
+     ],
+     "maskArea": 34990,
+     "maskBottomPx": [
+      1119.9,
+      1070
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.736,
+     "backgroundDriftPx": [
+      -0.04,
+      0.04
+     ]
+    },
+    {
+     "k": 4,
+     "masterTime": 8.8667,
+     "videoTime": 8.8667,
+     "sourcePts": 8.8367,
+     "file": "cam1/0004.webp",
+     "crop": [
+      0.559375,
+      0.580556,
+      0.647917,
+      1.0
+     ],
+     "cropPx": [
+      1074,
+      627,
+      1244,
+      1080
+     ],
+     "maskArea": 34181,
+     "maskBottomPx": [
+      1181.7,
+      1068
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.723,
+     "backgroundDriftPx": [
+      -0.02,
+      0.04
+     ]
+    },
+    {
+     "k": 5,
+     "masterTime": 8.9333,
+     "videoTime": 8.9333,
+     "sourcePts": 8.9033,
+     "file": "cam1/0005.webp",
+     "crop": [
+      0.564062,
+      0.580556,
+      0.648958,
+      1.0
+     ],
+     "cropPx": [
+      1083,
+      627,
+      1246,
+      1080
+     ],
+     "maskArea": 32949,
+     "maskBottomPx": [
+      1181.7,
+      1068
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.704,
+     "backgroundDriftPx": [
+      -0.02,
+      0.07
+     ]
+    },
+    {
+     "k": 6,
+     "masterTime": 9.0,
+     "videoTime": 9.0,
+     "sourcePts": 8.97,
+     "file": "cam1/0006.webp",
+     "crop": [
+      0.566146,
+      0.580556,
+      0.65,
+      1.0
+     ],
+     "cropPx": [
+      1087,
+      627,
+      1248,
+      1080
+     ],
+     "maskArea": 32629,
+     "maskBottomPx": [
+      1181.8,
+      1069
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.699,
+     "backgroundDriftPx": [
+      -0.02,
+      0.1
+     ]
+    },
+    {
+     "k": 7,
+     "masterTime": 9.0667,
+     "videoTime": 9.0667,
+     "sourcePts": 9.0367,
+     "file": "cam1/0007.webp",
+     "crop": [
+      0.567708,
+      0.582407,
+      0.651562,
+      1.0
+     ],
+     "cropPx": [
+      1090,
+      629,
+      1251,
+      1080
+     ],
+     "maskArea": 32536,
+     "maskBottomPx": [
+      1181.4,
+      1069
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.692,
+     "backgroundDriftPx": [
+      -0.04,
+      0.14
+     ]
+    },
+    {
+     "k": 8,
+     "masterTime": 9.1333,
+     "videoTime": 9.1333,
+     "sourcePts": 9.1033,
+     "file": "cam1/0008.webp",
+     "crop": [
+      0.571875,
+      0.583333,
+      0.651562,
+      1.0
+     ],
+     "cropPx": [
+      1098,
+      630,
+      1251,
+      1080
+     ],
+     "maskArea": 31571,
+     "maskBottomPx": [
+      1180.7,
+      1068
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.788,
+     "backgroundDriftPx": [
+      -0.13,
+      0.12
+     ]
+    },
+    {
+     "k": 9,
+     "masterTime": 9.2,
+     "videoTime": 9.2,
+     "sourcePts": 9.17,
+     "file": "cam1/0009.webp",
+     "crop": [
+      0.56875,
+      0.583333,
+      0.652604,
+      0.999074
+     ],
+     "cropPx": [
+      1092,
+      630,
+      1253,
+      1079
+     ],
+     "maskArea": 31789,
+     "maskBottomPx": [
+      1178.6,
+      1066
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.783,
+     "backgroundDriftPx": [
+      -0.15,
+      0.25
+     ]
+    },
+    {
+     "k": 10,
+     "masterTime": 9.2667,
+     "videoTime": 9.2667,
+     "sourcePts": 9.2367,
+     "file": "cam1/0010.webp",
+     "crop": [
+      0.567188,
+      0.580556,
+      0.654167,
+      0.984259
+     ],
+     "cropPx": [
+      1089,
+      627,
+      1256,
+      1063
+     ],
+     "maskArea": 32282,
+     "maskBottomPx": [
+      1175.1,
+      1050
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.708,
+     "backgroundDriftPx": [
+      -0.19,
+      0.3
+     ]
+    },
+    {
+     "k": 11,
+     "masterTime": 9.3333,
+     "videoTime": 9.3333,
+     "sourcePts": 9.3033,
+     "file": "cam1/0011.webp",
+     "crop": [
+      0.566667,
+      0.576852,
+      0.655729,
+      0.973148
+     ],
+     "cropPx": [
+      1088,
+      623,
+      1259,
+      1051
+     ],
+     "maskArea": 31798,
+     "maskBottomPx": [
+      1166.8,
+      1038
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.703,
+     "backgroundDriftPx": [
+      -0.27,
+      0.31
+     ]
+    },
+    {
+     "k": 12,
+     "masterTime": 9.4,
+     "videoTime": 9.4,
+     "sourcePts": 9.37,
+     "file": "cam1/0012.webp",
+     "crop": [
+      0.567188,
+      0.573148,
+      0.656771,
+      0.95
+     ],
+     "cropPx": [
+      1089,
+      619,
+      1261,
+      1026
+     ],
+     "maskArea": 30563,
+     "maskBottomPx": [
+      1169.7,
+      1013
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.694,
+     "backgroundDriftPx": [
+      -0.26,
+      0.33
+     ]
+    },
+    {
+     "k": 13,
+     "masterTime": 9.4667,
+     "videoTime": 9.4667,
+     "sourcePts": 9.4367,
+     "file": "cam1/0013.webp",
+     "crop": [
+      0.568229,
+      0.569444,
+      0.655729,
+      0.936111
+     ],
+     "cropPx": [
+      1091,
+      615,
+      1259,
+      1011
+     ],
+     "maskArea": 29747,
+     "maskBottomPx": [
+      1165.2,
+      998
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.773,
+     "backgroundDriftPx": [
+      -0.25,
+      0.4
+     ]
+    },
+    {
+     "k": 14,
+     "masterTime": 9.5333,
+     "videoTime": 9.5333,
+     "sourcePts": 9.5033,
+     "file": "cam1/0014.webp",
+     "crop": [
+      0.572917,
+      0.603704,
+      0.654167,
+      0.944444
+     ],
+     "cropPx": [
+      1100,
+      652,
+      1256,
+      1020
+     ],
+     "maskArea": 27200,
+     "maskBottomPx": [
+      1166.1,
+      1007
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.744,
+     "backgroundDriftPx": [
+      -0.25,
+      0.46
+     ]
+    },
+    {
+     "k": 15,
+     "masterTime": 9.6,
+     "videoTime": 9.6,
+     "sourcePts": 9.57,
+     "file": "cam1/0015.webp",
+     "crop": [
+      0.574479,
+      0.568519,
+      0.651562,
+      0.926852
+     ],
+     "cropPx": [
+      1103,
+      614,
+      1251,
+      1001
+     ],
+     "maskArea": 27252,
+     "maskBottomPx": [
+      1130.9,
+      988
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.792,
+     "backgroundDriftPx": [
+      -0.22,
+      0.49
+     ]
+    },
+    {
+     "k": 16,
+     "masterTime": 9.6667,
+     "videoTime": 9.6667,
+     "sourcePts": 9.6383,
+     "file": "cam1/0016.webp",
+     "crop": [
+      0.575521,
+      0.57037,
+      0.649479,
+      0.925926
+     ],
+     "cropPx": [
+      1105,
+      616,
+      1247,
+      1000
+     ],
+     "maskArea": 25184,
+     "maskBottomPx": [
+      1129.9,
+      987
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.786,
+     "backgroundDriftPx": [
+      -0.16,
+      0.49
+     ]
+    },
+    {
+     "k": 17,
+     "masterTime": 9.7333,
+     "videoTime": 9.7333,
+     "sourcePts": 9.705,
+     "file": "cam1/0017.webp",
+     "crop": [
+      0.576042,
+      0.571296,
+      0.649479,
+      0.923148
+     ],
+     "cropPx": [
+      1106,
+      617,
+      1247,
+      997
+     ],
+     "maskArea": 24453,
+     "maskBottomPx": [
+      1129.1,
+      984
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.774,
+     "backgroundDriftPx": [
+      -0.08,
+      0.63
+     ]
+    },
+    {
+     "k": 18,
+     "masterTime": 9.8,
+     "videoTime": 9.8,
+     "sourcePts": 9.7717,
+     "file": "cam1/0018.webp",
+     "crop": [
+      0.576042,
+      0.571296,
+      0.651042,
+      0.914815
+     ],
+     "cropPx": [
+      1106,
+      617,
+      1250,
+      988
+     ],
+     "maskArea": 24025,
+     "maskBottomPx": [
+      1129.7,
+      975
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.765,
+     "backgroundDriftPx": [
+      -0.07,
+      0.67
+     ]
+    },
+    {
+     "k": 19,
+     "masterTime": 9.8667,
+     "videoTime": 9.8667,
+     "sourcePts": 9.8383,
+     "file": "cam1/0019.webp",
+     "crop": [
+      0.577604,
+      0.568519,
+      0.653125,
+      0.906481
+     ],
+     "cropPx": [
+      1109,
+      614,
+      1254,
+      979
+     ],
+     "maskArea": 23610,
+     "maskBottomPx": [
+      1131.5,
+      966
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.765,
+     "backgroundDriftPx": [
+      -0.13,
+      0.62
+     ]
+    },
+    {
+     "k": 20,
+     "masterTime": 9.9333,
+     "videoTime": 9.9333,
+     "sourcePts": 9.905,
+     "file": "cam1/0020.webp",
+     "crop": [
+      0.579688,
+      0.565741,
+      0.65625,
+      0.887963
+     ],
+     "cropPx": [
+      1113,
+      611,
+      1260,
+      959
+     ],
+     "maskArea": 23236,
+     "maskBottomPx": [
+      1135.7,
+      946
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.746,
+     "backgroundDriftPx": [
+      -0.23,
+      0.72
+     ]
+    },
+    {
+     "k": 21,
+     "masterTime": 10.0,
+     "videoTime": 10.0,
+     "sourcePts": 9.9717,
+     "file": "cam1/0021.webp",
+     "crop": [
+      0.584896,
+      0.564815,
+      0.658854,
+      0.881481
+     ],
+     "cropPx": [
+      1123,
+      610,
+      1265,
+      952
+     ],
+     "maskArea": 21897,
+     "maskBottomPx": [
+      1175.2,
+      939
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.798,
+     "backgroundDriftPx": [
+      -0.38,
+      0.63
+     ]
+    },
+    {
+     "k": 22,
+     "masterTime": 10.0667,
+     "videoTime": 10.0667,
+     "sourcePts": 10.0383,
+     "file": "cam1/0022.webp",
+     "crop": [
+      0.585938,
+      0.563889,
+      0.660417,
+      0.881481
+     ],
+     "cropPx": [
+      1125,
+      609,
+      1268,
+      952
+     ],
+     "maskArea": 20967,
+     "maskBottomPx": [
+      1175.6,
+      939
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.776,
+     "backgroundDriftPx": [
+      -0.21,
+      0.73
+     ]
+    },
+    {
+     "k": 23,
+     "masterTime": 10.1333,
+     "videoTime": 10.1333,
+     "sourcePts": 10.105,
+     "file": "cam1/0023.webp",
+     "crop": [
+      0.586458,
+      0.562963,
+      0.6625,
+      0.881481
+     ],
+     "cropPx": [
+      1126,
+      608,
+      1272,
+      952
+     ],
+     "maskArea": 19458,
+     "maskBottomPx": [
+      1175.9,
+      939
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.778,
+     "backgroundDriftPx": [
+      -0.37,
+      0.76
+     ]
+    },
+    {
+     "k": 24,
+     "masterTime": 10.2,
+     "videoTime": 10.2,
+     "sourcePts": 10.1717,
+     "file": "cam1/0024.webp",
+     "crop": [
+      0.586979,
+      0.563889,
+      0.663542,
+      0.881481
+     ],
+     "cropPx": [
+      1127,
+      609,
+      1274,
+      952
+     ],
+     "maskArea": 18344,
+     "maskBottomPx": [
+      1175.9,
+      939
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.775,
+     "backgroundDriftPx": [
+      -0.28,
+      0.8
+     ]
+    },
+    {
+     "k": 25,
+     "masterTime": 10.2667,
+     "videoTime": 10.2667,
+     "sourcePts": 10.2383,
+     "file": "cam1/0025.webp",
+     "crop": [
+      0.589062,
+      0.563889,
+      0.664062,
+      0.880556
+     ],
+     "cropPx": [
+      1131,
+      609,
+      1275,
+      951
+     ],
+     "maskArea": 17921,
+     "maskBottomPx": [
+      1176.2,
+      938
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.816,
+     "backgroundDriftPx": [
+      -0.35,
+      0.87
+     ]
+    },
+    {
+     "k": 26,
+     "masterTime": 10.3333,
+     "videoTime": 10.3333,
+     "sourcePts": 10.305,
+     "file": "cam1/0026.webp",
+     "crop": [
+      0.589062,
+      0.562963,
+      0.663542,
+      0.877778
+     ],
+     "cropPx": [
+      1131,
+      608,
+      1274,
+      948
+     ],
+     "maskArea": 17683,
+     "maskBottomPx": [
+      1178.7,
+      935
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2+background",
+     "samVsBackgroundIoU": 0.847,
+     "backgroundDriftPx": [
+      -0.34,
+      0.88
+     ]
+    }
+   ]
+  },
+  "cam2": {
+   "width": 1920,
+   "height": 1080,
+   "frames": [
+    {
+     "k": 0,
+     "masterTime": 8.6,
+     "videoTime": 8.994,
+     "sourcePts": 8.9723,
+     "file": "cam2/0000.webp",
+     "crop": [
+      0.453125,
+      0.322222,
+      0.516146,
+      0.572222
+     ],
+     "cropPx": [
+      870,
+      348,
+      991,
+      618
+     ],
+     "maskArea": 15145,
+     "maskBottomPx": [
+      921.7,
+      605
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      0.0,
+      -0.0
+     ]
+    },
+    {
+     "k": 1,
+     "masterTime": 8.6667,
+     "videoTime": 9.0607,
+     "sourcePts": 9.039,
+     "file": "cam2/0001.webp",
+     "crop": [
+      0.445833,
+      0.319444,
+      0.513021,
+      0.572222
+     ],
+     "cropPx": [
+      856,
+      345,
+      985,
+      618
+     ],
+     "maskArea": 14377,
+     "maskBottomPx": [
+      913.3,
+      605
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.02,
+      0.01
+     ]
+    },
+    {
+     "k": 2,
+     "masterTime": 8.7333,
+     "videoTime": 9.1273,
+     "sourcePts": 9.1057,
+     "file": "cam2/0002.webp",
+     "crop": [
+      0.440104,
+      0.316667,
+      0.50625,
+      0.571296
+     ],
+     "cropPx": [
+      845,
+      342,
+      972,
+      617
+     ],
+     "maskArea": 13192,
+     "maskBottomPx": [
+      909.8,
+      604
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.05,
+      0.0
+     ]
+    },
+    {
+     "k": 3,
+     "masterTime": 8.8,
+     "videoTime": 9.194,
+     "sourcePts": 9.1723,
+     "file": "cam2/0003.webp",
+     "crop": [
+      0.436458,
+      0.314815,
+      0.498438,
+      0.571296
+     ],
+     "cropPx": [
+      838,
+      340,
+      957,
+      617
+     ],
+     "maskArea": 12056,
+     "maskBottomPx": [
+      909.0,
+      604
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.05,
+      0.02
+     ]
+    },
+    {
+     "k": 4,
+     "masterTime": 8.8667,
+     "videoTime": 9.2607,
+     "sourcePts": 9.239,
+     "file": "cam2/0004.webp",
+     "crop": [
+      0.434896,
+      0.311111,
+      0.490625,
+      0.571296
+     ],
+     "cropPx": [
+      835,
+      336,
+      942,
+      617
+     ],
+     "maskArea": 11134,
+     "maskBottomPx": [
+      909.8,
+      604
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.05,
+      0.02
+     ]
+    },
+    {
+     "k": 5,
+     "masterTime": 8.9333,
+     "videoTime": 9.3273,
+     "sourcePts": 9.3057,
+     "file": "cam2/0005.webp",
+     "crop": [
+      0.432812,
+      0.310185,
+      0.484375,
+      0.572222
+     ],
+     "cropPx": [
+      831,
+      335,
+      930,
+      618
+     ],
+     "maskArea": 10382,
+     "maskBottomPx": [
+      910.7,
+      605
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.04,
+      0.05
+     ]
+    },
+    {
+     "k": 6,
+     "masterTime": 9.0,
+     "videoTime": 9.394,
+     "sourcePts": 9.3723,
+     "file": "cam2/0006.webp",
+     "crop": [
+      0.432292,
+      0.309259,
+      0.479167,
+      0.57037
+     ],
+     "cropPx": [
+      830,
+      334,
+      920,
+      616
+     ],
+     "maskArea": 9237,
+     "maskBottomPx": [
+      905.6,
+      603
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.02,
+      0.06
+     ]
+    },
+    {
+     "k": 7,
+     "masterTime": 9.0667,
+     "videoTime": 9.4607,
+     "sourcePts": 9.439,
+     "file": "cam2/0007.webp",
+     "crop": [
+      0.429688,
+      0.308333,
+      0.476562,
+      0.575
+     ],
+     "cropPx": [
+      825,
+      333,
+      915,
+      621
+     ],
+     "maskArea": 9717,
+     "maskBottomPx": [
+      901.7,
+      608
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      0.0,
+      0.12
+     ]
+    },
+    {
+     "k": 8,
+     "masterTime": 9.1333,
+     "videoTime": 9.5273,
+     "sourcePts": 9.5057,
+     "file": "cam2/0008.webp",
+     "crop": [
+      0.427604,
+      0.310185,
+      0.475,
+      0.566667
+     ],
+     "cropPx": [
+      821,
+      335,
+      912,
+      612
+     ],
+     "maskArea": 10258,
+     "maskBottomPx": [
+      897.3,
+      599
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.01,
+      0.11
+     ]
+    },
+    {
+     "k": 9,
+     "masterTime": 9.2,
+     "videoTime": 9.594,
+     "sourcePts": 9.5723,
+     "file": "cam2/0009.webp",
+     "crop": [
+      0.421354,
+      0.307407,
+      0.475,
+      0.566667
+     ],
+     "cropPx": [
+      809,
+      332,
+      912,
+      612
+     ],
+     "maskArea": 12207,
+     "maskBottomPx": [
+      897.1,
+      599
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.04,
+      0.13
+     ]
+    },
+    {
+     "k": 10,
+     "masterTime": 9.2667,
+     "videoTime": 9.6607,
+     "sourcePts": 9.639,
+     "file": "cam2/0010.webp",
+     "crop": [
+      0.413542,
+      0.301852,
+      0.475,
+      0.562963
+     ],
+     "cropPx": [
+      794,
+      326,
+      912,
+      608
+     ],
+     "maskArea": 13179,
+     "maskBottomPx": [
+      893.4,
+      595
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.06,
+      0.13
+     ]
+    },
+    {
+     "k": 11,
+     "masterTime": 9.3333,
+     "videoTime": 9.7273,
+     "sourcePts": 9.7057,
+     "file": "cam2/0011.webp",
+     "crop": [
+      0.407812,
+      0.297222,
+      0.473438,
+      0.555556
+     ],
+     "cropPx": [
+      783,
+      321,
+      909,
+      600
+     ],
+     "maskArea": 13306,
+     "maskBottomPx": [
+      881.1,
+      587
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.1,
+      0.12
+     ]
+    },
+    {
+     "k": 12,
+     "masterTime": 9.4,
+     "videoTime": 9.794,
+     "sourcePts": 9.7723,
+     "file": "cam2/0012.webp",
+     "crop": [
+      0.404688,
+      0.293519,
+      0.472917,
+      0.535185
+     ],
+     "cropPx": [
+      777,
+      317,
+      908,
+      578
+     ],
+     "maskArea": 13228,
+     "maskBottomPx": [
+      859.4,
+      565
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.11,
+      0.16
+     ]
+    },
+    {
+     "k": 13,
+     "masterTime": 9.4667,
+     "videoTime": 9.8607,
+     "sourcePts": 9.839,
+     "file": "cam2/0013.webp",
+     "crop": [
+      0.401562,
+      0.289815,
+      0.471354,
+      0.514815
+     ],
+     "cropPx": [
+      771,
+      313,
+      905,
+      556
+     ],
+     "maskArea": 12857,
+     "maskBottomPx": [
+      836.5,
+      543
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.1,
+      0.15
+     ]
+    },
+    {
+     "k": 14,
+     "masterTime": 9.5333,
+     "videoTime": 9.9273,
+     "sourcePts": 9.9057,
+     "file": "cam2/0014.webp",
+     "crop": [
+      0.397396,
+      0.289815,
+      0.467188,
+      0.5
+     ],
+     "cropPx": [
+      763,
+      313,
+      897,
+      540
+     ],
+     "maskArea": 12315,
+     "maskBottomPx": [
+      815.7,
+      527
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.08,
+      0.17
+     ]
+    },
+    {
+     "k": 15,
+     "masterTime": 9.6,
+     "videoTime": 9.994,
+     "sourcePts": 9.9723,
+     "file": "cam2/0015.webp",
+     "crop": [
+      0.392188,
+      0.287963,
+      0.463542,
+      0.484259
+     ],
+     "cropPx": [
+      753,
+      311,
+      890,
+      523
+     ],
+     "maskArea": 12181,
+     "maskBottomPx": [
+      816.6,
+      510
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.09,
+      0.2
+     ]
+    },
+    {
+     "k": 16,
+     "masterTime": 9.6667,
+     "videoTime": 10.0607,
+     "sourcePts": 10.039,
+     "file": "cam2/0016.webp",
+     "crop": [
+      0.388542,
+      0.287037,
+      0.459375,
+      0.487037
+     ],
+     "cropPx": [
+      746,
+      310,
+      882,
+      526
+     ],
+     "maskArea": 12593,
+     "maskBottomPx": [
+      814.2,
+      513
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.08,
+      0.24
+     ]
+    },
+    {
+     "k": 17,
+     "masterTime": 9.7333,
+     "videoTime": 10.1273,
+     "sourcePts": 10.1057,
+     "file": "cam2/0017.webp",
+     "crop": [
+      0.385938,
+      0.286111,
+      0.455208,
+      0.480556
+     ],
+     "cropPx": [
+      741,
+      309,
+      874,
+      519
+     ],
+     "maskArea": 11999,
+     "maskBottomPx": [
+      801.9,
+      506
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.07,
+      0.25
+     ]
+    },
+    {
+     "k": 18,
+     "masterTime": 9.8,
+     "videoTime": 10.194,
+     "sourcePts": 10.1723,
+     "file": "cam2/0018.webp",
+     "crop": [
+      0.384896,
+      0.283333,
+      0.450521,
+      0.478704
+     ],
+     "cropPx": [
+      739,
+      306,
+      865,
+      517
+     ],
+     "maskArea": 11605,
+     "maskBottomPx": [
+      796.1,
+      504
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.04,
+      0.32
+     ]
+    },
+    {
+     "k": 19,
+     "masterTime": 9.8667,
+     "videoTime": 10.2607,
+     "sourcePts": 10.2407,
+     "file": "cam2/0019.webp",
+     "crop": [
+      0.383333,
+      0.27963,
+      0.445833,
+      0.477778
+     ],
+     "cropPx": [
+      736,
+      302,
+      856,
+      516
+     ],
+     "maskArea": 11661,
+     "maskBottomPx": [
+      794.4,
+      503
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.05,
+      0.34
+     ]
+    },
+    {
+     "k": 20,
+     "masterTime": 9.9333,
+     "videoTime": 10.3273,
+     "sourcePts": 10.3073,
+     "file": "cam2/0020.webp",
+     "crop": [
+      0.380729,
+      0.275,
+      0.443229,
+      0.477778
+     ],
+     "cropPx": [
+      731,
+      297,
+      851,
+      516
+     ],
+     "maskArea": 11702,
+     "maskBottomPx": [
+      793.2,
+      503
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.07,
+      0.29
+     ]
+    },
+    {
+     "k": 21,
+     "masterTime": 10.0,
+     "videoTime": 10.394,
+     "sourcePts": 10.374,
+     "file": "cam2/0021.webp",
+     "crop": [
+      0.377604,
+      0.27037,
+      0.439583,
+      0.477778
+     ],
+     "cropPx": [
+      725,
+      292,
+      844,
+      516
+     ],
+     "maskArea": 11669,
+     "maskBottomPx": [
+      791.1,
+      503
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.13,
+      0.36
+     ]
+    },
+    {
+     "k": 22,
+     "masterTime": 10.0667,
+     "videoTime": 10.4607,
+     "sourcePts": 10.4407,
+     "file": "cam2/0022.webp",
+     "crop": [
+      0.374479,
+      0.268519,
+      0.438021,
+      0.472222
+     ],
+     "cropPx": [
+      719,
+      290,
+      841,
+      510
+     ],
+     "maskArea": 11571,
+     "maskBottomPx": [
+      789.1,
+      497
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.1,
+      0.37
+     ]
+    },
+    {
+     "k": 23,
+     "masterTime": 10.1333,
+     "videoTime": 10.5273,
+     "sourcePts": 10.5073,
+     "file": "cam2/0023.webp",
+     "crop": [
+      0.369792,
+      0.266667,
+      0.433333,
+      0.467593
+     ],
+     "cropPx": [
+      710,
+      288,
+      832,
+      505
+     ],
+     "maskArea": 11207,
+     "maskBottomPx": [
+      784.9,
+      492
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.09,
+      0.33
+     ]
+    },
+    {
+     "k": 24,
+     "masterTime": 10.2,
+     "videoTime": 10.594,
+     "sourcePts": 10.574,
+     "file": "cam2/0024.webp",
+     "crop": [
+      0.365104,
+      0.266667,
+      0.429688,
+      0.465741
+     ],
+     "cropPx": [
+      701,
+      288,
+      825,
+      503
+     ],
+     "maskArea": 10910,
+     "maskBottomPx": [
+      782.1,
+      490
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.12,
+      0.39
+     ]
+    },
+    {
+     "k": 25,
+     "masterTime": 10.2667,
+     "videoTime": 10.6607,
+     "sourcePts": 10.6407,
+     "file": "cam2/0025.webp",
+     "crop": [
+      0.359896,
+      0.265741,
+      0.425,
+      0.462037
+     ],
+     "cropPx": [
+      691,
+      287,
+      816,
+      499
+     ],
+     "maskArea": 10621,
+     "maskBottomPx": [
+      777.4,
+      486
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.09,
+      0.3
+     ]
+    },
+    {
+     "k": 26,
+     "masterTime": 10.3333,
+     "videoTime": 10.7273,
+     "sourcePts": 10.7073,
+     "file": "cam2/0026.webp",
+     "crop": [
+      0.357292,
+      0.261111,
+      0.420312,
+      0.456481
+     ],
+     "cropPx": [
+      686,
+      282,
+      807,
+      493
+     ],
+     "maskArea": 10581,
+     "maskBottomPx": [
+      771.5,
+      480
+     ],
+     "manualMask": false,
+     "maskMethod": "sam2",
+     "samVsBackgroundIoU": null,
+     "backgroundDriftPx": [
+      -0.13,
+      0.29
+     ]
+    }
+   ]
+  }
+ }
+}
