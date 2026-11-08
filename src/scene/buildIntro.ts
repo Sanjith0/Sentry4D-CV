@@ -75,6 +75,11 @@ export function stepBuild(now: number, y0: number, y1: number): boolean {
   return true;
 }
 
+/** True once the page-load build has finished (or was skipped). */
+export function isBuildFinished() {
+  return played && !building;
+}
+
 export function primeBuild(y0: number) {
   startAt = null;
   building = true;

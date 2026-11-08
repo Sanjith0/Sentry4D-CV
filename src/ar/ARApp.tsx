@@ -11,6 +11,7 @@ import { RoomStage } from "../scene/RoomStage";
 import { WindowWall } from "../scene/WindowWall";
 import { AppearanceLayer } from "../features/reconstruction/AppearanceLayer";
 import { formatClock } from "../lib/format";
+import { isBuildFinished } from "../scene/buildIntro";
 import { CameraFeed, MagicWindowCamera, MoveControls, enableMotion, viewer } from "./MagicWindow";
 
 /**
@@ -39,8 +40,19 @@ function useLoopWindow() {
 
 /** Drives the existing master clock from the render loop (window rAF pauses during a WebXR session). */
 function ARClock({ t0, t1 }: { t0: number; t1: number }) {
+  const started = useRef(false);
   useFrame((_, dt) => {
     const s = useReplayStore.getState();
+    // Hold the replay at the start until the room has loaded and its build-in animation has finished.
+    if (!started.current) {
+      const st = useViewStore.getState().roomStatus;
+      if (st === "checking" || st === "loading" || (st === "loaded" && !isBuildFinished())) {
+        if (s.currentTime !== t0) useReplayStore.setState({ currentTime: t0 });
+        return;
+      }
+      started.current = true;
+      s.seek(t0);
+    }
     if (!s.isPlaying) return;
     const next = s.currentTime + Math.min(dt, 0.1) * s.playbackSpeed;
     if (next >= t1 || next < t0 - 1) s.seek(t0);
