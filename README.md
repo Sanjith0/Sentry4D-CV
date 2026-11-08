@@ -55,6 +55,19 @@ Saving goes through a small dev-server endpoint (`vite.config.ts`, `sentry3dConf
 
 Times are **master time** (`masterTime = videoTime − offset`). Pixels are normalized `[u, v]` in the upright displayed frame (0,0 = top-left). The math lives in `src/lib/videoProjection.ts` (`videoPixelToWorld`, `worldToVideoPixel`).
 
+## Tracked subjects in 3D (Phase 2)
+
+`src/features/sentry/SceneActors.tsx` renders each subject in `src/config/subjects.ts` (default: `SUBJECT 01` ← annotation dataset `person_01`) as a volumetric humanoid in the room. It's driven only by the master clock, so play, pause, seek and speed changes are deterministic, and the subject occupies the same spot in every camera mode.
+
+Trajectory (`src/features/sentry/trajectory.ts`, tunables in `trajectoryConfig`):
+- Observations within `clusterWindow` (0.2 s) count as simultaneous and are **fused**: a manual top-down correction beats a video click, which beats future automatic detections. Same-priority disagreements are resolved by the surrounding track, and the rest are combined by a weighted mean (σ comes from each camera's projection geometry). Source camera IDs are kept.
+- **Outliers** are rejected, with a stated reason, when a sample lies far off the path between its neighbours and reaching it would need more than `maxSpeed` (3 m/s). See the verdicts via `buildTrajectory(...).verdicts`.
+- A cubic Hermite curve passes exactly through the fused samples; segments longer than `gapSeconds` are straight lines marked **ESTIMATED** (amber outline and label, plus an incident-log event).
+- The subject is hidden before the first and after the last observation. Facing comes from movement, and the walk cycle comes from distance travelled.
+
+Store: the header subject count, entry/gap/exit events (from real annotations only), live selection details (click the subject), and **X**-ray shows the subject through walls.
+CCTV view → **TRACKING DIAGNOSTICS** ghosts the real recording and marks the annotated feet (orange) and the projected 3D subject (cyan) with their pixel error.
+
 ## Camera sync
 
 Open with the **SYNC** button in the CCTV panel header (or press **Y**).

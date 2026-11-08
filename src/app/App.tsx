@@ -88,11 +88,23 @@ function useShortcuts() {
 
 if (import.meta.env.DEV) {
   // Debug handle for teammates: window.__sentry.replay.getState() etc.
-  Promise.all([import("../scene/viewportCamera"), import("../lib/videoProjection"), import("../features/annotation/useAnnotationStore")]).then(
-    ([{ viewport }, projection, { useAnnotationStore }]) => {
-      (window as unknown as Record<string, unknown>).__sentry = { replay: useReplayStore, view: useViewStore, viewport, projection, annotations: useAnnotationStore };
-    },
-  );
+  Promise.all([
+    import("../scene/viewportCamera"),
+    import("../lib/videoProjection"),
+    import("../features/annotation/useAnnotationStore"),
+    import("../features/sentry/trajectory"),
+    import("../lib/videoRegistry"),
+  ]).then(([{ viewport }, projection, { useAnnotationStore }, trajectory, registry]) => {
+    (window as unknown as Record<string, unknown>).__sentry = {
+      replay: useReplayStore,
+      view: useViewStore,
+      viewport,
+      projection,
+      annotations: useAnnotationStore,
+      trajectory,
+      registry,
+    };
+  });
 }
 
 export default function App() {

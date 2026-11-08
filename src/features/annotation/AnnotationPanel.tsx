@@ -5,7 +5,8 @@ import { getCamera, securityCameras } from "../../config/cameras";
 import { useReplayStore } from "../../store/useReplayStore";
 import { useViewStore } from "../../store/useViewStore";
 import { VideoMirror } from "../../dashboard/VideoMirror";
-import { videoRegistry } from "../../lib/videoRegistry";
+import { frameInfoFor } from "../../lib/videoRegistry";
+export { frameInfoFor };
 import { getRoomMeshes } from "../../scene/viewportCamera";
 import { formatClock } from "../../lib/format";
 import { canSaveToProject, saveProjectConfig } from "../../lib/saveConfig";
@@ -540,11 +541,4 @@ export function AnnotationPanel() {
       </div>
     </section>
   );
-}
-
-/** Frame info for a camera from its registered video element. */
-export function frameInfoFor(id: CameraId): VideoFrameInfo | null {
-  const v = videoRegistry.get(id);
-  const cam = getCamera(id);
-  return v && v.videoWidth ? { width: v.videoWidth, height: v.videoHeight, rotation: cam?.videoRotation ?? 0 } : null;
 }

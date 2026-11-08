@@ -8,7 +8,8 @@ import { formatClock } from "../../lib/format";
 import { videoPixelToWorld, worldToVideoPixel } from "../../lib/videoProjection";
 import type { PersonObservation, Vec3 } from "../../types/security";
 import { useActiveObservations, useAnnotationStore } from "./useAnnotationStore";
-import { camLabel, frameInfoFor } from "./AnnotationPanel";
+import { camLabel } from "./AnnotationPanel";
+import { frameInfoFor } from "../../lib/videoRegistry";
 import { getRoomMeshes } from "../../scene/viewportCamera";
 
 const CYAN = "#22d3ee";

@@ -19,6 +19,7 @@ export const eventTypeStyles: Record<string, { color: string; label: string }> =
   person: { color: "#22d3ee", label: "Subject" },
   entry: { color: "#22d3ee", label: "Entry" },
   exit: { color: "#22d3ee", label: "Exit" },
+  gap: { color: "#f59e0b", label: "Tracking gap" },
   object: { color: "#f59e0b", label: "Object" },
   "object-moved": { color: "#f59e0b", label: "Object moved" },
   alert: { color: "#ef4444", label: "Alert" },

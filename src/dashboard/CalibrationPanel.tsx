@@ -11,12 +11,14 @@ import { VideoMirror } from "./VideoMirror";
 import { Kbd } from "./ui";
 
 /** Outline of the 16:9 sensor inside the viewport, with the real recording ghosted on top while calibrating. */
-export function SensorFrame() {
+export function SensorFrame({ children }: { children?: React.ReactNode }) {
   const root = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const id = useReplayStore((s) => s.selectedCameraId);
   const feedReady = useReplayStore((s) => (id ? s.feeds[id].status === "ready" : false));
   const calibrating = useViewStore((s) => s.calibrating);
+  const diagnostics = useViewStore((s) => s.trackingDiagnostics);
+  const showGhost = calibrating || diagnostics;
   const opacity = useViewStore((s) => s.ghostOpacity);
   const blend = useViewStore((s) => s.ghostBlend);
 
@@ -37,7 +39,7 @@ export function SensorFrame() {
           className="absolute border border-cyan-300/70"
           style={{ left: box.x, top: box.y, width: box.w, height: box.h, boxShadow: "0 0 0 9999px rgba(2,6,12,0.55)" }}
         >
-          {calibrating && cam && feedReady && opacity > 0 && (
+          {showGhost && cam && feedReady && opacity > 0 && (
             <div className="absolute inset-0" style={{ opacity, mixBlendMode: blend }}>
               <VideoMirror cameraId={cam.id} rotation={cam.videoRotation ?? 0} />
             </div>
@@ -51,6 +53,7 @@ export function SensorFrame() {
               <div className="absolute inset-x-0 top-2/3 h-px bg-cyan-300/25" />
             </>
           )}
+          {children}
         </div>
       )}
     </div>

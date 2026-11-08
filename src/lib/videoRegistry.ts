@@ -1,4 +1,6 @@
 import type { CameraId } from "../types/security";
+import { getCamera } from "../config/cameras";
+import type { VideoFrameInfo } from "./videoProjection";
 
 /**
  * Registry of the live <video> element for each camera. The CCTV feeds own the
@@ -25,3 +27,18 @@ export const videoRegistry = {
     };
   },
 };
+
+/** Recorded frame size (all four recordings are 1920×1080), used before a video has loaded. */
+export const DEFAULT_FRAME = { width: 1920, height: 1080 };
+
+/** Frame info for a camera from its registered video element (null until loaded). */
+export function frameInfoFor(id: CameraId): VideoFrameInfo | null {
+  const v = videoRegistry.get(id);
+  const cam = getCamera(id);
+  return v && v.videoWidth ? { width: v.videoWidth, height: v.videoHeight, rotation: cam?.videoRotation ?? 0 } : null;
+}
+
+/** Like frameInfoFor, but falls back to the known recording size so math works before load. */
+export function frameInfoOrDefault(id: CameraId): VideoFrameInfo {
+  return frameInfoFor(id) ?? { ...DEFAULT_FRAME, rotation: getCamera(id)?.videoRotation ?? 0 };
+}

@@ -27,6 +27,8 @@ interface ViewState {
   /** Opacity of the real recording overlaid on the virtual CCTV view (0..1). */
   ghostOpacity: number;
   ghostBlend: "normal" | "difference";
+  /** CCTV view: overlay real footage + annotated video point vs. projected 3D subject. */
+  trackingDiagnostics: boolean;
   pointerLocked: boolean;
   /** Free-camera base speed (m/s). */
   flySpeed: number;
@@ -50,6 +52,7 @@ interface ViewState {
   setAnnotationCamera: (id: CameraId) => void;
   setGhostOpacity: (v: number) => void;
   setGhostBlend: (v: "normal" | "difference") => void;
+  toggleTrackingDiagnostics: () => void;
   setPointerLocked: (v: boolean) => void;
   setFlySpeed: (v: number) => void;
   resetView: () => void;
@@ -74,6 +77,7 @@ export const useViewStore = create<ViewState>()((set) => ({
   collapsedBeforeCalibrate: false,
   ghostOpacity: 0.5,
   ghostBlend: "normal",
+  trackingDiagnostics: false,
   pointerLocked: false,
   flySpeed: 2.5,
   resetToken: 0,
@@ -115,6 +119,7 @@ export const useViewStore = create<ViewState>()((set) => ({
   setAnnotationCamera: (annotationCameraId) => set({ annotationCameraId }),
   setGhostOpacity: (ghostOpacity) => set({ ghostOpacity: Math.min(Math.max(ghostOpacity, 0), 1) }),
   setGhostBlend: (ghostBlend) => set({ ghostBlend }),
+  toggleTrackingDiagnostics: () => set((s) => ({ trackingDiagnostics: !s.trackingDiagnostics })),
   setPointerLocked: (pointerLocked) => set({ pointerLocked }),
   setFlySpeed: (flySpeed) => set({ flySpeed: Math.min(Math.max(flySpeed, 0.25), 20) }),
   resetView: () => set((s) => ({ resetToken: s.resetToken + 1 })),

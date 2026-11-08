@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Box, Cctv, ClipboardCopy, Crosshair, Eye, EyeOff, Gamepad2, Map, Orbit, RotateCcw, Sparkles, Square, Video } from "lucide-react";
+import { Box, Cctv, ClipboardCopy, Crosshair, Footprints, Eye, EyeOff, Gamepad2, Map, Orbit, RotateCcw, Sparkles, Square, Video } from "lucide-react";
 import * as THREE from "three";
 import { useCamera, useCameras, useReplayStore } from "../store/useReplayStore";
 import { CalibrationPanel, SensorFrame } from "./CalibrationPanel";
+import { TrackingDiagnostics } from "../features/sentry/TrackingDiagnostics";
 import { useViewStore, type RenderQuality } from "../store/useViewStore";
 import type { CameraMode } from "../types/security";
 import { formatWallClock } from "../lib/format";
@@ -171,12 +172,14 @@ function CctvHud() {
   const cssVignette = useViewStore((s) => s.quality === "performance");
   const calibrating = useViewStore((s) => s.calibrating);
   const setCalibrating = useViewStore((s) => s.setCalibrating);
+  const diagnostics = useViewStore((s) => s.trackingDiagnostics);
+  const toggleDiagnostics = useViewStore((s) => s.toggleTrackingDiagnostics);
   if (!cam) return null;
   return (
     <>
       {!calibrating && <div className="scanlines absolute inset-0" />}
       {!calibrating && cssVignette && <div className="vignette absolute inset-0" />}
-      <SensorFrame />
+      <SensorFrame>{diagnostics && !calibrating && <TrackingDiagnostics />}</SensorFrame>
       {calibrating && <CalibrationPanel />}
       {!calibrating && (
       <div className="glass pointer-events-auto absolute top-16 right-3 flex flex-col items-end gap-2 rounded-lg p-2.5 fade-in">
@@ -194,6 +197,14 @@ function CctvHud() {
             </ToolButton>
           ))}
         </div>
+        <ToolButton
+          active={diagnostics}
+          onClick={toggleDiagnostics}
+          className="w-full justify-center"
+          title="Overlay the real recording and compare annotated feet (video) with the projected 3D subject"
+        >
+          <Footprints className="h-3.5 w-3.5" /> TRACKING DIAGNOSTICS
+        </ToolButton>
         <ToolButton
           active={calibrating}
           tone="amber"
