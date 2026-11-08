@@ -8,7 +8,7 @@ import { useReplayStore } from "../store/useReplayStore";
 import type { RoomBounds, Vec3 } from "../types/security";
 import { ceilingPlanes, setCeilingCut } from "./ceilingClip";
 import { applyWindowClip } from "./windowWallClip";
-import { applyBuildClip, finishBuild, makeBuildWireMaterial, primeBuild, setWireMode, shouldPlayBuild, stepBuild } from "./buildIntro";
+import { applyBuildClip, finishBuild, makeBuildScanPlane, makeBuildWireMaterial, primeBuild, setWireMode, shouldPlayBuild, stepBuild } from "./buildIntro";
 
 const DEG = Math.PI / 180;
 
@@ -129,6 +129,13 @@ export function RoomModel({ url = roomConfig.url, config = roomConfig, onLoaded 
       }
     });
     materials.push(wireMaterial);
+    // The scan plane rides with the wireframe (world-positioned in its shader), so add it to the wire group.
+    const scanPlane = makeBuildScanPlane(box.max.x - box.min.x + 0.6, box.max.z - box.min.z + 0.6, new THREE.Vector3((box.min.x + box.max.x) / 2, 0, (box.min.z + box.max.z) / 2));
+    const planeHolder = new THREE.Group();
+    planeHolder.add(scanPlane);
+    wire.add(planeHolder);
+    scanPlane.position.sub(wire.position); // wire group is offset like the room; keep the plane centred in world space
+    materials.push(scanPlane.material as THREE.Material);
     return { object: outer, wire, bounds: boundsFromBox(box), sweep: [Math.min(box.min.y, scan.min[1]) - 0.05, box.max.y + 0.25] as const, materials };
   }, [gltf, config, anisotropy]);
 
