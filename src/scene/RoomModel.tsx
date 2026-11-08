@@ -8,7 +8,7 @@ import { useReplayStore } from "../store/useReplayStore";
 import type { RoomBounds, Vec3 } from "../types/security";
 import { ceilingPlanes, setCeilingCut } from "./ceilingClip";
 import { applyWindowClip } from "./windowWallClip";
-import { applyBuildClip, finishBuild, makeBuildWireMaterial, primeBuild, shouldPlayBuild, stepBuild } from "./buildIntro";
+import { applyBuildClip, finishBuild, makeBuildWireMaterial, primeBuild, setWireMode, shouldPlayBuild, stepBuild } from "./buildIntro";
 
 const DEG = Math.PI / 180;
 
@@ -132,7 +132,9 @@ export function RoomModel({ url = roomConfig.url, config = roomConfig, onLoaded 
     return { object: outer, wire, bounds: boundsFromBox(box), sweep: [Math.min(box.min.y, scan.min[1]) - 0.05, box.max.y + 0.25] as const, materials };
   }, [gltf, config, anisotropy]);
 
+  const wireframe = useViewStore((s) => s.wireframe);
   const [building, setBuilding] = useState(() => shouldPlayBuild());
+  useEffect(() => setWireMode(wireframe), [wireframe]);
   useEffect(() => {
     if (building) primeBuild(sweep[0]);
   }, [building, sweep]);
@@ -157,7 +159,7 @@ export function RoomModel({ url = roomConfig.url, config = roomConfig, onLoaded 
   return (
     <>
       <primitive object={object} />
-      {building && <primitive object={wire} />}
+      {(building || wireframe) && <primitive object={wire} />}
     </>
   );
 }

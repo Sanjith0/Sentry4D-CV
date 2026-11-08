@@ -11,6 +11,8 @@ export const buildUniforms = {
   /** World Y below which the wireframe is visible. */
   uBuildWireY: { value: 1e6 },
   uBuildGlow: { value: new THREE.Color("#4fd8ff") },
+  /** 1 when the user has switched the room to wireframe view (brightens the steady wire). */
+  uWireMode: { value: 0 },
 };
 
 const WIRE_DURATION = 2.4;
@@ -19,6 +21,21 @@ const TEX_DURATION = 2.6;
 export const BUILD_TOTAL = TEX_DELAY + TEX_DURATION;
 
 let played = false;
+let wireMode = false;
+let building = false;
+
+/** Resting state of the uniforms when no build is running: textured, or wireframe only. */
+function settle() {
+  buildUniforms.uWireMode.value = wireMode ? 1 : 0;
+  buildUniforms.uBuildTexY.value = wireMode ? -1e6 : 1e6;
+  buildUniforms.uBuildWireY.value = 1e6;
+}
+
+/** Wireframe view toggle. During the page-load build it takes effect when the build ends. */
+export function setWireMode(on: boolean) {
+  wireMode = on;
+  if (!building) settle();
+}
 let startAt: number | null = null;
 
 /** True while the reveal should run (only on the first room mount of the page, and not for reduced motion). */
@@ -57,19 +74,21 @@ export function stepBuild(now: number, y0: number, y1: number): boolean {
 
 export function primeBuild(y0: number) {
   startAt = null;
+  building = true;
+  buildUniforms.uWireMode.value = 0;
   buildUniforms.uBuildTexY.value = y0;
   buildUniforms.uBuildWireY.value = y0;
 }
 
 export function finishBuild() {
   played = true;
-  buildUniforms.uBuildTexY.value = 1e6;
-  buildUniforms.uBuildWireY.value = 1e6;
+  building = false;
+  settle();
 }
 
 const BUILD_PARS = /* glsl */ `
 varying vec3 vBuildWorld;
-uniform float uBuildTexY; uniform float uBuildWireY; uniform vec3 uBuildGlow;`;
+uniform float uBuildTexY; uniform float uBuildWireY; uniform vec3 uBuildGlow; uniform float uWireMode;`;
 
 function chainKey(material: THREE.Material, tag: string) {
   const prevKey = material.customProgramCacheKey.bind(material);
@@ -133,7 +152,7 @@ if (vBuildWorld.y > uBuildWireY || vBuildWorld.y < uBuildTexY - 0.04) discard;`,
         `#include <opaque_fragment>
 { float lead = exp(-(uBuildWireY - vBuildWorld.y) * 6.0);
   float trail = smoothstep(uBuildTexY - 0.04, uBuildTexY + 0.25, vBuildWorld.y);
-  gl_FragColor.rgb *= (0.35 + 2.6 * lead) * trail;
+  gl_FragColor.rgb *= (0.35 + 2.6 * lead + 0.35 * uWireMode) * trail;
   gl_FragColor.a *= trail; }`,
       );
   };

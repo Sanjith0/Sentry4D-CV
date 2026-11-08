@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Box, Cctv, ClipboardCopy, Crosshair, Footprints, Eye, EyeOff, Gamepad2, Map, Orbit, PanelsLeftRight, RotateCcw, Sparkles, Square, Video } from "lucide-react";
+import { Box, Cctv, Grid3x3, ClipboardCopy, Crosshair, Footprints, Eye, EyeOff, Gamepad2, Map, Orbit, PanelsLeftRight, RotateCcw, Sparkles, Square, Video } from "lucide-react";
 import * as THREE from "three";
 import { useCamera, useCameras, useReplayStore } from "../store/useReplayStore";
 import { CalibrationPanel, SensorFrame } from "./CalibrationPanel";
@@ -59,6 +59,8 @@ export function ViewerToolbar() {
   const resetView = useViewStore((s) => s.resetView);
   const cleanWindows = useViewStore((s) => s.cleanWindows);
   const toggleCleanWindows = useViewStore((s) => s.toggleCleanWindows);
+  const wireframe = useViewStore((s) => s.wireframe);
+  const toggleWireframe = useViewStore((s) => s.toggleWireframe);
 
   return (
     <div className="glass pointer-events-auto absolute top-3 right-3 left-3 flex w-fit max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1.5 rounded-lg p-1.5 fade-in">
@@ -80,6 +82,10 @@ export function ViewerToolbar() {
       <ToolButton active={cleanWindows} onClick={toggleCleanWindows} title="Clean glass wall + balcony instead of the noisy scanned windows (G)">
         <PanelsLeftRight className="h-3.5 w-3.5" />
         GLASS
+      </ToolButton>
+      <ToolButton active={wireframe} onClick={toggleWireframe} title="Show the room scan as a wireframe (L)">
+        <Grid3x3 className="h-3.5 w-3.5" />
+        WIRE
       </ToolButton>
       <ToolButton active={showCeiling} tone="slate" onClick={toggleCeiling} title="Ceiling visibility (H)">
         {showCeiling ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}

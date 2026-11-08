@@ -14,6 +14,8 @@ interface ViewState {
   showMarkers: boolean;
   /** Replace the noisy scanned glass wall/balcony with clean procedural glass. */
   cleanWindows: boolean;
+  /** Show the room scan as a wireframe instead of its textured surface. */
+  wireframe: boolean;
   feedsCollapsed: boolean;
   /** Feed shown enlarged over the viewport. */
   focusedFeedId: CameraId | null;
@@ -52,6 +54,7 @@ interface ViewState {
   toggleCeiling: () => void;
   toggleMarkers: () => void;
   toggleCleanWindows: () => void;
+  toggleWireframe: () => void;
   toggleFeedsCollapsed: () => void;
   setFocusedFeed: (id: CameraId | null) => void;
   setHoveredCamera: (id: CameraId | null) => void;
@@ -80,6 +83,7 @@ export const useViewStore = create<ViewState>()((set) => ({
   showCeiling: false,
   showMarkers: true,
   cleanWindows: true,
+  wireframe: false,
   feedsCollapsed: false,
   focusedFeedId: null,
   hoveredCameraId: null,
@@ -106,6 +110,7 @@ export const useViewStore = create<ViewState>()((set) => ({
   toggleCeiling: () => set((s) => ({ showCeiling: !s.showCeiling })),
   toggleMarkers: () => set((s) => ({ showMarkers: !s.showMarkers })),
   toggleCleanWindows: () => set((s) => ({ cleanWindows: !s.cleanWindows })),
+  toggleWireframe: () => set((s) => ({ wireframe: !s.wireframe })),
   toggleFeedsCollapsed: () => set((s) => ({ feedsCollapsed: !s.feedsCollapsed })),
   setFocusedFeed: (focusedFeedId) => set({ focusedFeedId }),
   setHoveredCamera: (hoveredCameraId) => set({ hoveredCameraId }),
