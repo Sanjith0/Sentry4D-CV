@@ -239,6 +239,14 @@ const str = (v: unknown, field: string, max = 4000) => {
 
 function validateReport(raw: Any, d: IncidentData): { report: InvestigationReport; warnings: string[] } {
   const warnings: string[] = [];
+  if (typeof raw === "string") {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      /* fall through */
+    }
+  }
+  if (raw && typeof raw.report === "object" && !raw.keyEvents) raw = raw.report; // wrapped by the model
   if (!raw || typeof raw !== "object") throw new ToolError("report must be an object");
   const inRange = (t: unknown, field: string) => {
     if (!num(t) || t < 0 || t > d.duration + 0.5) throw new ToolError(`${field}=${String(t)} is not a valid timestamp within 0..${d.duration.toFixed(1)} s`);
@@ -249,7 +257,15 @@ function validateReport(raw: Any, d: IncidentData): { report: InvestigationRepor
     return c as CameraId;
   };
   const arr = (v: unknown, field: string) => {
-    if (v === undefined) return [];
+    if (v === undefined || v === null || v === "") return [];
+    if (typeof v === "string") {
+      try {
+        v = JSON.parse(v);
+      } catch {
+        throw new ToolError(`${field} must be an array (got a non-JSON string)`);
+      }
+    }
+    if (v && typeof v === "object" && !Array.isArray(v)) v = [v];
     if (!Array.isArray(v)) throw new ToolError(`${field} must be an array`);
     return v.slice(0, 30);
   };
@@ -257,17 +273,21 @@ function validateReport(raw: Any, d: IncidentData): { report: InvestigationRepor
     const evidence = arr(e?.evidence, `keyEvents[${i}].evidence`).map((r: Any, j: number) => {
       const f = `keyEvents[${i}].evidence[${j}]`;
       const eventId = r?.eventId == null || r.eventId === "" ? null : String(r.eventId);
-      if (eventId && !d.knownIds.has(eventId)) throw new ToolError(`${f}.eventId "${eventId}" does not exist; use IDs returned by getIncidentEvents / getSubjectTrajectory or null`);
-      if (!["observation", "estimate", "visibility-mark", "event", "object-review"].includes(r?.evidenceType)) throw new ToolError(`${f}.evidenceType invalid`);
-      return { cameraId: r?.cameraId == null || r.cameraId === "" ? null : cam(r.cameraId, `${f}.cameraId`), timestamp: inRange(r?.timestamp, `${f}.timestamp`), eventId, evidenceType: r.evidenceType };
+      if (eventId && !d.knownIds.has(eventId)) {
+        warnings.push(`${f}.eventId "${eventId}" is not a known ID and was removed`);
+        return { cameraId: CAMERA_IDS.includes(r?.cameraId) ? r.cameraId : null, timestamp: inRange(r?.timestamp, `${f}.timestamp`), eventId: null, evidenceType: (["observation", "estimate", "visibility-mark", "event", "object-review"].includes(r?.evidenceType) ? r.evidenceType : "event") };
+      }
+      if (!["observation", "estimate", "visibility-mark", "event", "object-review"].includes(r?.evidenceType)) r = { ...r, evidenceType: "event" };
+      return { cameraId: CAMERA_IDS.includes(r?.cameraId) ? r.cameraId : null, timestamp: inRange(r?.timestamp, `${f}.timestamp`), eventId, evidenceType: (["observation", "estimate", "visibility-mark", "event", "object-review"].includes(r?.evidenceType) ? r.evidenceType : "event") };
     });
-    if (!["observed", "estimated", "human-reviewed", "unverified"].includes(e?.evidenceStatus)) throw new ToolError(`keyEvents[${i}].evidenceStatus invalid`);
+    const st = String(e?.evidenceStatus ?? "").toLowerCase();
+    const evidenceStatus = st.startsWith("observ") ? "observed" : st.startsWith("estim") || st.includes("interp") ? "estimated" : st.includes("review") ? "human-reviewed" : "unverified";
     if (!evidence.length) warnings.push(`key event "${e?.title}" has no evidence reference`);
     return {
       title: str(e?.title, `keyEvents[${i}].title`, 200), timestamp: inRange(e?.timestamp, `keyEvents[${i}].timestamp`),
       description: str(e?.description, `keyEvents[${i}].description`, 1200),
-      cameraIds: arr(e?.cameraIds, `keyEvents[${i}].cameraIds`).map((c: unknown, j: number) => cam(c, `keyEvents[${i}].cameraIds[${j}]`)),
-      evidenceStatus: e.evidenceStatus, evidence,
+      cameraIds: arr(e?.cameraIds, `keyEvents[${i}].cameraIds`).map((c: unknown) => String(c).toLowerCase().replace(/^cam\s*0?/, "cam")).filter((c: string): c is CameraId => CAMERA_IDS.includes(c as CameraId)),
+      evidenceStatus, evidence,
     };
   });
   if (!keyEvents.length) throw new ToolError("keyEvents must contain at least one event");
@@ -298,7 +318,8 @@ function validateReport(raw: Any, d: IncidentData): { report: InvestigationRepor
 }
 
 function optTime(v: unknown, field: string) {
-  if (v === undefined || v === null) return undefined;
+  if (v === undefined || v === null || v === "") return undefined;
+  if (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v))) v = Number(v);
   if (!num(v)) throw new ToolError(`${field} must be a number of seconds`);
   return v;
 }
