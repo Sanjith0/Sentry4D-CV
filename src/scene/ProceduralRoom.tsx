@@ -3,13 +3,17 @@ import { Grid } from "@react-three/drei";
 import * as THREE from "three";
 import { roomConfig } from "../config/roomConfig";
 import { useViewStore } from "../store/useViewStore";
+import { useReplayStore } from "../store/useReplayStore";
 import type { RoomBounds } from "../types/security";
 import { ceilingPlanes, setCeilingCut } from "./ceilingClip";
 
 /** Fallback room used when room.glb is missing or fails to load. Floor at y = 0. */
 export function ProceduralRoom({ width = roomConfig.placeholder.width, height = roomConfig.placeholder.height, depth = roomConfig.placeholder.depth }) {
   const setRoomBounds = useViewStore((s) => s.setRoomBounds);
-  const showCeiling = useViewStore((s) => s.showCeiling);
+  // Ceiling is always shown when looking through a CCTV camera (they're ceiling-mounted).
+  const ceilingToggle = useViewStore((s) => s.showCeiling);
+  const cctvView = useReplayStore((s) => s.cameraMode === "cctv");
+  const showCeiling = ceilingToggle || cctvView;
 
   const bounds = useMemo<RoomBounds>(
     () => ({

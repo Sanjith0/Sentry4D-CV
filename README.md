@@ -19,8 +19,8 @@ Use H.264 MP4s with a keyframe every ~1 s (`-g 30`) and `-movflags +faststart` f
 
 ## Configuration (all in `src/config/`)
 
-- **`roomConfig.ts`**: GLB transform (scale/rotation/offset, `autoGround` puts the floor at y=0 and centers XZ), material mode (`unlit` shows the scan as captured; `standard` = lit PBR), lighting, ceiling cut height, supplemental floor/wall patches for scan holes, placeholder dimensions. The GLB file is never modified; materials are cloned in memory.
-- **`cameras.ts`**: the four `SecurityCamera`s (position, target, fov, videoUrl, timeOffset). **Poses are placeholders.** To set a real one: free camera → fly to the camera spot → aim → click **POSE** in the toolbar → paste the JSON. The JSON is also logged to the console.
+- **`roomConfig.ts`**: GLB transform (scale/rotation/offset), `interior` = the real room box in scan coordinates (the scan also contains stuff seen through the window wall; grounding, framing and the ceiling cut use this box, so the floor is y=0 and the room center is the origin), material mode (`unlit` shows the scan as captured; `standard` = lit PBR), lighting, ceiling cut height, supplemental floor/wall patches for scan holes, placeholder dimensions. The GLB file is never modified; materials are cloned in memory.
+- **`cameras.ts`**: the four `SecurityCamera`s (position, target, fov, videoUrl, timeOffset). Poses are estimates in the four interior corners (2.7 m high, aimed at the room center). To fine-tune one: free camera → fly to the camera spot → aim → click **POSE** in the toolbar → paste the JSON. The JSON is also logged to the console.
   - `timeOffset` = master-timeline second at which that video's frame 0 happens (`videoTime = masterTime - timeOffset`).
 - **`incident.ts`**: incident name, recording start time (wall-clock display), event type → color mapping.
 

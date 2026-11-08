@@ -11,9 +11,17 @@ export interface RoomConfig {
     rotationDeg: Vec3;
     /** Extra translation (meters) applied after auto-grounding. */
     position: Vec3;
-    /** Shift the model so its bounding-box floor sits at y = 0 and its XZ center at origin. */
+    /** Shift the model so the room floor sits at y = 0 and the room's XZ center at the origin. */
     autoGround: boolean;
   };
+  /**
+   * The real room interior, in the GLB's native coordinates (before transform).
+   * The scan also contains geometry captured outside through the window wall, so the
+   * full bounding box is NOT the room. When set, this box (not the scan bbox) is used
+   * for grounding, camera framing, the ceiling cut and the published roomBounds.
+   * Set to null to fall back to the full scan bounding box.
+   */
+  interior: { min: Vec3; max: Vec3 } | null;
   /**
    * "unlit": show scan textures exactly as captured (baked lighting) — best for LiDAR scans.
    * "standard": PBR materials lit by scene lights (metalness forced to 0).
@@ -47,6 +55,13 @@ export const roomConfig: RoomConfig = {
     position: [0, 0, 0],
     autoGround: true,
   },
+  // Measured from the scan's vertex density: window wall (mullions) at x≈-0.1,
+  // orange wall at x≈4.7, end walls at z≈-5.25 / 8.3, floor y≈-2.28, ceiling y≈0.75.
+  // Resulting room ≈ 4.8 m × 3.1 m × 13.55 m (W×H×D).
+  interior: {
+    min: [-0.1, -2.28, -5.25],
+    max: [4.7, 0.85, 8.3],
+  },
   materialMode: "unlit",
   lighting: {
     ambientIntensity: 0.6,
@@ -54,7 +69,7 @@ export const roomConfig: RoomConfig = {
     directionalIntensity: 1.2,
     directionalPosition: [4, 8, 3],
   },
-  ceilingCutOffset: 0.35,
+  ceilingCutOffset: 0.25,
   supplemental: {
     floor: false,
     walls: false,

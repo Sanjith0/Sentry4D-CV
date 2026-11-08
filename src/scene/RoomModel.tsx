@@ -3,6 +3,7 @@ import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { roomConfig, type RoomConfig } from "../config/roomConfig";
 import { useViewStore } from "../store/useViewStore";
+import { useReplayStore } from "../store/useReplayStore";
 import type { RoomBounds, Vec3 } from "../types/security";
 import { ceilingPlanes, setCeilingCut } from "./ceilingClip";
 
@@ -51,7 +52,10 @@ interface RoomModelProps {
  */
 export function RoomModel({ url = roomConfig.url, config = roomConfig, onLoaded }: RoomModelProps) {
   const gltf = useGLTF(url);
-  const showCeiling = useViewStore((s) => s.showCeiling);
+  // Ceiling is always shown when looking through a CCTV camera (they're ceiling-mounted).
+  const ceilingToggle = useViewStore((s) => s.showCeiling);
+  const cctvView = useReplayStore((s) => s.cameraMode === "cctv");
+  const showCeiling = ceilingToggle || cctvView;
 
   const { object, bounds, materials } = useMemo(() => {
     const root = gltf.scene.clone(true);
@@ -74,25 +78,33 @@ export function RoomModel({ url = roomConfig.url, config = roomConfig, onLoaded 
     else inner.scale.setScalar(scale);
     inner.rotation.set(rotationDeg[0] * DEG, rotationDeg[1] * DEG, rotationDeg[2] * DEG);
     inner.updateMatrixWorld(true);
-    const raw = new THREE.Box3().setFromObject(inner);
+    const scanBox = new THREE.Box3().setFromObject(inner);
+    // Real room box (excludes geometry seen through windows), transformed like the model.
+    const roomBox = config.interior
+      ? new THREE.Box3(new THREE.Vector3(...config.interior.min), new THREE.Vector3(...config.interior.max)).applyMatrix4(inner.matrixWorld)
+      : scanBox.clone();
 
     const outer = new THREE.Group();
     outer.name = "RoomModel";
     outer.add(inner);
+    const offset = new THREE.Vector3();
     if (autoGround) {
-      const c = raw.getCenter(new THREE.Vector3());
-      outer.position.set(-c.x, -raw.min.y, -c.z);
+      const c = roomBox.getCenter(new THREE.Vector3());
+      offset.set(-c.x, -roomBox.min.y, -c.z);
     }
-    outer.position.add(new THREE.Vector3(...position));
+    offset.add(new THREE.Vector3(...position));
+    outer.position.copy(offset);
     outer.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(outer);
+    const box = roomBox.clone().translate(offset);
+    const scan = boundsFromBox(scanBox.clone().translate(offset));
+    console.info(`[Sentry3D] full scan extent incl. outside geometry: ${scan.size.map((v) => v.toFixed(2)).join(" × ")} m`);
     return { object: outer, bounds: boundsFromBox(box), materials };
   }, [gltf, config]);
 
   useEffect(() => {
     onLoaded?.(bounds);
     const [w, h, d] = bounds.size;
-    console.info(`[Sentry3D] room loaded: ${w.toFixed(2)} × ${h.toFixed(2)} × ${d.toFixed(2)} m (W×H×D)`);
+    console.info(`[Sentry3D] room interior: ${w.toFixed(2)} × ${h.toFixed(2)} × ${d.toFixed(2)} m (W×H×D)`);
   }, [bounds, onLoaded]);
 
   useEffect(() => {

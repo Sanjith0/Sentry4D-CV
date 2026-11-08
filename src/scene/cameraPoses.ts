@@ -36,7 +36,7 @@ export function homePose(mode: CameraMode, bounds: RoomBounds | null, aspect: nu
     case "orbit":
     default: {
       const radius = Math.hypot(sx, sy, sz) / 2;
-      const dist = (radius / Math.sin((DEFAULT_FOV * Math.PI) / 360)) * 0.85;
+      const dist = (radius / Math.sin((DEFAULT_FOV * Math.PI) / 360)) * 1.0;
       const dir = new THREE.Vector3(0.75, 0.85, 1).normalize().multiplyScalar(dist);
       const target: Vec3 = [cx, floorY + sy * 0.25, cz];
       return { position: [target[0] + dir.x, target[1] + dir.y, target[2] + dir.z], target, fov: DEFAULT_FOV };
