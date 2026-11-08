@@ -105,6 +105,9 @@ def main():
     # Explicit manual visibility marks (occluded / out-of-frame) override automatic segmentation.
     ann = json.load(open(os.path.join(ROOT, "src", "data", "person-annotations.json")))
     marks = [m for d in ann["datasets"] if d["personId"] == a.person for m in d.get("visibility", [])]
+    # Human review decisions: {"cam4": [102, 107, 108], ...} -> frames dropped from the export.
+    rj = os.path.join(clip, "reject.json")
+    reviewed_out = json.load(open(rj)) if os.path.exists(rj) else {}
     out = os.path.join(ROOT, "public", "reconstruction", a.clip)
     shutil.rmtree(out, ignore_errors=True)
     web = {
@@ -138,7 +141,9 @@ def main():
             reject = None
             if not os.path.exists(manual):
                 neg = [m for m in marks if m["cameraId"] == cam and m["state"] in ("occluded", "out-of-frame") and abs(m["masterTime"] - f["masterTime"]) <= 1.5 / man["fps"]]
-                if not row.get("visible", True) or box is None:
+                if k in reviewed_out.get(cam, []):
+                    reject = "rejected in manual review"
+                elif not row.get("visible", True) or box is None:
                     reject = "subject not tracked here"
                 elif row.get("boxInFrame", {}).get(cam, 1) < a.min_in_frame:
                     reject = "tracked box mostly outside this camera's frame"
@@ -164,11 +169,18 @@ def main():
                     agreement = round(iou(m > 0, fg > 0), 3)
                     if agreement < 0.5:
                         ok_fg, _ = plausible(fg, box)
-                        if not ok_fg:
+                        ok_sam, _ = plausible(m, box) if m.sum() else (False, None)
+                        a_sam, a_fg = int(m.sum()), int(fg.sum())
+                        if ok_sam and a_fg > 1.6 * a_sam:
+                            # Background difference grabbed extra static-scene change (reflections,
+                            # lighting near windows): SAM's tighter person mask is the reliable one.
+                            method = "sam2 (background unreliable)"
+                        elif ok_fg and (not ok_sam or a_sam > 1.6 * a_fg or a_sam < 0.4 * a_fg):
+                            # SAM collapsed / latched elsewhere; the moving blob is person-like.
+                            m, method = fg, "background-subtraction"
+                        else:
                             entries.append({"k": k, "masterTime": f["masterTime"], "videoTime": f["videoTime"], "file": None, "reason": f"SAM/background disagree (IoU {agreement})"})
                             continue
-                        # SAM latched onto the wrong region; the background-difference blob is person-like.
-                        m, method = fg, "background-subtraction"
                     else:
                         m2 = m * cv2.dilate(fg, np.ones((7, 7), np.uint8))
                         m = clean(m2 * 255, box, w, h)

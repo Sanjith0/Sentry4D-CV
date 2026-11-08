@@ -52,5 +52,7 @@ export interface AppearanceStatus {
   frameK: number | null;
   /** Height (m) at which the source camera's lowest mask pixel meets the sprite plane. */
   feetHeightM: number | null;
+  /** The 3D position is interpolated across a gap in floor observations (not measured). */
+  positionEstimated: boolean;
   reason: string | null;
 }

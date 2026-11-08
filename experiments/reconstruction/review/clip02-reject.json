@@ -1,0 +1,5 @@
+{
+  "_note": "Frames rejected after visual review (2026-11-08). cam2 2-8: SAM latched onto bright floor before the person entered CAM 02's view (masked-pixel luminance ~180 vs ~30 for the person). cam4 102/107/108: background-subtraction fragments against the dark booth. Copy to data/clip02/reject.json.",
+  "cam2": [2, 3, 4, 5, 6, 7, 8],
+  "cam4": [102, 107, 108]
+}

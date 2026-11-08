@@ -24,7 +24,7 @@ import { useReplayStore } from "../../store/useReplayStore";
 import { useViewStore } from "../../store/useViewStore";
 import { buildCctvCamera } from "../../lib/videoProjection";
 import type { CameraId } from "../../types/security";
-import { subjectPosition } from "../sentry/SceneActors";
+import { subjectSample } from "../sentry/SceneActors";
 import { clipsAt, frameAt, getTexture, prefetchAround, useAppearanceStore } from "./useAppearanceStore";
 import type { AppearanceClipManifest, AppearanceFrame, EvidenceClass } from "./ReconstructionTypes";
 
@@ -155,10 +155,11 @@ function SubjectAppearance({ subjectId, heightM }: { subjectId: string; heightM:
     const r = useReplayStore.getState();
     const v = useViewStore.getState();
     const t = r.currentTime;
-    const P = subjectPosition(subjectId, t);
+    const sample = subjectSample(subjectId, t);
+    const P = sample?.position ?? null;
     const hide = (reason: string) => {
       mesh.visible = xrayMesh.visible = false;
-      setStatus({ subjectId, active: false, cameraId: null, offSourceDeg: null, evidence: null, clip: null, frameK: null, feetHeightM: null, reason });
+      setStatus({ subjectId, active: false, cameraId: null, offSourceDeg: null, evidence: null, clip: null, frameK: null, feetHeightM: null, positionEstimated: false, reason });
     };
     if (mode !== "footage") return hide("avatar mode");
     if (!P) return hide("subject not present");
@@ -239,6 +240,7 @@ function SubjectAppearance({ subjectId, heightM }: { subjectId: string; heightM:
       clip: pick.clip.clip,
       frameK: pick.frame.k,
       feetHeightM: feet,
+      positionEstimated: sample!.status === "estimated",
       reason: null,
     });
   });

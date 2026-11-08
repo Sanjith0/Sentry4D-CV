@@ -96,7 +96,8 @@ if (import.meta.env.DEV) {
     import("../features/annotation/useAnnotationStore"),
     import("../features/sentry/trajectory"),
     import("../lib/videoRegistry"),
-  ]).then(([{ viewport }, projection, { useAnnotationStore }, trajectory, registry]) => {
+    import("../features/reconstruction/useAppearanceStore"),
+  ]).then(([{ viewport }, projection, { useAnnotationStore }, trajectory, registry, { useAppearanceStore }]) => {
     (window as unknown as Record<string, unknown>).__sentry = {
       replay: useReplayStore,
       view: useViewStore,
@@ -105,6 +106,7 @@ if (import.meta.env.DEV) {
       annotations: useAnnotationStore,
       trajectory,
       registry,
+      appearance: useAppearanceStore,
     };
   });
 }

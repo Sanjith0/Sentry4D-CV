@@ -84,6 +84,12 @@ export function AppearanceControls() {
                   real pixels · CAM {status.cameraId?.slice(3).padStart(2, "0")} · {status.offSourceDeg}° from source
                   {status.feetHeightM != null && status.feetHeightM > 0.3 ? " · lower body not visible in this camera" : ""}
                 </span>
+                {status.positionEstimated && (
+                  <span className="text-amber-300">
+                    Position ESTIMATED: no floor observation here, so the cut-out stands at the interpolated track position. Its pixels are real; its depth is not
+                    measured.
+                  </span>
+                )}
                 {(status.offSourceDeg ?? 0) > 45 && (
                   <span className="text-amber-300">
                     Low support: a flat cut-out seen {status.offSourceDeg}° off its camera. No camera recorded this side of the person.

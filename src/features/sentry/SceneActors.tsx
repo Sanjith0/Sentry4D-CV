@@ -312,6 +312,11 @@ function useStoreSync(tracks: SubjectTrack[]) {
 
 /** Latest trajectories by subject id (for DOM-side helpers such as LOCATE). */
 const liveTracks = new Map<string, SubjectTrack>();
+/** Full trajectory sample (position + tracked/estimated status), or null when absent. */
+export function subjectSample(subjectId: string, t: number) {
+  const st = liveTracks.get(subjectId)?.trajectory.sample(t);
+  return st?.visible ? st : null;
+}
 export function subjectPosition(subjectId: string, t: number) {
   const st = liveTracks.get(subjectId)?.trajectory.sample(t);
   return st?.visible ? st.position : null;

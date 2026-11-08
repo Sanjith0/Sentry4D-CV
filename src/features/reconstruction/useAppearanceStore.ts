@@ -8,7 +8,8 @@ import type { AppearanceClipManifest, AppearanceFrame, AppearanceStatus } from "
  * public/reconstruction/<clip>/ produced by experiments/reconstruction (not committed:
  * derived from the private recordings). Missing clips are simply skipped.
  */
-export const APPEARANCE_CLIPS = ["clip01"];
+// clip02 = full incident (4.2-25.2 s, 4 cameras); clip01 = the original 2 s proof of concept.
+export const APPEARANCE_CLIPS = ["clip02", "clip01"];
 const BASE_URL = "/reconstruction";
 
 interface AppearanceState {
