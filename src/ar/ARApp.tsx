@@ -3,7 +3,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { XR, XRDomOverlay, XROrigin, createXRStore, useXR, useXRHitTest } from "@react-three/xr";
 import * as THREE from "three";
-import { Box, Footprints, Pause, Play, RotateCcw, Smartphone } from "lucide-react";
+import { Box, Compass, Eye, Footprints, Pause, Play, RotateCcw, Smartphone } from "lucide-react";
 import { useReplayStore } from "../store/useReplayStore";
 import { useViewStore } from "../store/useViewStore";
 import { SceneActorsBridge, SceneLighting } from "../scene/Scene3D";
@@ -11,6 +11,7 @@ import { RoomStage } from "../scene/RoomStage";
 import { WindowWall } from "../scene/WindowWall";
 import { AppearanceLayer } from "../features/reconstruction/AppearanceLayer";
 import { formatClock } from "../lib/format";
+import { CameraFeed, MagicWindowCamera, enableMotion, viewer } from "./MagicWindow";
 
 /**
  * Phone-only AR viewer: the reconstructed room + the real person replay, viewed through the phone.
@@ -110,32 +111,43 @@ function Placement({ scale, placed, onPlace }: { scale: number; placed: boolean;
   );
 }
 
-function SceneContent({ inAR, placed }: { inAR: boolean; placed: boolean }) {
+function SceneContent({ inAR, placed, showRoom = true }: { inAR: boolean; placed: boolean; showRoom?: boolean }) {
   // In AR nothing is drawn until the room is placed (the camera feed shows instead).
   const visible = !inAR || placed;
   return (
     <group visible={visible}>
       <SceneLighting />
-      <RoomStage />
-      <WindowWall />
+      <group visible={showRoom}>
+        <RoomStage />
+        <WindowWall />
+      </group>
+      {!showRoom && <gridHelper args={[14, 28, "#22d3ee", "#155e75"]} position={[0, 0.002, 0]} />}
       <SceneActorsBridge />
       <AppearanceLayer />
     </group>
   );
 }
 
-function NonXRControls() {
+function NonXRControls({ magic }: { magic: boolean }) {
   const inAR = useXR((s) => s.mode === "immersive-ar");
   const camera = useThree((s) => s.camera);
   useEffect(() => {
     camera.position.set(13, 15, 16);
   }, [camera]);
+  if (magic) return <MagicWindowCamera />;
   return inAR ? null : <OrbitControls target={[0, 0.8, 0]} enableDamping maxPolarAngle={Math.PI * 0.49} minDistance={2} maxDistance={30} />;
 }
 
-function Hud({ arSupported, inAR, placed, scaleMode, setScaleMode, onReplace }: {
+interface MagicProps {
+  magic: boolean;
+  startMagic: () => void;
+  exitMagic: () => void;
+  showRoom: boolean;
+  toggleRoom: () => void;
+}
+function Hud({ arSupported, inAR, placed, scaleMode, setScaleMode, onReplace, magic, startMagic, exitMagic, showRoom, toggleRoom }: {
   arSupported: boolean | null; inAR: boolean; placed: boolean; scaleMode: ScaleMode; setScaleMode: (m: ScaleMode) => void; onReplace: () => void;
-}) {
+} & MagicProps) {
   const t = useReplayStore((s) => s.currentTime);
   const playing = useReplayStore((s) => s.isPlaying);
   const { t0, t1 } = useLoopWindow();
@@ -150,8 +162,8 @@ function Hud({ arSupported, inAR, placed, scaleMode, setScaleMode, onReplace }: 
             SENTRY<span className="text-cyan-300">4D</span> <span className="text-cyan-300/80">AR</span>
           </div>
           <div className="font-mono text-[10px] text-slate-400">PERSON 01 · real footage replay</div>
-          {!inAR && arSupported === false && (
-            <div className="mt-1 max-w-[15rem] font-mono text-[9.5px] leading-snug text-amber-200/80">Camera AR needs WebXR (Android Chrome). Here: drag to orbit, pinch to zoom.</div>
+          {magic && (
+            <div className="mt-1 max-w-[15rem] font-mono text-[9.5px] leading-snug text-slate-300">Turn your phone to look around · drag to walk</div>
           )}
         </div>
       </div>
@@ -184,6 +196,24 @@ function Hud({ arSupported, inAR, placed, scaleMode, setScaleMode, onReplace }: 
               <Smartphone className="h-4 w-4" /> START AR
             </button>
           )}
+          {!inAR && !magic && arSupported === false && (
+            <button type="button" className={`${btn} flex-1 border-cyan-400/70 bg-cyan-500/25 text-cyan-50`} onClick={startMagic}>
+              <Smartphone className="h-4 w-4" /> START AR
+            </button>
+          )}
+          {magic && (
+            <>
+              <button type="button" className={`${btn} ${showRoom ? on : off}`} onClick={toggleRoom}>
+                <Eye className="h-4 w-4" /> {showRoom ? "ROOM" : "CAMERA"}
+              </button>
+              <button type="button" className={`${btn} ${off}`} onClick={() => (viewer.recenter = true)}>
+                <Compass className="h-4 w-4" /> RECENTER
+              </button>
+              <button type="button" className={`${btn} ${off} ml-auto`} onClick={exitMagic}>
+                EXIT
+              </button>
+            </>
+          )}
           {inAR && (
             <>
               <button type="button" className={`${btn} ${scaleMode === "tabletop" ? on : off}`} onClick={() => setScaleMode("tabletop")}>
@@ -213,6 +243,26 @@ export default function ARApp() {
   const [placed, setPlaced] = useState(false);
   const [scaleMode, setScaleMode] = useState<ScaleMode>("tabletop");
   const [inAR, setInAR] = useState(false);
+  const [magic, setMagic] = useState(false);
+  const [showRoom, setShowRoom] = useState(true);
+  const magicProps: MagicProps = {
+    magic,
+    showRoom,
+    toggleRoom: () => setShowRoom((v) => !v),
+    startMagic: () => {
+      // iOS needs both permissions requested from this tap.
+      void enableMotion().then((ok) => {
+        viewer.position.set(-0.3, 1.5, -1.8);
+        viewer.recenter = true;
+        setMagic(ok);
+        useViewStore.setState({ showCeiling: true });
+      });
+    },
+    exitMagic: () => {
+      setMagic(false);
+      useViewStore.setState({ showCeiling: false });
+    },
+  };
   const { t0, t1 } = useLoopWindow();
 
   useEffect(() => {
@@ -235,12 +285,14 @@ export default function ARApp() {
   }, [t0, t1]);
 
   const hud = (
-    <Hud arSupported={arSupported} inAR={inAR} placed={placed} scaleMode={scaleMode} setScaleMode={setScaleMode} onReplace={() => setPlaced(false)} />
+    <Hud arSupported={arSupported} inAR={inAR} placed={placed} scaleMode={scaleMode} setScaleMode={setScaleMode} onReplace={() => setPlaced(false)} {...magicProps} />
   );
 
   return (
     <div className="fixed inset-0 bg-[#05080d]" style={{ touchAction: "none" }}>
+      <CameraFeed on={magic} />
       <Canvas
+        style={{ position: "fixed", inset: 0 }}
         camera={{ fov: 55, near: 0.02, far: 400 }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true }}
@@ -250,11 +302,11 @@ export default function ARApp() {
         }}
       >
         <XR store={store}>
-          {!inAR && <color attach="background" args={["#05080d"]} />}
+          {!inAR && !magic && <color attach="background" args={["#05080d"]} />}
           <ARClock t0={t0} t1={t1} />
           <Placement scale={SCALES[scaleMode]} placed={placed} onPlace={() => setPlaced(true)} />
-          <SceneContent inAR={inAR} placed={placed} />
-          <NonXRControls />
+          <SceneContent inAR={inAR} placed={placed} showRoom={!magic || showRoom} />
+          <NonXRControls magic={magic} />
           {inAR && <XRDomOverlay>{hud}</XRDomOverlay>}
         </XR>
       </Canvas>
