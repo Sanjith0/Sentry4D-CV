@@ -3,7 +3,7 @@
  * sentry3dConfigWriter). Only available under `npm run dev`; the file lands in
  * src/config/ so it can be committed like any other source change.
  */
-export type ProjectConfigName = "camera-poses" | "camera-sync" | "person-annotations" | "device-positions";
+export type ProjectConfigName = "camera-poses" | "camera-sync" | "person-annotations";
 
 export const canSaveToProject = import.meta.env.DEV;
 

@@ -10,7 +10,6 @@ import { RoomStage } from "./RoomStage";
 import { SupplementalGeometry } from "./SupplementalGeometry";
 import { WindowWall } from "./WindowWall";
 import { CameraMarkers } from "./CameraMarkers";
-import { DeviceMarkers } from "./DeviceMarkers";
 import { CameraControls } from "./CameraControls";
 import { DEFAULT_FOV } from "./cameraPoses";
 import { ViewportCameraProbe } from "./viewportCamera";
@@ -84,7 +83,6 @@ export function Scene3D() {
       <SupplementalGeometry />
       <WindowWall />
       <CameraMarkers />
-      <DeviceMarkers />
       <SceneActorsBridge />
       <AnnotationLayer />
       <AppearanceLayer />
