@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { Box, Cctv, Grid3x3, ClipboardCopy, Crosshair, Footprints, Eye, EyeOff, Gamepad2, Map, Orbit, PanelsLeftRight, RotateCcw, Sparkles, Square, Video } from "lucide-react";
+import { Box, Cctv, Grid3x3, ClipboardCopy, Crosshair, Footprints, Eye, EyeOff, Gamepad2, Laptop, Map, Orbit, PanelsLeftRight, RotateCcw, Sparkles, Square, Video } from "lucide-react";
 import * as THREE from "three";
 import { useCamera, useCameras, useReplayStore } from "../store/useReplayStore";
 import { CalibrationPanel, SensorFrame } from "./CalibrationPanel";
+import { DevicePlacementPanel } from "./DevicePlacementPanel";
 import { TrackingDiagnostics } from "../features/sentry/TrackingDiagnostics";
+import { useDeviceStore } from "../features/devices/useDeviceStore";
 import { useViewStore, type RenderQuality } from "../store/useViewStore";
 import type { CameraMode } from "../types/security";
 import { formatWallClock } from "../lib/format";
@@ -61,6 +63,8 @@ export function ViewerToolbar() {
   const toggleCleanWindows = useViewStore((s) => s.toggleCleanWindows);
   const wireframe = useViewStore((s) => s.wireframe);
   const toggleWireframe = useViewStore((s) => s.toggleWireframe);
+  const devicePanelOpen = useDeviceStore((s) => s.panelOpen);
+  const setDevicePanelOpen = useDeviceStore((s) => s.setPanelOpen);
 
   return (
     <div className="glass pointer-events-auto absolute top-3 right-3 left-3 flex w-fit max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1.5 rounded-lg p-1.5 fade-in">
@@ -92,6 +96,10 @@ export function ViewerToolbar() {
         CEILING
       </ToolButton>
       <CopyPoseButton />
+      <ToolButton active={devicePanelOpen} tone="cyan" onClick={() => setDevicePanelOpen(!devicePanelOpen)} title="Place device markers (the three laptops) for cyber-alert highlighting">
+        <Laptop className="h-3.5 w-3.5" />
+        DEVICES
+      </ToolButton>
       <div className="mx-1 h-5 w-px bg-ink-500" />
       <QualityToggle />
     </div>
@@ -276,6 +284,8 @@ function ModeBadges() {
 export function ViewportHud() {
   const mode = useReplayStore((s) => s.cameraMode);
   const transitioning = useViewStore((s) => s.transitioning);
+  const devicePanelOpen = useDeviceStore((s) => s.panelOpen);
+  const setDevicePanelOpen = useDeviceStore((s) => s.setPanelOpen);
   return (
     <div className="pointer-events-none absolute inset-0 z-30">
       <ModeBadges />
@@ -283,6 +293,7 @@ export function ViewportHud() {
       {mode === "cctv" && <CctvHud />}
       {!transitioning && mode === "topdown" && <TopHud />}
       {!transitioning && mode === "orbit" && <OrbitHud />}
+      {devicePanelOpen && mode !== "cctv" && <DevicePlacementPanel onClose={() => setDevicePanelOpen(false)} />}
       <ViewerToolbar />
     </div>
   );
