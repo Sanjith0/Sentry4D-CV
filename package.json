@@ -1,5 +1,6 @@
 {
-  "name": "sentry3d",
+  "name": "sentry4d",
+  "description": "Sentry4D: 3D incident reconstruction from CCTV, with an AI investigator and phone AR viewer",
   "private": true,
   "version": "0.0.0",
   "type": "module",
