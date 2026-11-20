@@ -65,12 +65,12 @@ export function AppearanceControls() {
               {avatar.placeholder ? (
                 <span className="text-amber-300">Placeholder asset: an untextured stand-in body following the track, not yet the reconstruction.</span>
               ) : avatar.textured ? (
-                <span className="text-slate-500">
+                <span className="text-slate-400">
                   Reconstructed 3D body: one articulated mesh fitted to all cameras over the whole clip; texture is real footage back-projected onto it. Surfaces no
                   camera saw are filled from neighbouring observed texture.
                 </span>
               ) : (
-                <span className="text-slate-500">
+                <span className="text-slate-400">
                   Reconstructed 3D body: one articulated mesh fitted to all cameras over the whole clip.{" "}
                   <span className="text-amber-300">This asset carries no texture: the body is drawn in neutral grey, no footage colour is shown on it.</span>
                 </span>
@@ -80,7 +80,7 @@ export function AppearanceControls() {
               )}
             </span>
           ) : (
-            <span className="text-slate-500">Debug avatar shown: {avatar?.reason ?? "loading"}</span>
+            <span className="text-slate-400">Debug avatar shown: {avatar?.reason ?? "loading"}</span>
           )}
         </div>
       )}
@@ -118,7 +118,7 @@ export function AppearanceControls() {
                   real pixels · CAM {status.cameraId?.slice(3).padStart(2, "0")} · {status.offSourceDeg}° from source
                   {status.feetHeightM != null && status.feetHeightM > 0.3 ? " · lower body not visible in this camera" : ""}
                 </span>
-                <span className="text-slate-500">
+                <span className="text-slate-400">
                   Body volume is inferred from the silhouette (rounded thickness ≈ 0.6 × width). The back is shaded in the measured clothing colour, since no
                   camera saw it. Neither is measured geometry.
                 </span>
@@ -135,7 +135,7 @@ export function AppearanceControls() {
                 )}
               </span>
             ) : (
-              <span className="text-slate-500">Debug avatar shown: {status?.reason ?? "loading"}</span>
+              <span className="text-slate-400">Debug avatar shown: {status?.reason ?? "loading"}</span>
             )}
           </div>
         </>
