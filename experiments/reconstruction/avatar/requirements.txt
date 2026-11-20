@@ -1,0 +1,9 @@
+# Subject-avatar pipeline (CPU only). Install with:
+#   pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+anny==0.6.2                         # parametric body (Apache-2.0 code, CC0 data); pulls roma and warp-lang
+rtmlib==0.0.16                      # RTMW / YOLOX ONNX wrappers (Apache-2.0)
+onnxruntime==1.32.0
+torch==2.15.0+cpu
+numpy==2.5.5
+scipy==1.18.1
+opencv-python-headless==5.1.0.95
