@@ -87,7 +87,7 @@ export interface AvatarMotion {
     floor: [number, number][];
     /** Body yaw (rad); 0 = facing +Z, same convention as SubjectState.rotationY. */
     heading: number[];
-    /** How many cameras observed the person in this frame (0..4). */
+    /** How many cameras gave a usable detection of the body in this frame (0..4). */
     cameras: number[];
     /** The fitted pose is usable. */
     valid: boolean[];
@@ -107,7 +107,7 @@ export interface AvatarFloorSample {
   y: number;
   z: number;
   heading: number;
-  /** Cameras observing the person at the nearest frame. */
+  /** Cameras whose detections of the body support the pose at the nearest frame (can be fewer than the cameras marked as tracking). */
   cameras: number;
   /** The nearest frame's pose is usable. */
   valid: boolean;
@@ -124,7 +124,7 @@ export interface AvatarStatus {
   active: boolean;
   clip: string | null;
   frameK: number | null;
-  /** Cameras observing the person at this instant (from the fit), or null when inactive. */
+  /** Cameras the pose is fitted from at this instant (usable detections of the body), or null when inactive. */
   cameras: number | null;
   /** The asset on disk is the pipeline's untextured stand-in, not a reconstruction. */
   placeholder: boolean;

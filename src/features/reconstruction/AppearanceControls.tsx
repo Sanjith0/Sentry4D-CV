@@ -60,7 +60,7 @@ export function AppearanceControls() {
             <span className="flex flex-wrap items-center gap-1">
               <span className={`rounded border px-1 ${EVIDENCE_STYLE.reconstructed}`}>RECONSTRUCTED 3D BODY</span>
               <span className="text-slate-400">
-                {avatar.cameras ?? 0} camera{avatar.cameras === 1 ? "" : "s"} observing at this instant
+                pose fitted from {avatar.cameras ?? 0} camera{avatar.cameras === 1 ? "" : "s"} at this instant
               </span>
               {avatar.placeholder ? (
                 <span className="text-amber-300">Placeholder asset: an untextured stand-in body following the track, not yet the reconstruction.</span>
@@ -76,7 +76,7 @@ export function AppearanceControls() {
                 </span>
               )}
               {avatar.cameras === 0 && (
-                <span className="text-amber-300">No camera observes the person at this instant: this pose is carried by the fit from neighbouring frames, not measured.</span>
+                <span className="text-amber-300">No camera gave a usable detection of the body at this instant: this pose is carried by the fit from neighbouring frames, not measured.</span>
               )}
             </span>
           ) : (

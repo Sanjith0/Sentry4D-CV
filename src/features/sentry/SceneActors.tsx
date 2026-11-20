@@ -155,7 +155,7 @@ const SubjectActor = memo(function SubjectActor({ track, xray }: { track: Subjec
         }
         // Reconstructed body: how many cameras support the fitted pose at this instant.
         const av = useAvatarStore.getState().status[subject.id];
-        if (av?.active) statusEl.current.textContent += ` · 3D MODEL · ${av.cameras ?? 0} CAM`;
+        if (av?.active) statusEl.current.textContent += ` · 3D MODEL · FIT FROM ${av.cameras ?? 0} CAM`;
       }
       if (labelEl.current) labelEl.current.style.borderColor = observed ? subject.color : "#f59e0b";
       if (ring.current) {
