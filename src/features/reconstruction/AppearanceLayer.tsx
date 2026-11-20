@@ -238,7 +238,7 @@ function SubjectAppearance({ subjectId, heightM }: { subjectId: string; heightM:
       shadow.visible = false;
       setStatus({ subjectId, active: false, cameraId: null, offSourceDeg: null, evidence: null, clip: null, frameK: null, feetHeightM: null, positionEstimated: false, reason });
     };
-    if (mode !== "footage") return hide("avatar mode");
+    if (mode !== "footage") return hide(mode === "model" ? "3D model mode" : "debug avatar mode");
     if (!P) return hide("subject not present");
     prefetchAround(subjectId, t, 0.8);
 
@@ -351,7 +351,7 @@ export function AppearanceLayer() {
   );
 }
 
-/** True when the real-footage renderer is drawing this subject (SceneActors hides the avatar body). */
+/** True when the real-footage renderer is drawing this subject (SceneActors hides the debug avatar body). */
 export function appearanceActive(subjectId: string) {
   return !!useAppearanceStore.getState().status[subjectId]?.active;
 }

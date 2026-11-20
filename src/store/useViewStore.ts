@@ -3,6 +3,14 @@ import type { CameraId, RoomBounds } from "../types/security";
 
 export type RenderQuality = "performance" | "balanced" | "ultra";
 
+/**
+ * How tracked subjects are drawn:
+ *  - "model":   reconstructed, articulated, textured 3D body (default)
+ *  - "footage": one camera's segmented cut-out on an inflated plane
+ *  - "avatar":  generic capsule mannequin (tracking debug); also the fallback of the other two
+ */
+export type SubjectRenderMode = "model" | "footage" | "avatar";
+
 export type RoomStatus = "checking" | "loading" | "loaded" | "missing" | "error";
 
 interface ViewState {
@@ -31,8 +39,8 @@ interface ViewState {
   /** Opacity of the real recording overlaid on the virtual CCTV view (0..1). */
   ghostOpacity: number;
   ghostBlend: "normal" | "difference";
-  /** How tracked subjects are drawn: real segmented footage (default) or the debug avatar. */
-  subjectRenderMode: "footage" | "avatar";
+  /** How tracked subjects are drawn (session state, not persisted: every load starts in "model"). */
+  subjectRenderMode: SubjectRenderMode;
   /** Which camera's footage to show: "auto" = closest to the viewing direction. */
   appearanceSource: "auto" | CameraId;
   /** CCTV view: overlay real footage + annotated video point vs. projected 3D subject. */
@@ -65,7 +73,7 @@ interface ViewState {
   setGhostOpacity: (v: number) => void;
   setGhostBlend: (v: "normal" | "difference") => void;
   toggleTrackingDiagnostics: () => void;
-  setSubjectRenderMode: (m: "footage" | "avatar") => void;
+  setSubjectRenderMode: (m: SubjectRenderMode) => void;
   setAppearanceSource: (s: "auto" | CameraId) => void;
   setPointerLocked: (v: boolean) => void;
   setFlySpeed: (v: number) => void;
@@ -95,7 +103,7 @@ export const useViewStore = create<ViewState>()((set) => ({
   ghostOpacity: 0.5,
   ghostBlend: "normal",
   trackingDiagnostics: false,
-  subjectRenderMode: "footage",
+  subjectRenderMode: "model",
   appearanceSource: "auto",
   pointerLocked: false,
   flySpeed: 2.5,

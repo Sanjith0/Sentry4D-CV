@@ -61,3 +61,74 @@ export interface AppearanceStatus {
   positionEstimated: boolean;
   reason: string | null;
 }
+
+/**
+ * Per-frame motion of the reconstructed 3D body (avatar.json, written by
+ * experiments/reconstruction/avatar). Frame k <-> masterTime = t0 + k / fps. Unknown keys are ignored.
+ */
+export interface AvatarMotion {
+  version: number;
+  clip: string;
+  subjectId: string;
+  personId: string;
+  /** GLB path relative to /reconstruction/<clip>/. */
+  glb: string;
+  fps: number;
+  t0: number;
+  t1: number;
+  frameCount: number;
+  heightM: number;
+  /** Set by the pipeline's stand-in asset: an untextured test body, not a reconstruction. */
+  placeholder?: boolean;
+  frames: {
+    /** Pelvis position in room metres (Y-up, floor y = 0). */
+    root: [number, number, number][];
+    /** Point on the floor under the body [x, z]. */
+    floor: [number, number][];
+    /** Body yaw (rad); 0 = facing +Z, same convention as SubjectState.rotationY. */
+    heading: number[];
+    /** How many cameras observed the person in this frame (0..4). */
+    cameras: number[];
+    /** The fitted pose is usable. */
+    valid: boolean[];
+    /** At least one camera observed the person in this frame (false: pose carried by neighbouring frames). */
+    observed?: boolean[];
+    /** Height (m) of the scanned room floor under the body; the fit stands the feet on it. Absent = 0. */
+    floorY?: number[];
+  };
+  /** Accuracy of the delivered asset measured against the footage (experiments/reconstruction/avatar/validate.py). */
+  metrics?: Record<string, unknown>;
+}
+
+/** Reconstructed body state on the floor at one master time (interpolated between frames). */
+export interface AvatarFloorSample {
+  x: number;
+  /** Height of the scanned floor under the body (0 when the asset does not carry it). */
+  y: number;
+  z: number;
+  heading: number;
+  /** Cameras observing the person at the nearest frame. */
+  cameras: number;
+  /** The nearest frame's pose is usable. */
+  valid: boolean;
+  /** Nearest frame index. */
+  k: number;
+  /** Time (s) on the GLB's baked "motion" clip that shows this same instant. */
+  clipTime: number;
+  clip: string;
+}
+
+/** What the 3D MODEL renderer is showing right now (published for HUD/labels; updated only on change). */
+export interface AvatarStatus {
+  subjectId: string;
+  active: boolean;
+  clip: string | null;
+  frameK: number | null;
+  /** Cameras observing the person at this instant (from the fit), or null when inactive. */
+  cameras: number | null;
+  /** The asset on disk is the pipeline's untextured stand-in, not a reconstruction. */
+  placeholder: boolean;
+  /** The loaded GLB carries a colour texture (false: neutral grey body, no footage applied). */
+  textured: boolean;
+  reason: string | null;
+}

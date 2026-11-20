@@ -22,6 +22,7 @@ import { CAMERA_IDS, type IncidentEvent, type SceneActorsProps } from "../../typ
 import { evidenceAt } from "./useEvidence";
 import { appearanceActive } from "../reconstruction/AppearanceLayer";
 import { useAppearanceStore } from "../reconstruction/useAppearanceStore";
+import { avatarActive, useAvatarStore } from "../reconstruction/useAvatarStore";
 import type { SubjectEvidence } from "./evidence";
 import { Humanoid, type HumanoidHandle } from "./Humanoid";
 import { useSubjectTracks, type SubjectTrack } from "./useSubjectTracks";
@@ -125,11 +126,14 @@ const SubjectActor = memo(function SubjectActor({ track, xray }: { track: Subjec
     const g = root.current;
     if (!g) return;
     g.visible = st.visible;
-    if (body.current) body.current.visible = !appearanceActive(subject.id);
+    // The debug body is the fallback: hidden while the footage or the 3D model renderer draws this subject.
+    if (body.current) body.current.visible = !appearanceActive(subject.id) && !avatarActive(subject.id);
     // drei <Html> ignores parent visibility: hide the tag explicitly when absent.
     if (labelEl.current) labelEl.current.style.display = st.visible ? "" : "none";
     if (st.visible) {
-      g.position.set(st.position[0], 0, st.position[2]);
+      // y is 0 for annotation-only tracks; with a reconstructed body it is the scanned floor under it
+      // (a few centimetres off y = 0), so the ring lies on the floor the body stands on, not under it.
+      g.position.set(st.position[0], st.position[1], st.position[2]);
       g.rotation.y = st.rotationY;
       humanoid.current?.setPose({
         gaitPhase: st.gaitPhase,
@@ -149,6 +153,9 @@ const SubjectActor = memo(function SubjectActor({ track, xray }: { track: Subjec
         if (ap?.active && ap.cameraId) {
           statusEl.current.textContent += ` · FOOTAGE CAM ${ap.cameraId.slice(3).padStart(2, "0")} · ${ap.evidence === "observed" ? "OBSERVED VIEW" : `RECONSTRUCTED VIEW ${ap.offSourceDeg}°`}`;
         }
+        // Reconstructed body: how many cameras support the fitted pose at this instant.
+        const av = useAvatarStore.getState().status[subject.id];
+        if (av?.active) statusEl.current.textContent += ` · 3D MODEL · ${av.cameras ?? 0} CAM`;
       }
       if (labelEl.current) labelEl.current.style.borderColor = observed ? subject.color : "#f59e0b";
       if (ring.current) {
@@ -226,7 +233,7 @@ const SubjectActor = memo(function SubjectActor({ track, xray }: { track: Subjec
           onPointerOver={() => (document.body.style.cursor = "pointer")}
           onPointerOut={() => (document.body.style.cursor = "")}
         >
-          {/* Debug avatar body; hidden while the REAL APPEARANCE renderer draws this subject. */}
+          {/* Debug avatar body; hidden while the FOOTAGE or 3D MODEL renderer draws this subject. */}
           <group ref={body}>
             <Humanoid ref={humanoid} heightM={subject.heightM} build={subject.build} color={subject.color} highlighted={selected} xray={xray} />
           </group>

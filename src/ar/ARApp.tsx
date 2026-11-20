@@ -10,6 +10,7 @@ import { SceneActorsBridge, SceneLighting } from "../scene/Scene3D";
 import { RoomStage } from "../scene/RoomStage";
 import { WindowWall } from "../scene/WindowWall";
 import { AppearanceLayer } from "../features/reconstruction/AppearanceLayer";
+import { AvatarLayer } from "../features/reconstruction/AvatarLayer";
 import { formatClock } from "../lib/format";
 import { isBuildFinished } from "../scene/buildIntro";
 import { CameraFeed, MagicWindowCamera, MoveControls, enableMotion, viewer } from "./MagicWindow";
@@ -136,6 +137,8 @@ function SceneContent({ inAR, placed, showRoom = true }: { inAR: boolean; placed
       {!showRoom && <gridHelper args={[14, 28, "#22d3ee", "#155e75"]} position={[0, 0.002, 0]} />}
       <SceneActorsBridge />
       <AppearanceLayer />
+      {/* Reconstructed 3D body: root motion is in room coordinates, so it sits at the scene origin like the room. */}
+      <AvatarLayer />
     </group>
   );
 }
