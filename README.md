@@ -91,13 +91,35 @@ Where it shows: the **Camera evidence** panel (bottom-right of the 3D view; clic
 
 Demo moment (verified in the real footage): **25.35 s**. CAM 01 is out of frame (person beside or below its mount), CAM 02 is tracking, so PERSON 01 is OBSERVED. Free-camera spot where they stand behind the bin and table: LOCATE, or `focusFreeCamera([1.2, 0.9, -2.2], [-0.94, 0.95, -6.06])` from dev tools.
 
-## Real appearance (segmented footage in 3D)
+## The subject in 3D (reconstructed body, or segmented footage)
 
 The **Camera evidence** panel has a **SUBJECT** selector:
-- **REAL APPEARANCE** (default): the person is drawn with their actual segmented pixels.
-- **TRACKING DEBUG:** the generic avatar.
+- **3D MODEL** (default): one articulated, clothed, textured 3D body of the person, reconstructed from all four cameras.
+- **FOOTAGE:** one camera's actual segmented pixels, as a cut-out.
+- **DEBUG AVATAR:** the generic avatar (also what is shown when a clip has no reconstruction).
 
-How REAL APPEARANCE works (`src/features/reconstruction/`):
+### 3D MODEL (`src/features/reconstruction/AvatarLayer.tsx`)
+
+The person used to be drawn as the FOOTAGE cut-out pushed forward by a height map of its own silhouette: exact from the source camera, an inflated blob from anywhere else, and a different blob every time the source camera switched. The 3D MODEL replaces that with a real reconstruction:
+
+- **One body for the whole clip.** A parametric human body is fitted to the 2D keypoints and SAM 2 silhouettes of all four cameras over all frames: one shape, one clothing layer, one texture, and per frame only the root and the joint angles. It is a normal skinned GLB with a baked animation in room coordinates (`public/reconstruction/<clip>/avatar/subject-01.glb` + `avatar.json`).
+- **The same pose at the same time, always.** The pose is set from the master time (`mixer.setTime(masterTime − t0)`), so pausing, scrubbing or stepping backwards shows exactly what playing does. Nothing switches with the viewing angle.
+- **Texture is footage.** Every texel is the robust consensus of the camera pixels that saw it over the clip; surface that no camera saw (18 % on clip02) is filled from neighbouring / mirrored texture.
+- **It drives the track.** Where the body exists, the subject's floor position, heading, ring and trail follow it instead of the sparse manual annotations (`refineTrajectory` in `useSubjectTracks.ts`); presence and camera evidence still come from the annotations.
+- **Labelled as what it is:** the panel shows **RECONSTRUCTED 3D BODY** with the number of cameras observing at that instant, and says so when no camera does. The LiDAR room occludes it; **X-ray** works as before.
+
+How it is built, what is measured against the footage and what is inferred: `experiments/reconstruction/avatar/README.md`. Measured on clip02 (315 frames, 966 camera views): median keypoint error 2.4 to 4.1 px (1.4 to 2.4 cm on the subject) per camera, silhouette IoU 0.80 to 0.90, planted feet move 0.3 mm per frame, no joint beyond its limits. Limits: the face is 30 to 40 px wide in the footage, so it is a blurred average; fingers and cloth wrinkles are not resolved; the carried laptop and chair are not modelled.
+
+```bash
+cd experiments/reconstruction/avatar      # after the FOOTAGE steps below; CPU only, about 23 min for clip02
+PY=../.venv-avatar/bin/python             # venv and the two ONNX models: see avatar/README.md
+export AVATAR_MODELS=../models
+for s in pose2d calibrate fit shape refine shape texture export validate export; do $PY $s.py --clip clip02 || break; done
+```
+
+### FOOTAGE (segmented footage in 3D)
+
+How FOOTAGE works (`src/features/reconstruction/AppearanceLayer.tsx`):
 - Per master-time frame, the crop is placed on a vertical plane at the tracked position, facing its **source camera**, and projectively textured from that camera.
   - Seen from the source camera it reproduces the footage exactly.
   - From elsewhere it is a flat cut-out at the person's real location.
@@ -105,10 +127,10 @@ How REAL APPEARANCE works (`src/features/reconstruction/`):
 - **SOURCE:** AUTO picks the camera closest to your viewing direction, with hysteresis; C1–C4 force one.
 - **Labels:** **OBSERVED VIEW** (≤3° from the source camera) or **RECONSTRUCTED PERSPECTIVE** (with the angle); above 45° a low-support warning is shown.
 - The LiDAR room occludes the cut-out. **X-ray** shows the real silhouette in cyan wherever geometry hides it.
-- Outside processed clips, the avatar is shown automatically.
+- Outside processed clips, the debug avatar is shown automatically.
 - A usable segmentation in a camera counts as observed evidence for that camera.
 
-Crops are generated locally and are **not committed**, because they are footage of a real person. From `experiments/reconstruction/`:
+`public/reconstruction/` is git-ignored because it is derived footage of a real person; the cut-outs and the reconstructed body of the demo clips were added explicitly (`git add -f`) so that the hosted demo can show them. To regenerate the cut-outs, from `experiments/reconstruction/`:
 
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.lock.txt   # Homebrew Python 3.12 (needs lzma)

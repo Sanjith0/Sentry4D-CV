@@ -5,6 +5,8 @@ Checkpoint: tag `checkpoint/pre-4d-pivot` → `29150af` (phases 1–3, also on `
 
 Legend: ✅ verified (measured locally, or read in primary source and independently fact-checked) · 🟡 likely · ⚪ estimate.
 
+> **Update 2026-11-20: the subject is now a reconstructed 3D body (`avatar/`).** The matted-sprite renderer recommended as the backup in §G (the app's FOOTAGE mode) is a billboard: exact from its source camera, an inflated silhouette, i.e. a blob, from anywhere else. `avatar/` fits **one** articulated, clothed, textured parametric body to the keypoints and SAM 2 silhouettes of all four cameras over the whole clip and exports a skinned GLB with a baked room-space animation, which the viewer plays as the default **3D MODEL** mode. CPU only, about 23 minutes for clip02; measured there: median keypoint error 2.4–4.1 px per camera, silhouette IoU 0.80–0.90, planted feet move 0.3 mm per frame. The body model is Anny (Apache-2.0 code, CC0 data), so the SMPL licence problem noted at the end of this report does not apply. The four cameras are refined by bundle adjustment on the person's keypoints inside the pipeline (`data/<clip>/avatar/cameras_refined.json`); the app's `camera-poses.json` is unchanged. Method, measurements, and what is measured versus inferred: `avatar/README.md`. The 4DGS route of §E/§F stays open, and the fitted mesh and poses are the usual initialisation for an animatable Gaussian avatar.
+
 ---
 
 ## A. Current project status
