@@ -43,7 +43,8 @@ on top of it:
 | 5b | `chair.py` | the chair he picks up and carries: a rigid proxy (dimensions fitted to the views in which it stands alone) and one 6-DoF pose per frame | `prop_chair.json`, `public/…/avatar/chair-01.glb` |
 | 5c | `register.py` | per footage cut-out, the scale + shift that puts it on the fitted body, whether it is usable at all, and which pieces of the chair its matte shows (see "Footage on the body") | `register.json` |
 | 5d | `rims.py` | the rim of a cut-out along furniture that hides the rest of the body gets the person's own colour instead of the furniture's (see "Footage on the body") | the cut-outs themselves (colours of the rim only), `rims.json` |
-| 6 | `export.py` | skinned GLB (52 joints, ≤ 4 weights per vertex, one animation key per frame in room coordinates) + `avatar.json` (motion, cameras, registration, chair poses) | `public/reconstruction/<clip>/avatar/` |
+| 5e | `tone.py` | per footage cut-out and body part, how much lighter or darker that camera films the part at that moment than the baked texture holds it (see "Tone of the footage") | `tone.json` |
+| 6 | `export.py` | skinned GLB (52 joints, ≤ 4 weights per vertex, one animation key per frame in room coordinates) + `avatar.json` (motion, cameras, registration, tone, chair poses) | `public/reconstruction/<clip>/avatar/` |
 | 7 | `validate.py` | measures the exported GLB against every camera and frame | `metrics.json` |
 
 Support files: `common.py` (paths, camera model identical to the app's), `body.py` (Anny rest state, own FK / linear
@@ -59,7 +60,7 @@ The body model is [Anny](https://github.com/naver/anny) (code Apache-2.0, MakeHu
 Mixamo-compatible rig. The 2D detector is RTMW-L through [rtmlib](https://github.com/Tau-J/rtmlib) (Apache-2.0).
 Everything runs on CPU. For the 21 s clip on 4 cores: 2D keypoints about 10 min, then calibrate 40 s, fit 76 s,
 shape 72 s (twice), refine 226 s, texture 250 s, export 3 s, validate 28 s; about 23 minutes in all. The chair adds
-about 7 minutes, the registration 1 minute and the rims 40 s.
+about 7 minutes, the registration 1 minute, the rims 40 s and the tone 20 s.
 
 ### Why the result cannot flicker or change identity
 
@@ -70,6 +71,15 @@ always shows exactly the same pose, whether you play, pause, scrub or step backw
 Checked in the running viewer (headless Chromium, 176 seeks to 132 random master times, forwards and backwards):
 wherever the subject is shown, the reconstructed body is what is drawn; its root joint is within 0.08 mm of the
 exported motion for that time (the sidecar is rounded to 0.1 mm); and returning to a time gives the identical pose.
+
+The 3D + FOOTAGE look draws the body in the pose of the frame whose cut-outs it carries (moved by the clock offset
+of the cameras the viewer looks along, a fraction of a frame), so pose and pixels are always of one instant. While
+the cut-outs of a frame are still loading, the last complete frame stays on screen with its own pose for up to 3
+frames. Checked the same way (110 seeks to 82 master times, from one viewpoint): every seek ended on the clock's
+frame, with the footage of each camera that has a usable cut-out of it and the root joint within 0.52 mm of the
+exported motion around that frame, and the 28 times visited twice showed the identical pose of body and chair.
+While playing (two stretches, 147 rendered frames, in a software renderer at about 1.4 frames per second) every
+rendered frame carried the footage of its own frame. Playback at full speed on a GPU has not been measured.
 
 ## What keeps the pose right in every frame
 
@@ -156,9 +166,30 @@ carries:
 - `projection.known`: per cut-out, the rectangle of the frame in which its matte is authoritative (outside it the
   matte says nothing: the person may continue there);
 - `projection.register` and `projection.use`: step 5c, below;
-- `props`: the chair of step 5b: pose per frame, the names of its `pieces` (= the mesh nodes of its GLB), and per
+- `projection.tone`: step 5e, below: the 18 body `parts`, the part of each of the 52 skin `joints`, and per camera
+  and frame 54 integers (18 parts × RGB, in units of `scale` = 0.001);
+- `props`: the chair of step 5b: pose per frame, the names of its `pieces` (= the mesh nodes of its GLB), per
   camera and frame the pieces that camera's matte shows (`frames.cut`, one bit per piece; `frames.inMatte` is the
-  older per-chair flag, used when `cut` is absent).
+  older per-chair flag, used when `cut` is absent), and the pieces of one `plain` colour (its legs).
+
+Which pixels a point takes depends on where the viewer stands:
+
+- **At a camera** its cut-out lies over everything else as it is: whatever the viewer sees from there, the camera
+  saw. It is a layer of its own, complete within 4.5° of the camera and gone at 11°, and under it is the blend of
+  the next point. (It used to be a share of that blend. The camera the viewer looks along outweighs the others
+  there a hundred times and more, so a pixel that fails the tests below stayed at full strength for as long as a
+  trace of that share was left: 10° from cam1 at frame 60, a light jagged line of floor from the matte's rim ran
+  down the outline of a leg.)
+- **Away from a camera** a pixel has to be earned. The camera must really see the point (a depth map of the body
+  rendered from that camera, and nothing within 3 px of an edge where one part of the body hides another), the
+  pixel must lie 2 px inside the matte with body around it, it must look like the body there (the colour test of
+  step 5e), and the camera must have seen the surface squarely enough. Next to the camera the cosine between the
+  surface normal and the camera's ray may be as low as 0.45 (nothing below 0.12). For a viewer 35° or more from
+  the camera the limits are 0.85 and 0.6: only what the camera saw within about 30° of square on is used in full,
+  and nothing beyond 53°. A surface a camera saw at a slant lies within a few of its pixels of an outline (an arm
+  is 16 px wide in clip02), where the pixel is as likely the chair or the wall beside it, and the viewer who now
+  faces that surface sees every such pixel stretched. With the limits at 0.62 and 0.3 a row of light dashes ran
+  along the left sleeve and pale streaks across the chest, 40° to 110° from cam1 at frame 244.
 
 Within a few degrees of a camera the outline is the footage's own: slivers of the body that stick out of that
 camera's matte are cut back to it. A part the matte lacks because furniture stood in front of it (the shins behind
@@ -204,6 +235,65 @@ On clip02 (1077 cut-outs): 128 are moved (cam1 95, cam2 16, cam4 17), 17 are not
 cam2 108–111, cam4 99–100 and 252). The silhouette IoU of the 85 moved cam1 views that are used goes from a median
 of 0.81 (worst 0.39) to 0.92 (worst 0.80); cam4's 14 from 0.79 (0.60) to 0.88 (0.81).
 
+### Tone of the footage (`tone.py`)
+
+The baked texture holds one colour per point of the body for the whole clip. A camera films that point lighter or
+darker at a given moment: the back of the hoodie under the ceiling lights while he bends over the table, haze at a
+distance, the camera's exposure. The viewer needs that difference for two things:
+
+- **Which pixels belong on the body.** Away from a camera a footage pixel is only put on a point of the surface if
+  it looks like the body there (it may be a wall seen through a gap in the matte, or the chair in front of him).
+  Compared with the texture as baked, a hoodie filmed much lighter fails that test, and the lit back fell back to
+  the dark texture in patches.
+- **What the fill looks like beside footage.** The parts no camera shows are the baked texture; in its own tone it
+  stands out as a dark patch next to lit footage.
+
+The difference is not one number per view (camera 1 films the back 0.2 lighter than the texture while he bends
+over the table at frame 150, and his trousers 0.01 to 0.06 lighter), so `tone.py` measures it per cut-out and
+**body part** (18 parts: the bones of the rig, fingers and toes counted to hand and foot). The body with its baked
+texture is rendered into the camera, moved by the registration of step 5c, and over the pixels that both the matte
+and the body cover (2 px inside both, without a carried object) the median of
+
+    sqrt(linear footage) − sqrt(linear baked)
+
+is taken per part and colour channel (the gamma 2 encoding the viewer's shader compares colours in). The fewer
+pixels a view has of a part, the more the part takes the value of its garment (top, bottom, skin, shoes) and of the
+whole body: with 60 pixels it is half its own median, under 20 it is its garment's alone. Per camera and part the
+series is then smoothed over time (median of 7 frames, then mean of 7) and limited to −0.15 … +0.32.
+
+On clip02 all 1077 cut-outs are measured. Mean over RGB, median over the views and the parts of the row (5th to
+95th percentile):
+
+| | cam1 | cam2 | cam3 | cam4 |
+|---|---|---|---|---|
+| torso (three spine parts) | +0.055 (−0.038 to +0.256) | +0.028 (−0.065 to +0.148) | +0.022 (−0.041 to +0.077) | −0.004 (−0.054 to +0.079) |
+| legs (thighs and shins) | +0.017 (−0.041 to +0.060) | −0.014 (−0.039 to +0.015) | +0.010 (−0.011 to +0.041) | +0.006 (−0.012 to +0.041) |
+
+From one frame to the next the part that changes most changes by 0.007 to 0.009 in the median (largest step in the
+clip 0.029, about 4 levels of 255 on a dark hoodie), so the tone does not flicker.
+
+In the viewer (`hybridProjection.ts`) the offsets live in a small texture with one texel per bone and camera; every
+vertex takes the tone of the bones that move it (its skin weights). It is used in three places:
+
+1. **The colour test.** A camera's pixel is compared with the baked colour of the point plus that camera's tone for
+   the part. Brightness is compared on the mean of the pixel and four pixels 4 px around it, so a thin detail the
+   texture lacks (a drawstring, a seam) passes and a patch of something else does not. Hue (the largest channel
+   difference once the brightness difference is taken out) is compared on the pixel itself: the light on the body
+   changes from moment to moment, its hue does not. Within 6 px of the matte's rim the hue limits are 0.3 times
+   as wide, because the rim is part background and video compression smears colour across the edge (on clip02 the
+   orange wall tints the grey hoodie up to 4 px inside the matte).
+2. **One tone for the picture.** Footage and fill are mixed in the texture's tone (every pixel minus its camera's
+   tone). The result then takes the tone of the cameras, each counted by how close it is to the viewing direction
+   (1/e at 30°) plus a tenth for seeing the surface squarely, so a lit back stays lit from the side, the fill
+   beside a camera's pixels has their tone, and the pixels of two cameras meet in one tone. At a camera the tone is
+   that camera's alone: its pixels are the recorded ones again, unchanged.
+3. **Not on objects.** The chair has no tone (it is measured on the person); its legs use the colour test against
+   their own plain colour (below).
+
+Between two cameras the picture used to be a double exposure of both. Of two cameras far from the viewing direction
+the nearer one now counts more: the weight a camera gets for seeing the surface squarely is halved 25° from the
+viewing direction and falls with the fourth power of the angle beyond, down to 3 % of itself.
+
 ### The chair (`chair.py`)
 
 He rests a hand on a café chair at frame 162, pulls it, lifts it at frame 220 and carries it out in both hands from
@@ -227,8 +317,25 @@ down: 26 pieces): `register.py` projects every piece into the matte and calls it
 the part of it that is clear of the person (for a leg: also clear of the seat and backrest), there is matte within
 5 cm (4 to 14 px) that the person does not explain. A piece that is mostly in front of or behind the person is not
 judged and keeps the matte's outline. Next to a camera the viewer cuts the shown pieces to the matte (real pixels)
-and draws the others as the grey proxy, so a leg is always there. Nothing is smoothed over time: every frame follows
-its own matte, so a leg can change between footage and proxy from one frame to the next, as it does in the mattes.
+and draws the others as the grey proxy, so a leg is always there. A piece a matte lacks takes no pixels from that
+camera from any angle: what the matte holds where the piece would be is the person or another piece. Nothing is
+smoothed over time: every frame follows its own matte, so a leg can change between footage and proxy from one frame
+to the next, as it does in the mattes.
+
+**Colours of the proxy.** They are measured on the close views of the carried chair, as a high percentile of the
+chair pixels inside the outlines of the pieces: the 85th for the plastic panels (RGB 160, 165, 166), which is the
+lit surface (the rest is slat shadow and what shows through the gaps), and the 95th for the legs (159, 160, 150).
+A leg is a 2 cm tube a few pixels wide, so most of its pixels are mixed with what is behind it, and their 85th
+percentile (143, 138, 134) is a darker grey than any leg looks in the footage. The GLB's texture is opaque between
+its tiles and continues the colour of the tile next to it: a leg a few pixels wide on screen is drawn from a small
+mip level, which mixes its narrow tile with its surroundings, and black, transparent texels there made the legs
+dark and thin.
+
+**Which pixels go on the legs.** Away from a camera the legs (the prop's `plain` pieces: one plain colour) take only
+those of its pixels that look like that colour, by the colour test of "Tone of the footage": a leg is a few pixels
+wide and the pose of a carried chair is known to 2 to 3 cm, so some of the pixels that land on it are the trousers
+behind it. The panels take the pixels of their matte as they are: slats show what is behind them through the gaps,
+and their baked colour is one grey.
 
 On clip02 the mattes with the chair show: cam1 (139 mattes) seat 100 %, backrest 99 %, legs 60 to 90 %; cam2 (68)
 seat 74 %, backrest 90 %, legs 32 to 99 %; cam3 (15) seat 93 %, backrest 67 %, legs 30 to 61 %; cam4 (25) every
@@ -273,6 +380,7 @@ $PY texture.py   --clip clip02
 $PY chair.py     --clip clip02            # clip02 only: the chair he carries (defaults are for this clip)
 $PY register.py  --clip clip02            # after any change to the cut-outs, the fit or the chair
 $PY rims.py      --clip clip02            # after register.py; rewrites rim colours in the cut-outs (--restore undoes it)
+$PY tone.py      --clip clip02            # after rims.py: it measures the cut-outs as the viewer gets them
 $PY export.py    --clip clip02
 $PY validate.py  --clip clip02 --sheet /tmp/avatar_check.jpg
 $PY export.py    --clip clip02            # again, to embed metrics.json in avatar.json
@@ -371,19 +479,41 @@ step 5d (the clip's `manifest.json` says so in its note).
 - **"100 % accuracy" is not attainable from four phone cameras** for surfaces they never saw, and the numbers above
   are agreement with the footage, not ground truth: there is no scan of the person to compare against.
 - **Carried objects**: the chair is a rigid proxy with an approximate pose (see "The chair"); the laptop is not
-  modelled. Both are kept out of the body's texture by building the starting colour consensus from the frames
-  before anything is picked up, and out of the pose by the anchor / near rules above.
+  modelled. Both are kept out of the body's texture by building the starting colour consensus from the frames before
+  anything is picked up, and out of the pose by the anchor / near rules above. From a camera's own position the
+  seat, the back and the legs that camera's matte holds are the recorded ones. The legs the matte lacks (thin, light
+  grey on a light floor, and in cam1 a second chair of the same colour behind them) are the grey proxy, which the
+  approximate pose puts a few pixels off: from cam1's position at frames 243 to 252 (20.4 s to 21.0 s) the two legs
+  on the right of the picture are separate grey bars below the seat, dashed in places and shorter than the recorded
+  legs, and at frame 282 (23.0 s) the long leg on the left ends half-way with fragments below it; from frame 253 to
+  281 the chair there follows the recording, with a small stray leg fragment beside it at frames 259 to 263. A few
+  degrees away the proxy legs stand a little apart from the seat as well (frames 244 to 247, 8° to 10° from cam1 and
+  cam3). From the side while he carries it in front of him (frame 256, 45° from cam2) the legs are fragments, and
+  the part of the chest the chair hid from the nearest camera is a lighter patch with a sharp edge. The gaps between
+  the slats show what the camera saw through them (the orange wall), also from a side where something else is behind
+  the chair.
 - **Footage on the body is only as sharp as the footage**: the head is 30–40 px wide, and what lies outside a
   camera's frame (the legs when he is close to cam1 or cam4) or behind furniture is the baked texture. Away from
   the camera angles the pixels sit on a body that is a few centimetres off the real surface, so fine detail
   (zip, drawstrings, fingers) smears; within 5° of a camera the outline is the footage's own.
 - **Where footage meets the model there is a step.** A part that one camera does not show (legs behind the sofa
   or the table, or below its frame) comes from another camera or the baked texture, and is softer and a little
-  wider or narrower than the footage above it. On clip02 the plainest case is a light sliver between the thigh
-  (footage) and the shin (model) next to cam3 around frame 244.
-- **A matte that contains something else paints it on the body.** Next to cam2 around frame 60 the bottles on the
-  table in front of his legs are inside the matte and land on his legs; cam2's mattes behind the plant (frames
-  237–246) are fragments; next to cam1 at frames 246–247 a dark ragged fragment stands beside the right thigh.
+  wider or narrower than the footage above it. On clip02 the plainest case is a light sliver at knee height, between
+  the thigh (footage) and the shin (model), 10° from cam3 at frame 244.
+- **Between two cameras the hand-over shows.** The pixels of two cameras meet in one tone, but not in one sharpness
+  or one registration: at frame 150, 20° to 30° from cam1, a vertical seam runs down the back where they meet.
+- **The face holds only at a camera.** From about 6° off a camera the head is the tested blend, and where that
+  camera saw the head at a slant (under the jaw, the far cheek) the model's own face shows, which is a blurred
+  average with a darker chin: at frame 100, 7° to 20° from cam3, a dark arc lies under the chin. At 20° from cam1
+  at frame 250 the face is blurred.
+- **Leaving a camera, 5° to 12° away**, the slivers of the body outside that camera's matte fade in and are half
+  transparent in between, and that camera's own cut-out fades out over the tested blend.
+- **A matte that contains something else paints it on the body.** At frame 60 the bottles on the table in front of
+  his legs are inside cam2's matte and lie on his legs as white spots 7° and 10° from cam2 (from cam2 itself they
+  are where the bottles stand). Beyond 11° the colour test applies and they shrink, but the smallest are kept as
+  it keeps a zip or a logo, and are still there at 19°. At frame 200, 10° from cam2, a green-yellow patch of the
+  plant lies on his side; at 14° the hue test has reduced it to a trace. Cam2's mattes behind the plant (frames
+  237–246) are fragments.
 - **The body is shown up to 3.7 cm higher than the cameras see it**, where the room scan's floor is that much
   off (see "The floor the viewer draws"). A flatter room scan removes this.
 - **Hair bun, hood, drawstrings** exist as texture and as a smooth offset of the head / neck surface, not as separate
