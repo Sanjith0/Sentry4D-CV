@@ -2,16 +2,149 @@
 
 The GLB is a standard skinned mesh with one baked animation in ROOM coordinates; the JSON sidecar
 carries what the viewer needs without parsing the GLB (floor point, heading, evidence per frame)
-and the measured accuracy of the reconstruction.
+and the measured accuracy of the reconstruction. Version 2 of the sidecar adds
+
+  projection  the refined cameras and, per cut-out, where its matte is authoritative and where the cut-out
+              belongs on the body (register.py), so the viewer can put the footage of the shown frame
+              back onto the body (3D + FOOTAGE look)
+  props       rigid objects the person handles (prop_*.json from chair.py): pose per frame and, per
+              camera and frame, whether that camera's matte contains the object and which of its
+              pieces the matte really shows (register.py)
 """
 import argparse, json, os
 import numpy as np
 import torch
 
 from body import BODY_JOINTS, Body, rotmat_to_quat
-from common import CAMS, load_json, public_dir, work_dir
-from gltf_io import skin_from_glb, split_uv, vertex_normals, write_glb
+from common import CAMS, H, W, load_cameras, load_json, public_dir, work_dir
+from gltf_io import skin_from_glb, split_uv, write_glb
+from masks import load_masks
 from room import fit_floor, fit_lift, floor_point, sample_floor
+
+
+def projection(clip, fit, masks):
+    """What the viewer needs to put the footage of a frame back onto the body (FOOTAGE ON MODEL look):
+    the refined cameras the body was fitted with, the lift between where the cameras see the body and
+    where the viewer draws it, and per cut-out the rectangle in which its matte is authoritative."""
+    cams = load_cameras(clip)
+    N = len(fit["root_pos"])
+    known = {}
+    for ci, cam in enumerate(CAMS):
+        rows = []
+        for k in range(N):
+            e = masks.get((ci, k))
+            if e is None:
+                rows.append(None)
+            elif e["method"].startswith("sam2.1 ("):               # segmented on the whole frame, never clipped to a box
+                rows.append([0, 0, W, H])
+            else:
+                rows.append([int(v) for v in e["known"]])
+        known[cam] = rows
+    out = {
+        "frame": [W, H],
+        # pixel centres at integer coordinates (the convention of every projection in this pipeline)
+        "cameras": {c: {"f": round(float(cams[c]["f"]), 4), "cx": round(float(cams[c]["cx"]), 4), "cy": round(float(cams[c]["cy"]), 4),
+                        "k1": float(cams[c]["k1"]), "dt": float(cams[c]["dt"]),
+                        "R": np.round(cams[c]["R"], 8).tolist(), "t": np.round(cams[c]["t"], 6).tolist(),
+                        "C": np.round(cams[c]["C"], 6).tolist()} for c in CAMS},
+        "lift": np.round(fit_lift(fit), 4).tolist(),
+        "known": known,
+    }
+    # where each cut-out belongs on the body (register.py): p_footage = c + s (p_body - c) + d in pixel centres
+    # -> p_body = a p_footage + b in the pixel-edge coordinates of cropPx, a = 1 / s, b = c - (c + d) / s + (1 - a) / 2
+    path = os.path.join(work_dir(clip), "register.json")
+    if os.path.exists(path):
+        from register import fingerprint
+        reg = load_json(path)["cameras"]
+        ident = lambda ci, k: fingerprint(masks[(ci, k)]) if (ci, k) in masks else None
+        stale = [(cam, k) for ci, cam in enumerate(CAMS) for k in range(N) if ident(ci, k) != (reg[cam]["id"][k] if k < len(reg[cam]["id"]) else None)]
+        if stale:
+            raise SystemExit(f"register.json was measured on other cut-outs ({len(stale)} differ, e.g. {stale[:4]}): run register.py --clip {clip} first")
+        register, use = {}, {}
+        for cam in CAMS:
+            rows = []
+            for r in reg[cam]["register"][:N]:
+                if r is None:
+                    rows.append(None)
+                else:
+                    s, dx, dy, cx, cy = r
+                    a = 1.0 / s
+                    rows.append([round(a, 5), round(cx - (cx + dx) * a + 0.5 * (1 - a), 2), round(cy - (cy + dy) * a + 0.5 * (1 - a), 2)])
+            register[cam] = rows
+            use[cam] = reg[cam]["use"][:N]
+        out["register"], out["use"] = register, use
+        print("  footage registered to the body: " + ", ".join(
+            f"{cam} {sum(r is not None for r in register[cam])} moved / {sum(u is False for u in use[cam])} not used" for cam in CAMS))
+    else:
+        print("  no register.json: the cut-outs are projected as filmed (run register.py)")
+    return out
+
+
+def props(clip, wd, out_dir, masks, N):
+    """Rigid objects the person handles (prop_*.json next to the fit, written by chair.py), with one flag per
+    camera and frame: does that camera's matte contain the object? Only then may the viewer cut the
+    object's outline to the matte; otherwise the matte is the person alone and says nothing about it.
+    The segmentation records it in the cut-out's maskMethod ("...+carried:<kind>").
+
+    Such a matte rarely has the whole object (the panels of the chair, but only part of its thin legs), so
+    register.py also measured which pieces it shows: `pieces` names them (= the nodes of the GLB) and
+    `cut[camera][frame]` has bit j set when the matte shows piece j. Next to that camera the viewer cuts
+    those pieces to the matte and draws the others from the proxy; 0 = nothing is cut."""
+    out = []
+    reg_path = os.path.join(wd, "register.json")
+    reg = load_json(reg_path) if os.path.exists(reg_path) else {}
+    for name in sorted(os.listdir(wd)):
+        if not (name.startswith("prop_") and name.endswith(".json")):
+            continue
+        p = load_json(os.path.join(wd, name))
+        glb = os.path.join(public_dir(clip), p["glb"])
+        if not os.path.exists(glb) or len(p["frames"]["pos"]) < N:
+            print(f"  prop {p.get('id')}: no GLB at {glb} or too few frames, skipped")
+            continue
+        fr = p["frames"]
+        kind = p.get("kind", "object")
+        in_matte = {}
+        for ci, cam in enumerate(CAMS):
+            row = np.zeros(N, int)
+            for k in range(N):
+                e = masks.get((ci, k))
+                row[k] = int(e is not None and f"carried:{kind}" in e["method"])
+            # one flag per stretch of frames, not per frame: an outline that is cut in one frame and whole in
+            # the next would flicker (stretches of up to 2 frames are closed / removed)
+            r = row.copy()
+            for k in range(1, N - 1):
+                lo, hi = row[max(0, k - 2):k], row[k + 1:k + 3]
+                if lo.all() and hi.all():
+                    r[k] = 1
+                elif not lo.any() and not hi.any():
+                    r[k] = 0
+            in_matte[cam] = r.tolist()
+        entry = {"id": p["id"], "kind": kind, "glb": p["glb"],
+                 "frames": {"pos": np.round(np.asarray(fr["pos"], float)[:N], 4).tolist(),
+                            "quat": np.round(np.asarray(fr["quat"], float)[:N], 5).tolist(),
+                            "lift": np.round(np.asarray(fr["lift"], float)[:N], 4).tolist(),
+                            "held": [bool(b) for b in fr.get("held", [False] * N)[:N]],
+                            "inMatte": in_matte}}
+        for key in ("visible", "fitted"):
+            if key in fr:
+                entry["frames"][key] = [bool(b) for b in fr[key][:N]]
+        names = reg.get("pieces", {}).get(kind)
+        if names:
+            shown = {cam: (reg["cameras"][cam].get("shown", {}).get(kind) or [])[:N] for cam in CAMS}
+            entry["pieces"] = names
+            entry["frames"]["cut"] = {cam: [int(b) if b is not None else 0 for b in shown[cam]] + [0] * (N - len(shown[cam])) for cam in CAMS}
+        for key in ("dims", "metrics", "rest"):
+            if key in p:
+                entry[key] = p[key]
+        out.append(entry)
+        print(f"  prop {p['id']}: " + ", ".join(f"{c} matte has it in {int(np.sum(in_matte[c]))} frames" for c in CAMS))
+        if names:
+            full = (1 << len(names)) - 1
+            print(f"    {len(names)} pieces; mattes that lack some of them: " + ", ".join(
+                f"{c} {sum(0 < b < full for b in entry['frames']['cut'][c])} of {sum(b > 0 for b in entry['frames']['cut'][c])}" for c in CAMS))
+        else:
+            print("    no piece flags (run register.py): next to a camera the whole object is cut to its matte")
+    return out
 
 
 def main():
@@ -71,8 +204,9 @@ def main():
     # height of the scanned room floor under the body, the floor the fit stood it on (refine.py / room.py);
     # 0 when the fit used the nominal plane
     floor_y = sample_floor(*fit_floor(fit), floor)
+    masks = load_masks(a.clip)
     side = {
-        "version": 1, "clip": a.clip, "subjectId": man["subjectId"], "personId": man["personId"],
+        "version": 2, "clip": a.clip, "subjectId": man["subjectId"], "personId": man["personId"],
         "glb": "avatar/subject-01.glb", "fps": fps, "t0": man["t0"], "t1": man["t1"], "frameCount": N,
         "heightM": round(float(v[:, 1].max() - v[:, 1].min()), 3),
         "textured": texture is not None, "clothed": has_shape,
@@ -83,6 +217,8 @@ def main():
     }
     if metrics:
         side["metrics"] = metrics
+    side["projection"] = projection(a.clip, fit, masks)
+    side["props"] = props(a.clip, wd, out_dir, masks, N)
     with open(os.path.join(out_dir, "avatar.json"), "w") as fh:
         json.dump(side, fh, separators=(",", ":"))
     print(f"wrote {glb} ({os.path.getsize(glb) / 1e6:.2f} MB, {nv} render vertices, textured={texture is not None}, clothed={has_shape})")

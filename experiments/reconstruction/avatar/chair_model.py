@@ -1,0 +1,242 @@
+"""Procedural proxy of the carried cafe chair: geometry, silhouette helpers, texture and GLB.
+
+Local frame: origin on the floor under the centre of the seat, +Y up, +Z = the direction a seated
+person faces, metres. The chair is six convex pieces (hexahedra): a thin solid seat panel, a thin
+solid backrest panel leaning back from the rear edge of the seat, and four tapered legs splayed
+from the seat corners. Solid panels on purpose: the viewer projects the camera pixels onto the
+proxy and thin slat geometry would alias against the real slats; the gaps between the slats are
+cut by the alpha channel of the texture instead (material alphaMode MASK).
+
+Because every piece is convex, its image is the convex hull of its eight projected corners, which
+gives an exact silhouette (`hulls`, `raster`) and an exact, smooth pixel-to-model distance
+(`hull_distance`) for the silhouette fits in chair.py.
+
+The GLB carries the same solid as `PIECES`: the two panels and every leg in LEG_SEGMENTS lengths, each
+its own node. A camera's matte often has the panels of the carried chair but only part of its thin
+legs, so the viewer decides piece by piece whether the footage outline or the proxy is drawn
+(register.py measures it, avatar.json `props[].frames.cut`).
+"""
+import io, json, struct
+import cv2
+import numpy as np
+from PIL import Image
+
+from common import project
+from gltf_io import FLOAT, U16, _Buf, _pad
+
+# metres / degrees; the values chair.py measures for clip02 replace these defaults
+DIMS = {"seat_w": 0.43, "seat_d": 0.42, "seat_h": 0.45, "back_h": 0.82, "back_w": 0.40, "back_tilt": 14.0,
+        "leg_front": 0.03, "leg_rear": 0.10, "leg_side": 0.03}
+FREE = list(DIMS)                                    # the dimensions fitted to the footage
+SEAT_T, BACK_T, LEG_TOP, LEG_FOOT = 0.018, 0.018, 0.024, 0.020     # panels and the metal tube legs
+PARTS = ["seat", "back", "leg_fl", "leg_fr", "leg_rl", "leg_rr"]
+LEG_SEGMENTS = 6                                     # lengths a leg is cut into (7 cm each)
+# what the viewer shows or cuts one by one, in the bit order of avatar.json `cut`; leg pieces run from the seat down
+PIECES = PARTS[:2] + [f"{leg}_{j}" for leg in PARTS[2:] for j in range(LEG_SEGMENTS)]
+
+# faces of a hexahedron whose corners are indexed a + 2 b + 4 c along right-handed local axes (u, v, w)
+_QUADS = {"-w": (0, 2, 3, 1), "+w": (4, 5, 7, 6), "-v": (0, 1, 5, 4), "+v": (2, 6, 7, 3), "-u": (0, 4, 6, 2), "+u": (1, 3, 7, 5)}
+
+
+def _hexa(p00, p10, p01, p11, q00, q10, q01, q11):
+    """Corners a + 2 b + 4 c from the four corners of the c = 0 face (p_ab) and of the c = 1 face (q_ab)."""
+    return np.array([p00, p10, p01, p11, q00, q10, q01, q11], float)
+
+
+def parts(d):
+    """The six convex pieces -> (6, 8, 3) corners in the local frame."""
+    w, dd, sh = d["seat_w"], d["seat_d"], d["seat_h"]
+    zr, zf = -dd / 2, dd / 2
+    seat = _hexa([-w / 2, sh - SEAT_T, zr], [w / 2, sh - SEAT_T, zr], [-w / 2, sh, zr], [w / 2, sh, zr],
+                 [-w / 2, sh - SEAT_T, zf], [w / 2, sh - SEAT_T, zf], [-w / 2, sh, zf], [w / 2, sh, zf])
+    # backrest: u = x, v = up along the panel, w = thickness (towards the front)
+    tl = np.radians(d["back_tilt"])
+    up = np.array([0.0, np.cos(tl), -np.sin(tl)]); nrm = np.array([0.0, np.sin(tl), np.cos(tl)])
+    b0 = np.array([0.0, sh - SEAT_T, zr]); b1 = b0 + up * (d["back_h"] - b0[1]) / up[1]
+    bw, ex = d["back_w"] / 2, np.array([1.0, 0, 0])
+    back = _hexa(b0 - bw * ex - BACK_T * nrm, b0 + bw * ex - BACK_T * nrm, b1 - bw * ex - BACK_T * nrm, b1 + bw * ex - BACK_T * nrm,
+                 b0 - bw * ex, b0 + bw * ex, b1 - bw * ex, b1 + bw * ex)
+    out = [seat, back]
+    for sz, splay in ((1, d["leg_front"]), (-1, d["leg_rear"])):
+        for sx in (-1, 1):
+            top = np.array([sx * (w / 2 - LEG_TOP / 2), sh - SEAT_T, sz * (dd / 2 - LEG_TOP / 2)])
+            foot = np.array([sx * (w / 2 + d["leg_side"]), 0.0, sz * (dd / 2 + splay)])
+            c = []
+            for cz in (-1, 1):
+                for cen, s in ((foot, LEG_FOOT / 2), (top, LEG_TOP / 2)):
+                    for cx in (-1, 1):
+                        c.append(cen + [cx * s, 0, cz * s])
+            out.append(np.array(c))
+    return np.stack(out)
+
+
+def pieces(d, n=LEG_SEGMENTS):
+    """The solid of `parts` as PIECES: both panels, then every leg in n lengths from the seat down
+    -> (2 + 4 n, 8, 3) corners in the local frame."""
+    c = parts(d)
+    out = [c[0], c[1]]
+    for leg in c[2:]:
+        q = leg.reshape(2, 2, 2, 3)                  # [w, v, u], v = 0 at the foot
+        for j in range(n):
+            t0, t1 = 1 - (j + 1) / n, 1 - j / n      # this length spans v in [t0, t1]
+            lo, hi = q[:, 0] * (1 - t0) + q[:, 1] * t0, q[:, 0] * (1 - t1) + q[:, 1] * t1
+            out.append(np.stack([lo, hi], 1).reshape(8, 3))
+    return np.stack(out)
+
+
+def samples(d, n=15):
+    """Points spread over the pieces (n x n on the mid-surface of a panel, n along the axis of a leg;
+    the count does not depend on the dimensions) -> (m, 3) local, (m,) part index."""
+    P, I = [], []
+    t, mid = (np.arange(n) + 0.5) / n, np.array([0.5])
+    for i, c in enumerate(parts(d)):
+        c = c.reshape(2, 2, 2, 3)                    # [w, v, u]
+        ax = {"seat": (t, mid, t), "back": (mid, t, t)}.get(PARTS[i], (mid, np.linspace(0, 1, n), mid))
+        gw, gv, gu = np.meshgrid(*ax, indexing="ij")
+        pts = sum(np.where(a, gw, 1 - gw)[..., None] * np.where(b, gv, 1 - gv)[..., None] * np.where(e, gu, 1 - gu)[..., None] * c[a, b, e]
+                  for a in (0, 1) for b in (0, 1) for e in (0, 1))
+        P.append(pts.reshape(-1, 3)); I.append(np.full(pts.size // 3, i))
+    return np.concatenate(P), np.concatenate(I)
+
+
+def hulls(cam, X):
+    """Image outline of every piece: X (6, 8, 3) corners in fit coordinates -> list of (m, 2) convex polygons."""
+    px, _ = project(cam, X)
+    return [cv2.convexHull(p.astype(np.float32)).reshape(-1, 2).astype(np.float64) for p in px]
+
+
+def raster(polys, shape, origin=(0, 0)):
+    """Union of the convex polygons as a uint8 0/1 image of `shape` whose pixel (0, 0) is `origin`."""
+    img = np.zeros(shape, np.uint8)
+    for p in polys:
+        cv2.fillConvexPoly(img, np.round((p - np.asarray(origin, float)) * 8).astype(np.int32), 1, lineType=cv2.LINE_8, shift=3)
+    return img
+
+
+def hull_distance(pts, polys):
+    """Distance (px) from points (n, 2) to the union of the convex polygons; 0 inside."""
+    best = np.full(len(pts), np.inf)
+    for p in polys:
+        a, b = p, np.roll(p, -1, 0)
+        e = b - a
+        L2 = np.maximum((e ** 2).sum(1), 1e-9)
+        r = pts[:, None] - a[None]
+        cr = e[None, :, 0] * r[..., 1] - e[None, :, 1] * r[..., 0]
+        inside = (cr >= 0).all(1) | (cr <= 0).all(1)
+        t = np.clip((r * e[None]).sum(-1) / L2[None], 0, 1)
+        dist = np.linalg.norm(r - t[..., None] * e[None], axis=-1).min(1)
+        best = np.minimum(best, np.where(inside, 0.0, dist))
+    return best
+
+
+# ---------------------------------------------------------------- texture + GLB
+TEX = 512
+_TILES = {"seat_top": (0, 0, 256, 256), "seat_bottom": (256, 0, 512, 256), "back_front": (0, 256, 256, 488),
+          "back_rear": (256, 256, 512, 488), "edge": (0, 492, 256, 512), "leg": (256, 492, 512, 512)}
+_PAD = 6                                             # texels kept clear of a tile border (mip-map bleed)
+
+
+def _panel_alpha(h, w, slots, x_margin, y0, y1, gap, radius, round_top_only):
+    """Alpha of one panel tile: 1 = material. `slots` gaps across the width between rows y0..y1
+    (fractions of the tile, row 0 = the far edge: backrest top / seat rear) and rounded corners."""
+    a = np.ones((h, w), np.float32)
+    ys = (np.arange(h) + 0.5) / h
+    xs = (np.arange(w) + 0.5) / w
+    phase = (ys - y0) / (y1 - y0) * slots
+    in_gap = (phase >= 0) & (phase < slots) & ((phase % 1.0) > 1 - gap)
+    a[np.ix_(in_gap, (xs > x_margin) & (xs < 1 - x_margin))] = 0
+    r = radius
+    for cy in ([r] if round_top_only else [r, 1 - r]):
+        for cx in (r, 1 - r):
+            yy, xx = np.meshgrid(ys, xs, indexing="ij")
+            corner = ((yy < r) if cy == r else (yy > 1 - r)) & ((xx < r) if cx == r else (xx > 1 - r))
+            a[corner & ((yy - cy) ** 2 + (xx - cx) ** 2 > r * r)] = 0
+    return a
+
+
+def texture(rgb, metal, dark=0.85):
+    """RGBA texture (TEX x TEX): the measured colour `rgb` of the plastic panels with a faint slat
+    shading and darker undersides, the gaps between the slats in alpha, and the measured colour
+    `metal` of the legs. Tiles as in _TILES."""
+    img = np.zeros((TEX, TEX, 4), np.float32)
+    rgb, metal = np.asarray(rgb, np.float32), np.asarray(metal, np.float32)
+    for name, (x0, y0, x1, y1) in _TILES.items():
+        h, w = y1 - y0, x1 - x0
+        tile = np.ones((h, w, 4), np.float32)
+        tile[..., :3] = metal if name == "leg" else rgb * (dark if name in ("seat_bottom", "back_rear") else 1.0)
+        if name.startswith("seat"):                  # rows: rear (top of the tile) -> front
+            a = _panel_alpha(h, w, 9, 0.12, 0.16, 0.90, 0.36, 0.10, False)
+        elif name.startswith("back"):                # rows: top of the backrest -> seat
+            a = _panel_alpha(h, w, 12, 0.13, 0.12, 0.80, 0.36, 0.12, True)
+        else:
+            a = np.ones((h, w), np.float32)
+        if name.startswith(("seat", "back")):        # each slat a little darker towards its lower edge
+            soft = cv2.GaussianBlur(a, (0, 0), 2.0)
+            tile[..., :3] *= (0.86 + 0.14 * soft)[..., None]
+        tile[..., 3] = a
+        img[y0:y1, x0:x1] = tile
+    return np.clip(np.round(img * [1, 1, 1, 255]), 0, 255).astype(np.uint8)
+
+
+def _tile_uv(name, s, t):
+    """(s, t) in [0, 1]^2 of a tile (t = 0 at its top row) -> glTF uv."""
+    x0, y0, x1, y1 = _TILES[name]
+    return np.stack([(x0 + _PAD + s * (x1 - x0 - 2 * _PAD)) / TEX, (y0 + _PAD + t * (y1 - y0 - 2 * _PAD)) / TEX], -1)
+
+
+def meshes(d):
+    """Flat-shaded render meshes, one per piece of PIECES -> list of (name, v (n, 3), normals,
+    uv (glTF, origin top-left), faces (m, 3))."""
+    panel = {("seat", "+v"): "seat_top", ("seat", "-v"): "seat_bottom", ("back", "+w"): "back_front", ("back", "-w"): "back_rear"}
+    out = []
+    for name, c in zip(PIECES, pieces(d)):
+        V, N, UV, F = [], [], [], []
+        for side, q in _QUADS.items():
+            p = c[list(q)]
+            n = np.cross(p[1] - p[0], p[3] - p[0]); n /= np.linalg.norm(n)
+            tile = panel.get((name, side))
+            if tile is None:
+                uv = _tile_uv("leg" if name.startswith("leg") else "edge", np.array([0.2, 0.8, 0.8, 0.2]), np.array([0.2, 0.2, 0.8, 0.8]))
+            elif name == "seat":                     # s across the width, t from the rear edge to the front
+                uv = _tile_uv(tile, (p[:, 0] - c[:, 0].min()) / np.ptp(c[:, 0]), (p[:, 2] - c[:, 2].min()) / np.ptp(c[:, 2]))
+            else:                                    # s across the width, t from the top of the backrest down
+                uv = _tile_uv(tile, (p[:, 0] - c[:, 0].min()) / np.ptp(c[:, 0]), (c[:, 1].max() - p[:, 1]) / np.ptp(c[:, 1]))
+            b = len(V) * 4
+            V.append(p); N.append(np.tile(n, (4, 1))); UV.append(uv); F += [[b, b + 1, b + 2], [b, b + 2, b + 3]]
+        out.append((name, np.concatenate(V), np.concatenate(N), np.concatenate(UV), np.array(F)))
+    return out
+
+
+def write_glb(path, d, rgb, metal, extras=None):
+    """Static GLB: a root node `chair` whose children are the pieces of PIECES (node name = piece name),
+    one RGBA PNG and one material for all of them, alphaMode MASK, double sided."""
+    png = io.BytesIO()
+    Image.fromarray(texture(rgb, metal), "RGBA").save(png, format="PNG", optimize=True)
+    b = _Buf()
+    nodes, mesh_defs, nv, nf = [{"name": "chair", "children": []}], [], 0, 0
+    for name, v, n, uv, f in meshes(d):
+        prim = {"attributes": {"POSITION": b.accessor(v.astype(np.float32), FLOAT, "VEC3", target=34962, minmax=True),
+                               "NORMAL": b.accessor(n.astype(np.float32), FLOAT, "VEC3", target=34962),
+                               "TEXCOORD_0": b.accessor(uv.astype(np.float32), FLOAT, "VEC2", target=34962)},
+                "indices": b.accessor(f.reshape(-1).astype(np.uint16), U16, "SCALAR", target=34963), "material": 0}
+        nodes[0]["children"].append(len(nodes))
+        nodes.append({"name": name, "mesh": len(mesh_defs)})
+        mesh_defs.append({"primitives": [prim]})
+        nv, nf = nv + len(v), nf + len(f)
+    gltf = {"asset": {"version": "2.0", "generator": "Sentry4D avatar pipeline (experiments/reconstruction/avatar/chair.py)"},
+            "scene": 0, "scenes": [{"nodes": [0]}], "nodes": nodes, "meshes": mesh_defs,
+            "materials": [{"name": "chair", "alphaMode": "MASK", "alphaCutoff": 0.5, "doubleSided": True,
+                           "pbrMetallicRoughness": {"baseColorTexture": {"index": 0}, "metallicFactor": 0.1, "roughnessFactor": 0.6}}],
+            "images": [{"bufferView": b.view(png.getvalue()), "mimeType": "image/png", "name": "chair"}],
+            "samplers": [{"magFilter": 9729, "minFilter": 9987, "wrapS": 33071, "wrapT": 33071}],
+            "textures": [{"sampler": 0, "source": 0}]}
+    if extras:
+        gltf["scenes"][0]["extras"] = extras
+    gltf["bufferViews"], gltf["accessors"] = b.views, b.accessors
+    gltf["buffers"] = [{"byteLength": len(b.data)}]
+    js = _pad(json.dumps(gltf, separators=(",", ":")).encode(), b" ")
+    with open(path, "wb") as fh:
+        fh.write(struct.pack("<III", 0x46546C67, 2, 12 + 8 + len(js) + 8 + len(b.data)))
+        fh.write(struct.pack("<II", len(js), 0x4E4F534A) + js)
+        fh.write(struct.pack("<II", len(b.data), 0x004E4942) + bytes(b.data))
+    return nv, nf

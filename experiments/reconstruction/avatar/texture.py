@@ -5,7 +5,7 @@ posed mesh is z-buffered at footage resolution, every visible texel is projected
 its colour is accumulated with a weight (viewing angle, pixel footprint, SAM 2 alpha, occlusion
 edges). Colours are fused over all frames and cameras in passes:
 
-  1.  weighted mean per camera -> per-camera colour maps (the phones white-balance differently)
+  1.  weighted mean per camera -> per-camera colour offsets (the phones differ by a few levels in the darks)
   1b. mean of the clean views  -> starting consensus from the frames before anything is carried, so a
                                   laptop or chair held in front of the body cannot become clothing
   2.  robust consensus         -> outvotes carried objects, mask leaks and pose errors
@@ -169,46 +169,34 @@ def run_pass(pairs, procs, per_cam=False):
     return acc, wsum, nviews
 
 
-def colour_consensus(mean_c, wsum, iters=4):
-    """Per-camera, per-channel affine maps (gain, offset) that bring the cameras' renditions of the
-    same texels into agreement; normalised so the weighted average map is the identity (no camera is
-    singled out as the reference). Fitted on binned medians, so the dark clothing does not swamp the
-    few bright texels (skin, soles, shirt hem)."""
+def colour_consensus(mean_c, wsum, iters=3):
+    """Per-camera, per-channel offsets that bring the cameras' renditions of the same texels into agreement,
+    normalised so the weighted average offset is zero (no camera is singled out as the reference).
+
+    Offsets only, with gain 1. Over the texels that several cameras saw, the footage already agrees to a few
+    levels in the dark clothing that makes up most of the surface; what differs beyond that is the light on the
+    subject at the moments each camera saw a texel, not the camera. (An earlier version fitted a gain as well, by
+    regressing the other cameras on each camera. The noise in a camera's own texels biases that slope below 1,
+    the offset above 0, and the other way round for the cameras that have to balance it: 0.8 x + 24 for cam2,
+    which turned black clothing teal wherever cam2 dominated a texel.)"""
     C = mean_c.shape[0]
-    g, o = np.ones((C, 3)), np.zeros((C, 3))
     wn = np.stack([wsum[c] / max(np.median(wsum[c][wsum[c] > 0]), 1e-9) if (wsum[c] > 0).any() else wsum[c] for c in range(C)])
     wn = np.clip(wn, 0, 3)
     good = wn > 0.3
+    sel = good.sum(0) >= 3                                                    # texels three or four cameras saw well
+    o = np.zeros((C, 3))
+    tot = np.array([wn[c].sum() for c in range(C)]); tot = tot / tot.sum()
     for _ in range(iters):
-        corr = np.clip(mean_c * g[:, None, :] + o[:, None, :], 0, 255)
+        x = np.where(good[:, sel, None], mean_c[:, sel] + o[:, None, :], np.nan)
+        ref = np.nanmedian(x, 0)                                             # consensus of the cameras that saw the texel
+        dark = ref.mean(-1) < 90                                             # skin and soles depend on the light, not the camera
         for c in range(C):
-            others = [k for k in range(C) if k != c]
-            wo = np.stack([wn[k] * good[k] for k in others]).sum(0)
-            sel = good[c] & (wo > 0.3)
-            if sel.sum() < 3000:
+            m = good[c, sel] & dark
+            if m.sum() < 3000:
                 continue
-            ref = sum((corr[k] * (wn[k] * good[k])[:, None]) for k in others)[sel] / wo[sel, None]
-            x = mean_c[c][sel]
-            for ch in range(3):
-                edges = np.unique(np.percentile(x[:, ch], np.linspace(0, 100, 15)))
-                bx, by, bw = [], [], []
-                for lo, hi in zip(edges[:-1], edges[1:]):
-                    m = (x[:, ch] >= lo) & (x[:, ch] <= hi)
-                    if m.sum() > 50:
-                        bx.append(np.median(x[m, ch])); by.append(np.median(ref[m, ch])); bw.append(1.0)
-                # extra bins for the bright tail
-                for lo, hi in ((90, 130), (130, 180), (180, 256)):
-                    m = (x[:, ch] >= lo) & (x[:, ch] < hi)
-                    if m.sum() > 150:
-                        bx.append(np.median(x[m, ch])); by.append(np.median(ref[m, ch])); bw.append(2.0)
-                if len(bx) < 3:
-                    continue
-                gg, oo = np.polyfit(bx, by, 1, w=np.sqrt(bw))
-                g[c, ch] = np.clip(0.5 * g[c, ch] + 0.5 * gg, 0.6, 1.6); o[c, ch] = np.clip(0.5 * o[c, ch] + 0.5 * oo, -30, 30)
-        tot = np.array([wn[c].sum() for c in range(C)]); tot = tot / tot.sum()
-        ga, oa = (g * tot[:, None]).sum(0), (o * tot[:, None]).sum(0)
-        g, o = g / ga, (o - oa) / ga
-    return g, o
+            o[c] = np.median(ref[m] - mean_c[c][sel][m], 0)
+        o = np.clip(o - (o * tot[:, None]).sum(0), -12, 12)
+    return np.ones((C, 3)), o
 
 
 def vertex_fill(body, st_v, colour, weight, mirror):
@@ -243,7 +231,7 @@ def main():
     pairs = [p for p in sorted(G["masks"].keys()) if p[1] % a.stride == 0]
     print(f"atlas {S}x{S}: {T} texels on the surface ({T / S / S:.1%}); {len(pairs)} views  [{time.time() - t0:.0f}s]", flush=True)
 
-    # pass 1: per-camera means -> per-camera affine colour maps towards the cross-camera consensus
+    # pass 1: per-camera means -> per-camera colour offsets towards the cross-camera consensus
     acc, wsum, nv = run_pass(pairs, a.procs, per_cam=True)
     cover = (wsum > 0).mean(1)
     mean_c = acc / np.maximum(wsum[..., None], 1e-9)
