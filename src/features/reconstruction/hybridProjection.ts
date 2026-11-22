@@ -11,7 +11,15 @@
  *            front in a depth map of the body rendered from that camera, not at a grazing angle) its
  *            pixel is used. Cameras are mixed by how close they are to the viewing direction, so the
  *            camera you look along wins and the hand-over between two cameras is continuous.
+ *   at a     the cut-out of the camera the viewer stands at lies over that blend as it is, untested, and
+ *   camera   fades out as the viewer leaves (own0, own1): there the camera saw what the viewer sees
  *   fill     points no camera sees at that instant keep the baked texture of the 3D model
+ *   tone     a camera films a part of the body lighter or darker than the baked texture holds it (the back
+ *            of someone bending over under the ceiling lights, haze at a distance, exposure). The exporter
+ *            measures that per cut-out and body part (avatar/tone.py). Footage and fill are mixed in the
+ *            texture's tone, and the picture then takes the tone of the cameras by how close they are to the
+ *            viewing direction and how squarely they see the surface: the fill beside a camera's pixels has
+ *            their tone instead of standing out dark, and the pixels of two cameras meet in one tone
  *   outline  within a few degrees of a camera the silhouette is the footage's own: slivers of the body
  *            outside that camera's matte are cut away, and matte pixels the mesh does not cover (hair,
  *            loose cloth, things on the table) are drawn on a card that follows the surface depth.
@@ -55,18 +63,30 @@ export const HYBRID_TUNING = {
   /** Footage outline (trim + fringe card) fully on inside `near0` of a camera, gone beyond `near1`. */
   near0: 5 * DEG,
   near1: 12 * DEG,
-  /** Inside `own0` of a camera its pixels are used as they are (no visibility / facing test); normal tests beyond `own1`. */
+  /** Inside `own0` of a camera its cut-out is laid over the blend as it is (no visibility / facing test); gone beyond `own1`. */
   own0: 4.5 * DEG,
   own1: 11 * DEG,
   /** Weight of a well-facing camera far from the viewing direction (keeps real pixels on the sides). */
   farFloor: 0.02,
+  /**
+   * Of two cameras far from the viewing direction the nearer one counts more, or the picture between two cameras
+   * is a double exposure of both: that weight is halved for a camera `farTau` away and falls with the fourth
+   * power of the angle beyond, down to `farMin` of itself.
+   */
+  farTau: 25 * DEG,
+  farMin: 0.03,
   /** cos(angle between surface normal and camera ray) below which a camera is not trusted / fully trusted, next to that camera. */
   facing0: 0.12,
   facing1: 0.45,
-  /** The same limits for a viewer `farAngle` or more away from the camera (in between they are interpolated). */
+  /**
+   * The same limits for a viewer `farAngle` or more away from the camera (in between they are interpolated).
+   * A surface the camera saw at a slant lies within a few of its pixels of an outline (an arm is 16 px wide in
+   * clip02), where the pixel is as likely the chair or the wall next to it, and the viewer who now faces that
+   * surface sees every such pixel stretched: only what the camera saw within about 30° of square on is used in full.
+   */
   farAngle: 35 * DEG,
-  farFacing0: 0.3,
-  farFacing1: 0.62,
+  farFacing0: 0.6,
+  farFacing1: 0.85,
   /** Footage pixels around an occluding edge that are not projected onto what lies behind it. */
   guardPx: 3,
   /** Depth test tolerance. */
@@ -79,11 +99,34 @@ export const HYBRID_TUNING = {
    */
   reach: 0.05,
   /**
-   * Away from a camera, a pixel is dropped when it looks unlike the body's own (clip-wide) colour at that point:
-   * largest channel difference of the gamma-encoded colours, fully kept below `alike0`, dropped above `alike1`.
+   * Away from a camera, a pixel is dropped when it looks unlike the body's own (clip-wide) colour at that point,
+   * in the tone that camera films that part of the body in (gamma-encoded colours).
+   * Brightness: mean channel difference, fully kept below `alike0`, dropped above `alike1`. Measured on the mean of
+   * the pixel and four around it, `alikePx` away, so that a thin detail the baked texture lacks (a drawstring, a
+   * seam, a logo) is kept and a patch of something else is not.
+   * Hue: largest channel difference once the brightness difference is taken out, kept below `hue0`, dropped above
+   * `hue1`. Measured on the pixel itself: the light on the body changes from moment to moment, its hue does not, so
+   * a wall seen through a gap in the matte, or mixed into the matte's rim, is told by its hue.
    */
-  alike0: 0.15,
-  alike1: 0.32,
+  alike0: 0.22,
+  alike1: 0.42,
+  hue0: 0.1,
+  hue1: 0.22,
+  alikePx: 4,
+  /**
+   * The rim of a matte is part background: the matte is a pixel or two wide of the person, and video compression
+   * smears colour across the edge (measured on clip02: an orange wall tints a grey hoodie up to 4 px inside the
+   * matte, where `erodePx` no longer reaches). Within `rimPx` of the matte's edge the hue limits above are
+   * therefore `rimHue` times as wide.
+   */
+  rimPx: 6,
+  rimHue: 0.3,
+  /**
+   * Tone of the picture (see `tone` above): a camera this far from the viewing direction counts 1/e, and a camera
+   * that sees the surface squarely counts `toneFacing` wherever the viewer is (the lit back stays lit from the side).
+   */
+  toneSigma: 30 * DEG,
+  toneFacing: 0.1,
   /** Away from a camera, share of body around a point (as that camera sees it) below which / above which its pixel is used. */
   inside0: 0.6,
   inside1: 0.95,
@@ -121,6 +164,11 @@ export interface HybridCrop {
   known: readonly number[] | null;
   /** Where the cut-out belongs on the fitted body: body pixel = a * footage pixel + (bx, by) as [a, bx, by]; null: as filmed. */
   register?: readonly number[] | null;
+  /**
+   * What this footage adds to the body's baked colour: per body part [r, g, b] of the gamma-encoded colours, flat,
+   * in units of AvatarProjection.tone.scale; null: nothing.
+   */
+  tone?: readonly number[] | null;
 }
 
 /** Per-object uniforms of a hybrid surface. */
@@ -128,12 +176,52 @@ export interface HybridOwn {
   /** Height (m) this object is displayed above its fit position. */
   uHyLift: { value: number };
   /**
-   * Per camera slot: how this object's outline follows that camera's matte next to the camera.
-   * 0 not at all (the matte does not contain it), 1 slivers only (the body: parts hidden from the camera stay),
-   * 2 cut to the matte (a carried object the matte contains).
+   * Per camera slot: what that camera's matte is to this object.
+   * 0 its outline does not follow the matte (the matte does not contain it), 1 slivers only (the body: parts hidden
+   * from the camera stay), 2 cut to the matte next to the camera (a carried object the matte contains),
+   * -1 the matte contains the object but not this piece of it: none of that camera's pixels belong on it.
    */
   uHyTrimOn: { value: THREE.Vector4 };
+  /**
+   * How strictly a pixel must look like the object before it is projected onto it away from its camera:
+   * 1 the person, 0 no test (an object whose baked colour is a rough guess).
+   */
+  uHyAlike: { value: number };
 }
+
+/** World normal and position, and per camera slot the tone of that camera's footage at this point of the body. */
+const SURFACE_VARYINGS = /* glsl */ `
+varying vec3 vAvatarN;
+varying vec3 vAvatarP;
+varying vec3 vHyTone0;
+varying vec3 vHyTone1;
+varying vec3 vHyTone2;
+varying vec3 vHyTone3;`;
+
+/** The tone of a vertex is that of the body parts its bones belong to (uHyToneTex: one texel per bone and camera slot). */
+const SURFACE_VERT_PARS = /* glsl */ `
+#ifdef USE_SKINNING
+uniform highp sampler2D uHyToneTex;
+vec3 hyToneOf( int slot ) {
+  vec4 w = skinWeight / max( skinWeight.x + skinWeight.y + skinWeight.z + skinWeight.w, 1e-4 );
+  ivec4 b = ivec4( skinIndex + 0.5 );
+  return w.x * texelFetch( uHyToneTex, ivec2( b.x, slot ), 0 ).rgb + w.y * texelFetch( uHyToneTex, ivec2( b.y, slot ), 0 ).rgb
+       + w.z * texelFetch( uHyToneTex, ivec2( b.z, slot ), 0 ).rgb + w.w * texelFetch( uHyToneTex, ivec2( b.w, slot ), 0 ).rgb;
+}
+#endif`;
+
+const SURFACE_VERT_MAIN = /* glsl */ `
+#ifdef USE_SKINNING
+  vAvatarN = inverseTransformDirection( transformedNormal, viewMatrix );
+  vHyTone0 = hyToneOf( 0 );
+  vHyTone1 = hyToneOf( 1 );
+  vHyTone2 = hyToneOf( 2 );
+  vHyTone3 = hyToneOf( 3 );
+#else
+  vAvatarN = normalize( mat3( modelMatrix ) * normal );
+  vHyTone0 = vHyTone1 = vHyTone2 = vHyTone3 = vec3( 0.0 );   // an object: the tone is measured on the person
+#endif
+vAvatarP = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;`;
 
 const SURFACE_PARS = /* glsl */ `
 uniform sampler2D uHyCrop0;
@@ -162,14 +250,26 @@ uniform vec2 uHyDepSize;
 uniform vec4 uHyTuneA;                  // view sigma, near0, near1, far floor
 uniform vec4 uHyTuneB;                  // facing0, facing1, guard px, bias (m)
 uniform vec4 uHyTuneC;                  // own0, own1, erode px, reach (fraction of the crop height)
-uniform vec4 uHyTuneD;                  // colour difference tolerated / rejected, body share at the outline / inside
+uniform vec4 uHyTuneD;                  // brightness difference tolerated / rejected, body share at the outline / inside
 uniform vec4 uHyTuneE;                  // angle from which the far facing limits apply, far facing0, far facing1, frame edge fade (px)
 uniform vec4 uHyTuneF;                  // share of the body outside the matte: a sliver below, a hidden part above; neighbourhood (x reach); rim (px)
+uniform vec4 uHyTuneG;                  // w: weight of a squarely seeing camera in the tone of the picture
+uniform vec4 uHyTuneH;                  // hue difference tolerated / rejected, neighbourhood of the brightness test (px), view sigma of the tone
+uniform vec4 uHyTuneI;                  // rim of the matte: width (px), factor on the hue limits there; far weight: angle at which it is halved, least share
 uniform float uHyDebug;
 uniform float uHyLift;
 uniform vec4 uHyTrimOn;
+uniform float uHyAlike;
 
-struct HyAcc { vec3 rgb; float w; float conf; float alpha; vec3 dbg; };
+// rgb / w: the cameras' pixels that passed the tests, weighted by view and facing; conf: how much of the point they cover.
+// seen / sw: the pixel of the camera the viewer is at, as it is. tone / tw: the cameras' tones of this point, weighted by
+// view and facing; own / ow: the tone of the camera the viewer is at.
+struct HyAcc { vec3 rgb; float w; float conf; float alpha; vec3 dbg; vec3 tone; float tw; vec3 own; float ow; vec3 seen; float sw; vec3 sdbg; };
+
+// Gamma 2 encoding the colours are compared and toned in. Signed, so that a dark pixel minus a tone and
+// plus the same tone is the pixel again.
+vec3 hyEnc( vec3 c ) { return sign( c ) * sqrt( abs( c ) ); }
+vec3 hyDec( vec3 e ) { return e * abs( e ); }
 
 float hyDepth( vec4 s ) { return ( s.r * 65280.0 + s.g * 255.0 ) / 65535.0; }
 
@@ -180,23 +280,40 @@ float hyMatte( sampler2D crop, vec4 cr, vec2 px ) {
   return textureLod( crop, vec2( uv.x, 1.0 - uv.y ), 0.0 ).a;
 }
 
-// Smallest matte value within r px (pixels at the matte's rim are part background).
-// diff: how far the footage there is from the colour ref this surface has over the whole clip
-// (largest channel difference of the gamma-encoded colours, over the same neighbourhood).
-float hyErode( sampler2D crop, vec4 cr, vec2 px, vec4 s, float r, vec3 ref, out float diff ) {
+// Smallest matte value within r px of px, where the matte is a (pixels at the matte's rim are part background).
+float hyErode( sampler2D crop, vec4 cr, vec2 px, float a, float r ) {
   float d = r * 0.7071;
-  float a = s.a;
-  vec3 e = abs( sqrt( max( s.rgb, 0.0 ) ) - ref );
-  diff = max( e.r, max( e.g, e.b ) );
   for ( int j = 0; j < 4; j ++ ) {
     vec2 q = px + vec2( ( j & 1 ) == 0 ? d : - d, j < 2 ? d : - d );
     vec2 uv = ( q - cr.xy ) / ( cr.zw - cr.xy );
-    vec4 t = uv.x <= 0.0 || uv.y <= 0.0 || uv.x >= 1.0 || uv.y >= 1.0 ? vec4( 0.0 ) : textureLod( crop, vec2( uv.x, 1.0 - uv.y ), 0.0 );
-    a = min( a, t.a );
-    e = abs( sqrt( max( t.rgb, 0.0 ) ) - ref );
-    diff = max( diff, t.a * max( e.r, max( e.g, e.b ) ) );
+    a = min( a, uv.x <= 0.0 || uv.y <= 0.0 || uv.x >= 1.0 || uv.y >= 1.0 ? 0.0 : textureLod( crop, vec2( uv.x, 1.0 - uv.y ), 0.0 ).a );
   }
   return a;
+}
+
+// How unlike this surface the footage at px looks: 0 like it, 1 something else (a wall seen through a gap in
+// the matte or mixed into its rim, furniture or a carried object in front that the matte took for the person).
+// ref: the colour the surface has over the whole clip, in the tone this camera films it in (gamma-encoded).
+// Brightness is compared on the mean of the pixel s and four around it, r px away; hue on the pixel itself,
+// with limits "strict" times as wide (see HYBRID_TUNING.alike0, rimPx).
+float hyUnlike( sampler2D crop, vec4 cr, vec2 px, vec4 s, float r, vec3 ref, float strict ) {
+  float d = r * 0.7071;
+  vec3 own = hyEnc( s.rgb );
+  vec3 sum = own * s.a;
+  float w = s.a;
+  for ( int j = 0; j < 4; j ++ ) {
+    vec2 q = px + vec2( ( j & 1 ) == 0 ? d : - d, j < 2 ? d : - d );
+    vec2 uv = ( q - cr.xy ) / ( cr.zw - cr.xy );
+    if ( uv.x <= 0.0 || uv.y <= 0.0 || uv.x >= 1.0 || uv.y >= 1.0 ) continue;
+    vec4 t = textureLod( crop, vec2( uv.x, 1.0 - uv.y ), 0.0 );
+    sum += hyEnc( t.rgb ) * t.a;
+    w += t.a;
+  }
+  vec3 e = sum / max( w, 1e-4 ) - ref;
+  float lum = ( e.r + e.g + e.b ) / 3.0;
+  e = own - ref;
+  vec3 hue = abs( e - ( e.r + e.g + e.b ) / 3.0 );
+  return max( smoothstep( uHyTuneD.x, uHyTuneD.y, abs( lum ) ), smoothstep( uHyTuneH.x * strict, uHyTuneH.y * strict, max( hue.r, max( hue.g, hue.b ) ) ) );
 }
 
 // Share of the body in a neighbourhood about r px wide, as this camera sees it (from the depth map's mipmaps).
@@ -263,20 +380,32 @@ float hyVisible( sampler2D dep, vec4 rect, vec2 px, float dn, float bias, out fl
   return vis;
 }
 
-// X: fragment in fit coordinates, N: outward normal, V: unit vector to the viewer, baked: the 3D model's own colour here.
-void hyCamera( sampler2D crop, sampler2D dep, sampler2D share, int i, vec3 X, vec3 N, vec3 V, vec3 baked, float trimOn, vec3 tint, inout HyAcc acc ) {
+// X: fragment in fit coordinates, N: outward normal, V: unit vector to the viewer, baked: the 3D model's own colour here,
+// tone: what this camera's footage of the shown frame adds to it at this point of the body (gamma-encoded).
+void hyCamera( sampler2D crop, sampler2D dep, sampler2D share, int i, vec3 X, vec3 N, vec3 V, vec3 baked, vec3 tone, float trimOn, vec3 tint, inout HyAcc acc ) {
   if ( uHyOn[ i ] < 0.5 ) return;
+  vec3 L = normalize( uHyC[ i ] - X );
+  float ang = acos( clamp( dot( V, L ), - 1.0, 1.0 ) );
+  float near = 1.0 - smoothstep( uHyTuneA.y, uHyTuneA.z, ang );
+  // seen from the camera itself, whatever the viewer sees the camera saw: its pixels are used as they are
+  float own = 1.0 - smoothstep( uHyTuneC.x, uHyTuneC.y, ang );
+  // the tone of the picture here (footage and fill alike): the cameras' by how close each is to the viewing direction
+  // and how squarely it sees this surface; at a camera, that camera's alone
+  float cosN = dot( N, L );
+  float c = max( cosN, 0.0 );
+  float tw = exp( - ang * ang / ( uHyTuneH.w * uHyTuneH.w ) ) + uHyTuneG.w * c * c;
+  acc.tone += tw * tone;
+  acc.tw += tw;
+  acc.own += own * tone;
+  acc.ow += own;
+  // a piece of a carried object that this camera's matte does not show: whatever the matte holds there is something else
+  if ( trimOn < 0.0 ) return;
   vec3 Xc = uHyR[ i ] * X + uHyT[ i ];
   if ( Xc.z < 0.2 ) return;
   vec4 K = uHyK[ i ];
   vec2 xn = Xc.xy / Xc.z;
   // + 0.5: the calibration counts pixel centres as integers, textures count pixel edges
   vec2 px = K.x * xn * ( 1.0 + K.w * dot( xn, xn ) ) + K.yz + 0.5;
-  vec3 L = normalize( uHyC[ i ] - X );
-  float ang = acos( clamp( dot( V, L ), - 1.0, 1.0 ) );
-  float near = 1.0 - smoothstep( uHyTuneA.y, uHyTuneA.z, ang );
-  // seen from the camera itself, whatever the viewer sees the camera saw: its pixels are used as they are
-  float own = 1.0 - smoothstep( uHyTuneC.x, uHyTuneC.y, ang );
   vec4 cr = uHyCropRect[ i ];
   vec2 cuv = ( px - cr.xy ) / ( cr.zw - cr.xy );
   bool inCrop = cuv.x > 0.0 && cuv.y > 0.0 && cuv.x < 1.0 && cuv.y < 1.0;
@@ -297,7 +426,6 @@ void hyCamera( sampler2D crop, sampler2D dep, sampler2D share, int i, vec3 X, ve
     acc.alpha *= mix( 1.0, matte, near * min( trimOn, 1.0 ) * gate );
   }
   if ( matte <= 0.0 ) return;
-  float cosN = dot( N, L );
   float tanN = sqrt( max( 1.0 - cosN * cosN, 0.0 ) ) / max( cosN, 0.08 );
   float texel = Xc.z / K.x * 0.5 * ( ( dr.z - dr.x ) / uHyDepSize.x + ( dr.w - dr.y ) / uHyDepSize.y );
   float bias = ( uHyTuneB.w + 1.5 * texel * min( tanN, 6.0 ) ) * uHyDepZ[ i ].y;
@@ -311,30 +439,45 @@ void hyCamera( sampler2D crop, sampler2D dep, sampler2D share, int i, vec3 X, ve
   // Away from the camera a pixel must be earned: matte and body are only known to a few pixels, so
   // what lies near either outline may be background, and so is what looks nothing like this surface
   // over the rest of the clip (furniture or a carried object in front that the matte took for the person).
+  float core = smoothstep( 0.25, 0.75, hyErode( crop, cr, px, s.a, uHyTuneC.z ) );
+  float unlike = 0.0;
+  if ( uHyAlike > 0.0 ) {
+    // within a few pixels of the matte's edge a pixel is tinted by what is behind the person: its hue must fit closely
+    float ring = 1.0 - smoothstep( 0.25, 0.75, hyErode( crop, cr, px, s.a, uHyTuneI.x ) );
+    unlike = uHyAlike * hyUnlike( crop, cr, px, s, uHyTuneH.z, hyEnc( baked ) + tone, mix( 1.0, uHyTuneI.y, ring ) );
+  }
+  trust *= core / max( matte, 1e-4 ) * smoothstep( uHyTuneD.z, uHyTuneD.w, inside ) * ( 1.0 - unlike );
   // Next to the camera its pixels are used as they are, except the rim of the matte along furniture that
   // hides the rest of the body: those pixels are part furniture, and the body goes on right below them.
-  // (They are dropped outright, from the share at which a hidden part begins, not merely trusted less: the
-  // camera the viewer looks along outweighs the others so much that a trace of confidence still tints the pixel.)
   float rim = 1.0;
-  float diff;
-  if ( own < 1.0 ) {
-    float core = smoothstep( 0.25, 0.75, hyErode( crop, cr, px, s, uHyTuneC.z, sqrt( max( baked, 0.0 ) ), diff ) );
-    trust *= core / max( matte, 1e-4 ) * smoothstep( uHyTuneD.z, uHyTuneD.w, inside ) * ( 1.0 - smoothstep( uHyTuneD.x, uHyTuneD.y, diff ) );
-  }
   if ( leftOut > 0.8 * uHyTuneF.x ) {
-    float core = smoothstep( 0.25, 0.75, hyErode( crop, cr, px, s, uHyTuneF.w, sqrt( max( baked, 0.0 ) ), diff ) );
-    rim = mix( 1.0, core / max( matte, 1e-4 ), smoothstep( 0.8 * uHyTuneF.x, 1.2 * uHyTuneF.x, leftOut ) );
+    float hcore = smoothstep( 0.25, 0.75, hyErode( crop, cr, px, s.a, uHyTuneF.w ) );
+    rim = mix( 1.0, hcore / max( matte, 1e-4 ), smoothstep( 0.8 * uHyTuneF.x, 1.2 * uHyTuneF.x, leftOut ) );
   }
   // a body half out of this camera's frame: its pixels fade out towards the frame edge instead of ending in a line
   vec4 fe = uHyEdge[ i ];
   float edge = min( min( px.x - fe.x, fe.z - px.x ), min( px.y - fe.y, fe.w - px.y ) );
-  float conf = matte * mix( trust, 1.0, own ) * rim * smoothstep( 0.0, max( uHyTuneE.w, 1e-3 ), edge );
-  float c = max( cosN, 0.0 );
-  float pref = exp( - ang * ang / ( uHyTuneA.x * uHyTuneA.x ) ) + uHyTuneA.w * c * c;
-  acc.rgb += s.rgb * ( conf * pref );
+  // what this camera's cut-out shows of the point, and how much of that holds away from the camera
+  float shown = matte * rim * smoothstep( 0.0, max( uHyTuneE.w, 1e-3 ), edge );
+  float conf = shown * trust;
+  // the camera the viewer looks along wins; further away a camera counts by how squarely it sees the surface,
+  // the nearer of two such cameras more
+  float q = ang / uHyTuneI.z;
+  q *= q;
+  float pref = exp( - ang * ang / ( uHyTuneA.x * uHyTuneA.x ) ) + uHyTuneA.w * c * c * mix( 1.0 / ( 1.0 + q * q ), 1.0, uHyTuneI.w );
+  // the pixel in the baked texture's tone (the picture's tone is put on at the end, on footage and fill alike)
+  vec3 pixel = hyDec( hyEnc( s.rgb ) - tone );
+  acc.rgb += pixel * ( conf * pref );
   acc.dbg += tint * ( conf * pref );
   acc.w += conf * pref;
   acc.conf = max( acc.conf, conf );
+  // The cut-out as it is, for the viewer at this camera: a layer of its own over the blend above, which fades out as
+  // the viewer leaves. (Not a share of that blend: the camera the viewer looks along outweighs the others there so
+  // much that a pixel that failed the tests, a line of floor in the matte's rim, would stay at full strength for as
+  // long as a trace of this layer is left.)
+  acc.seen += pixel * ( own * shown );
+  acc.sdbg += tint * ( own * shown );
+  acc.sw += own * shown;
 }
 `;
 
@@ -347,22 +490,33 @@ const SURFACE_MAIN = /* glsl */ `
   #endif
   vec3 hyV = normalize( cameraPosition - vAvatarP );
   vec3 hyX = vAvatarP - vec3( 0.0, uHyLift, 0.0 );
-  HyAcc hy = HyAcc( vec3( 0.0 ), 0.0, 0.0, 1.0, vec3( 0.0 ) );
-  hyCamera( uHyCrop0, uHyDep0, uHyShare0, 0, hyX, hyN, hyV, outgoingLight, uHyTrimOn.x, vec3( 1.0, 0.1, 0.1 ), hy );
-  hyCamera( uHyCrop1, uHyDep1, uHyShare1, 1, hyX, hyN, hyV, outgoingLight, uHyTrimOn.y, vec3( 0.1, 1.0, 0.1 ), hy );
-  hyCamera( uHyCrop2, uHyDep2, uHyShare2, 2, hyX, hyN, hyV, outgoingLight, uHyTrimOn.z, vec3( 0.15, 0.3, 1.0 ), hy );
-  hyCamera( uHyCrop3, uHyDep3, uHyShare3, 3, hyX, hyN, hyV, outgoingLight, uHyTrimOn.w, vec3( 1.0, 0.9, 0.1 ), hy );
+  HyAcc hy = HyAcc( vec3( 0.0 ), 0.0, 0.0, 1.0, vec3( 0.0 ), vec3( 0.0 ), 0.0, vec3( 0.0 ), 0.0, vec3( 0.0 ), 0.0, vec3( 0.0 ) );
+  hyCamera( uHyCrop0, uHyDep0, uHyShare0, 0, hyX, hyN, hyV, outgoingLight, vHyTone0, uHyTrimOn.x, vec3( 1.0, 0.1, 0.1 ), hy );
+  hyCamera( uHyCrop1, uHyDep1, uHyShare1, 1, hyX, hyN, hyV, outgoingLight, vHyTone1, uHyTrimOn.y, vec3( 0.1, 1.0, 0.1 ), hy );
+  hyCamera( uHyCrop2, uHyDep2, uHyShare2, 2, hyX, hyN, hyV, outgoingLight, vHyTone2, uHyTrimOn.z, vec3( 0.15, 0.3, 1.0 ), hy );
+  hyCamera( uHyCrop3, uHyDep3, uHyShare3, 3, hyX, hyN, hyV, outgoingLight, vHyTone3, uHyTrimOn.w, vec3( 1.0, 0.9, 0.1 ), hy );
   float hyK = clamp( hy.conf, 0.0, 1.0 );
+  float hyA = min( hy.sw, 1.0 );
   vec3 hyProj = hy.rgb / max( hy.w, 1e-6 );
+  vec3 hySeen = hy.seen / max( hy.sw, 1e-6 );
   // debug 1: which camera each pixel comes from (red, green, blue, yellow; grey = baked texture)
   if ( uHyDebug > 0.5 ) {
     hyProj = mix( hy.dbg / max( hy.w, 1e-6 ), hyProj, 0.35 );
+    hySeen = mix( hy.sdbg / max( hy.sw, 1e-6 ), hySeen, 0.35 );
     outgoingLight = mix( vec3( 0.5 ), outgoingLight, 0.35 );
   }
-  outgoingLight = mix( outgoingLight, hyProj, hyK );
+  // fill, on it the pixels that hold from anywhere, on those the cut-out of the camera the viewer is at
+  outgoingLight = mix( mix( outgoingLight, hyProj, hyK ), hySeen, hyA );
+  // Tone of the picture. Footage and fill were mixed in the baked texture's tone. At a camera the picture takes the
+  // tone that camera films this part of the body in at this moment (its pixels are then exactly the recorded ones,
+  // and the fill beside them matches); elsewhere the cameras' tones by direction and facing.
+  if ( uHyDebug < 0.5 ) {
+    vec3 hyTone = mix( hy.tone / max( hy.tw, 1e-5 ), hy.own / max( hy.ow, 1e-4 ), min( hy.ow, 1.0 ) );
+    outgoingLight = max( hyDec( hyEnc( outgoingLight ) + hyTone ), 0.0 );
+  }
   // baked alpha (gaps between a chair's slats) only where no camera pixel covers the panel
   float hyBase = clamp( ( diffuseColor.a - 0.5 ) / max( fwidth( diffuseColor.a ), 1e-4 ) + 0.5, 0.0, 1.0 );
-  diffuseColor.a = hy.alpha * mix( hyBase, 1.0, hyK );
+  diffuseColor.a = hy.alpha * mix( hyBase, 1.0, 1.0 - ( 1.0 - hyK ) * ( 1.0 - hyA ) );
   if ( diffuseColor.a < 0.1 ) discard;
 }
 #include <opaque_fragment>`;
@@ -558,6 +712,11 @@ export class HybridProjector {
   private readonly shareMaterial: THREE.ShaderMaterial;
   private readonly screenGeometry = new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3));
   private readonly shared;
+  /** Body part of every bone of the skin, and the unit of the tone values (AvatarProjection.tone). */
+  private readonly toneJoints: readonly number[];
+  private readonly toneScale: number;
+  /** One texel per bone (x) and camera slot (y): the tone of that camera's footage on the bone's body part. */
+  private readonly toneTexture: THREE.DataTexture;
   private readonly pass;
   private readonly depthScene = new THREE.Scene();
   private readonly depthCamera = new THREE.Camera();
@@ -617,6 +776,11 @@ export class HybridProjector {
     screen.frustumCulled = false;
     this.shareScene.add(screen);
     this.materials.push(this.shareMaterial);
+    this.toneJoints = projection.tone?.joints ?? [];
+    this.toneScale = projection.tone?.scale ?? 1;
+    this.toneTexture = new THREE.DataTexture(new Float32Array(Math.max(this.toneJoints.length, 1) * SLOTS * 4), Math.max(this.toneJoints.length, 1), SLOTS, THREE.RGBAFormat, THREE.FloatType);
+    this.toneTexture.name = "hybrid-tone";
+    this.toneTexture.needsUpdate = true;
     const t = HYBRID_TUNING;
     this.shared = {
       uHyCrop0: { value: null as THREE.Texture | null },
@@ -641,6 +805,7 @@ export class HybridProjector {
       uHyDepRect: { value: vec4s() },
       uHyDepZ: { value: Array.from({ length: SLOTS }, () => new THREE.Vector2(0, 1)) },
       uHyOn: { value: Array.from({ length: SLOTS }, () => 0) },
+      uHyToneTex: { value: this.toneTexture },
       uHyDepSize: { value: new THREE.Vector2(DEPTH_W, DEPTH_H) },
       uHyTuneA: { value: new THREE.Vector4(t.viewSigma, t.near0, t.near1, t.farFloor) },
       uHyTuneB: { value: new THREE.Vector4(t.facing0, t.facing1, t.guardPx, t.bias) },
@@ -648,7 +813,9 @@ export class HybridProjector {
       uHyTuneD: { value: new THREE.Vector4(t.alike0, t.alike1, t.inside0, t.inside1) },
       uHyTuneE: { value: new THREE.Vector4(t.farAngle, t.farFacing0, t.farFacing1, t.edgePx) },
       uHyTuneF: { value: new THREE.Vector4(t.hidden0, t.hidden1, t.hiddenReach, t.hiddenRimPx) },
-      uHyTuneG: { value: new THREE.Vector4(t.outlineHidden0, t.outlineHidden1, t.outlineHiddenReach, 0) },
+      uHyTuneG: { value: new THREE.Vector4(t.outlineHidden0, t.outlineHidden1, t.outlineHiddenReach, t.toneFacing) },
+      uHyTuneH: { value: new THREE.Vector4(t.hue0, t.hue1, t.alikePx, t.toneSigma) },
+      uHyTuneI: { value: new THREE.Vector4(t.rimPx, t.rimHue, t.farTau, t.farMin) },
       uHyDebug: { value: 0 },
     };
     this.pass = {
@@ -709,7 +876,7 @@ export class HybridProjector {
 
   /** Per-object uniforms; pass the same object to every material and occluder of one rigid object. */
   static own(): HybridOwn {
-    return { uHyLift: { value: 0 }, uHyTrimOn: { value: new THREE.Vector4(0, 0, 0, 0) } };
+    return { uHyLift: { value: 0 }, uHyTrimOn: { value: new THREE.Vector4(0, 0, 0, 0) }, uHyAlike: { value: 1 } };
   }
 
   /** Uniforms that tune the blend (for experiments from the console). */
@@ -722,6 +889,8 @@ export class HybridProjector {
       e: this.shared.uHyTuneE.value,
       f: this.shared.uHyTuneF.value,
       g: this.shared.uHyTuneG.value,
+      h: this.shared.uHyTuneH.value,
+      i: this.shared.uHyTuneI.value,
       debug: this.shared.uHyDebug,
     };
   }
@@ -735,19 +904,10 @@ export class HybridProjector {
     material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, this.shared, own);
       shader.vertexShader = shader.vertexShader
-        .replace("#include <common>", "#include <common>\nvarying vec3 vAvatarN;\nvarying vec3 vAvatarP;")
-        .replace(
-          "#include <project_vertex>",
-          /* glsl */ `#include <project_vertex>
-          #ifdef USE_SKINNING
-            vAvatarN = inverseTransformDirection( transformedNormal, viewMatrix );
-          #else
-            vAvatarN = normalize( mat3( modelMatrix ) * normal );
-          #endif
-          vAvatarP = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;`,
-        );
+        .replace("#include <common>", `#include <common>\n${SURFACE_VARYINGS}\n${SURFACE_VERT_PARS}`)
+        .replace("#include <project_vertex>", `#include <project_vertex>\n${SURFACE_VERT_MAIN}`);
       shader.fragmentShader = shader.fragmentShader
-        .replace("#include <common>", `#include <common>\nvarying vec3 vAvatarN;\nvarying vec3 vAvatarP;\n${SURFACE_PARS}`)
+        .replace("#include <common>", `#include <common>\n${SURFACE_VARYINGS}\n${SURFACE_PARS}`)
         .replace("#include <opaque_fragment>", `${baked}\n${SURFACE_MAIN}`);
     };
     material.customProgramCacheKey = () => "sentry-hybrid-surface";
@@ -783,6 +943,25 @@ export class HybridProjector {
     this.occluders.push({ source, twin, own, carried });
   }
 
+  /** Tone of the cut-out in camera slot i (per body part, flat RGB; null: none) into the bone texture. */
+  private setTone(i: number, tone: readonly number[] | null) {
+    const data = this.toneTexture.image.data as Float32Array;
+    const n = this.toneJoints.length;
+    let changed = false;
+    for (let j = 0; j < n; j++) {
+      const part = this.toneJoints[j] * 3;
+      const at = (i * n + j) * 4;
+      for (let c = 0; c < 3; c++) {
+        const v = tone ? (tone[part + c] ?? 0) * this.toneScale : 0;
+        if (data[at + c] !== v) {
+          data[at + c] = v;
+          changed = true;
+        }
+      }
+    }
+    if (changed) this.toneTexture.needsUpdate = true;
+  }
+
   /** Angle (rad) between the viewer's and each camera's direction to a point of the displayed body. */
   viewAngles(eye: THREE.Vector3, at: THREE.Vector3, lift: number, out: number[]) {
     const a = this.tmp.copy(eye).sub(at).normalize();
@@ -811,6 +990,7 @@ export class HybridProjector {
       const fr = this.fringeMeshes[i];
       this.on[i] = !!c;
       u.uHyOn.value[i] = c ? 1 : 0;
+      this.setTone(i, c?.tone ?? null);
       samplers[i].value = c?.texture ?? null;
       fr.visible = !!c;
       if (!c) continue;
@@ -919,6 +1099,7 @@ export class HybridProjector {
     for (const m of this.materials) m.dispose();
     for (const t of this.targets) t.dispose();
     for (const t of this.shares) t.dispose();
+    this.toneTexture.dispose();
     this.screenGeometry.dispose();
     for (const o of this.occluders) {
       o.twin.removeFromParent();

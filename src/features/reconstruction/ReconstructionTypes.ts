@@ -143,6 +143,21 @@ export interface AvatarProjection {
   register?: Partial<Record<CameraId, ([number, number, number] | null)[]>>;
   /** Per camera and frame: false when the cut-out still disagrees with the body and is not projected onto it. */
   use?: Partial<Record<CameraId, (boolean | null)[]>>;
+  /**
+   * How much lighter (+) or darker (-) every cut-out shows each part of the body than the baked texture holds it,
+   * in the gamma 2 encoding (sqrt of linear colour). The viewer compares footage with the texture in that tone and
+   * gives the picture the tone of the cameras next to the viewing direction.
+   */
+  tone?: {
+    /** Names of the body parts. */
+    parts: string[];
+    /** Body part (index into `parts`) of every joint of the GLB's skin, in the skin's order. */
+    joints: number[];
+    /** Unit of the values below. */
+    scale: number;
+    /** Per camera and frame: [r, g, b] per body part, flat; null: no cut-out. */
+    cameras: Partial<Record<CameraId, (number[] | null)[]>>;
+  };
 }
 
 /** A rigid object reconstructed next to the body. Vertex v of its GLB is at R(quat) v + pos (+ lift on y when displayed). */
@@ -156,6 +171,12 @@ export interface AvatarProp {
    * `frames.cut`: for the chair its two panels and every leg in short lengths.
    */
   pieces?: string[];
+  /**
+   * The pieces that have one plain colour (the chair's tube legs). Away from a camera, only those of its pixels
+   * are put on them that look like that colour: such a piece is a few pixels wide and the object's pose is known
+   * to a few centimetres, so some of the pixels that land on it show what is behind it.
+   */
+  plain?: string[];
   frames: {
     /** Position in fit coordinates per frame. */
     pos: [number, number, number][];

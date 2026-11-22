@@ -167,7 +167,7 @@ const BASE_URL = "/reconstruction";
  * object (`names`: the prop's `pieces`, matched to the GLB's node names) with its own outline uniforms,
  * because a camera's matte may show some pieces of the object and not others (poseProp).
  */
-async function loadProp(url: string, projector: HybridProjector | null, names: readonly string[] | undefined): Promise<PropModel> {
+async function loadProp(url: string, projector: HybridProjector | null, names: readonly string[] | undefined, plain: readonly string[] | undefined): Promise<PropModel> {
   const gltf = await loader.loadAsync(url);
   const root = new THREE.Group();
   root.name = "avatar-prop";
@@ -198,11 +198,16 @@ async function loadProp(url: string, projector: HybridProjector | null, names: r
     }
     let hybrid: THREE.Material | null = null;
     if (projector) {
+      // the glTF loader keeps the node's own name in userData (its `name` may carry a suffix to stay unique)
+      const name = (mesh.userData.name as string | undefined) ?? mesh.name;
       const own: HybridOwn = { ...HybridProjector.own(), uHyLift: lift };
+      // Which pixels are the object's? The matte and the pieces it shows decide that (poseProp). The colour of a
+      // pixel decides it only on the pieces of one plain colour (a chair's legs): a panel of slats shows what is
+      // behind it through its gaps, and its baked colour is one measured grey.
+      own.uHyAlike.value = plain?.includes(name) ? 1 : 0;
       hybrid = projector.surfaceMaterial(params, formShade("body"), own).material;
       projector.addOccluder(mesh, own, true);
-      // the glTF loader keeps the node's own name in userData (its `name` may carry a suffix to stay unique)
-      pieces.push({ bit: names ? names.indexOf((mesh.userData.name as string | undefined) ?? mesh.name) : -1, own });
+      pieces.push({ bit: names ? names.indexOf(name) : -1, own });
     }
     mesh.material = model;
     mesh.renderOrder = BODY_ORDER;
@@ -310,7 +315,7 @@ async function loadAvatarModel(url: string, subjectId: string, motion: AvatarMot
   let look: Look = "model";
   const props: (PropModel | null)[] = (motion.props ?? []).map(() => null);
   (motion.props ?? []).forEach((p, i) => {
-    loadProp(`${BASE_URL}/${motion.clip}/${p.glb}`, projector, p.pieces).then(
+    loadProp(`${BASE_URL}/${motion.clip}/${p.glb}`, projector, p.pieces, p.plain).then(
       (prop) => {
         if (disposed) return prop.dispose();
         prop.root.name = `avatar-prop-${p.id}`;
@@ -379,12 +384,15 @@ function poseProp(prop: PropModel, data: AvatarProp, f: number, shown: number, s
   for (const piece of prop.pieces) {
     piece.own.uHyLift.value = up;
     // Its outline is that of a camera's matte only where that matte really shows it: a matte that contains
-    // the object often lacks some of its pieces (the thin legs), and those are drawn from the proxy.
+    // the object often lacks some of its pieces (the thin legs). Those are drawn from the proxy alone (-1):
+    // what that matte holds where they are is the person or another piece, not them.
     const on = (i: number) => {
       const id = slots?.[i];
       if (!id) return 0;
       const bits = piece.bit >= 0 ? cut?.[id]?.[shown] : undefined;
-      return (bits === undefined ? inMatte?.[id]?.[shown] : (bits >> piece.bit) & 1) ? 2 : 0;
+      if (bits === undefined) return inMatte?.[id]?.[shown] ? 2 : 0;
+      if (bits === 0) return 0; // this matte does not have the object at all: the person alone
+      return (bits >> piece.bit) & 1 ? 2 : -1;
     };
     piece.own.uHyTrimOn.value.set(on(0), on(1), on(2), on(3));
   }
@@ -523,7 +531,14 @@ function SubjectAvatar({ subjectId }: { subjectId: string }) {
           if (projection.use?.[id]?.[k] === false) return null; // this cut-out disagrees with the body (a sliver at the frame edge)
           want++;
           const texture = getTexture(motion.clip, f.file);
-          return texture ? { texture, rect: f.cropPx, known: projection.known?.[id]?.[k] ?? null, register: projection.register?.[id]?.[k] ?? null } : null;
+          if (!texture) return null;
+          return {
+            texture,
+            rect: f.cropPx,
+            known: projection.known?.[id]?.[k] ?? null,
+            register: projection.register?.[id]?.[k] ?? null,
+            tone: projection.tone?.cameras[id]?.[k] ?? null,
+          };
         });
         return { crops, complete: crops.filter(Boolean).length === want };
       };
