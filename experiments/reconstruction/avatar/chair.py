@@ -493,7 +493,7 @@ PANEL_PCT, LEG_PCT = 85, 95
 
 
 def colours(sc, C, P, R, frames):
-    """RGB of the plastic panels and of the metal legs over the close views of the carried chair: a high
+    """RGB of the slatted metal panels and of the legs over the close views of the carried chair: a high
     percentile of the mask pixels inside their outlines, which is the lit surface (the rest is slat shadow,
     what shows through the gaps and, on the legs, pixels mixed with what is behind them). The 85th for the
     panels; the 95th for the legs, which are 2 cm tubes a few pixels wide, so that most of their pixels are
