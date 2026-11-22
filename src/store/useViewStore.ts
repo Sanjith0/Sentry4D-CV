@@ -5,11 +5,13 @@ export type RenderQuality = "performance" | "balanced" | "ultra";
 
 /**
  * How tracked subjects are drawn:
- *  - "model":   reconstructed, articulated, textured 3D body (default)
+ *  - "hybrid":  the reconstructed 3D body carrying the real camera pixels of the shown frame wherever a
+ *               camera sees it, its baked texture elsewhere (default)
+ *  - "model":   the reconstructed, articulated 3D body with its baked texture only
  *  - "footage": one camera's segmented cut-out on an inflated plane
  *  - "avatar":  generic capsule mannequin (tracking debug); also the fallback of the other two
  */
-export type SubjectRenderMode = "model" | "footage" | "avatar";
+export type SubjectRenderMode = "hybrid" | "model" | "footage" | "avatar";
 
 export type RoomStatus = "checking" | "loading" | "loaded" | "missing" | "error";
 
@@ -39,7 +41,7 @@ interface ViewState {
   /** Opacity of the real recording overlaid on the virtual CCTV view (0..1). */
   ghostOpacity: number;
   ghostBlend: "normal" | "difference";
-  /** How tracked subjects are drawn (session state, not persisted: every load starts in "model"). */
+  /** How tracked subjects are drawn (session state, not persisted: every load starts in "hybrid"). */
   subjectRenderMode: SubjectRenderMode;
   /** Which camera's footage to show: "auto" = closest to the viewing direction. */
   appearanceSource: "auto" | CameraId;
@@ -103,7 +105,7 @@ export const useViewStore = create<ViewState>()((set) => ({
   ghostOpacity: 0.5,
   ghostBlend: "normal",
   trackingDiagnostics: false,
-  subjectRenderMode: "model",
+  subjectRenderMode: "hybrid",
   appearanceSource: "auto",
   pointerLocked: false,
   flySpeed: 2.5,

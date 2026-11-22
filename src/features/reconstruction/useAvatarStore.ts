@@ -1,6 +1,7 @@
 import { create } from "zustand";
+import { CAMERA_IDS } from "../../types/security";
 import { APPEARANCE_CLIPS } from "./useAppearanceStore";
-import type { AvatarFloorSample, AvatarMotion, AvatarStatus } from "./ReconstructionTypes";
+import type { AvatarFloorSample, AvatarMotion, AvatarProjection, AvatarProp, AvatarStatus } from "./ReconstructionTypes";
 
 /**
  * Reconstructed 3D body ("3D MODEL" render mode): one articulated, textured, skinned mesh per
@@ -37,7 +38,35 @@ function parseAvatar(raw: unknown, clipId: string): AvatarMotion | null {
   if (!(Number(a.fps) > 0) || !Number.isFinite(a.t0) || !Number.isFinite(a.t1)) return null;
   const n = Math.min(f.floor?.length ?? 0, f.heading?.length ?? 0, f.valid?.length ?? 0, f.cameras?.length ?? 0);
   if (n < 1 || !isNumberArray(f.floor[0], 2)) return null;
-  return { ...(a as AvatarMotion), clip: a.clip ?? clipId, frameCount: Math.min(a.frameCount ?? n, n) };
+  const frameCount = Math.min(a.frameCount ?? n, n);
+  return {
+    ...(a as AvatarMotion),
+    clip: a.clip ?? clipId,
+    frameCount,
+    projection: parseProjection(a.projection, frameCount),
+    props: (Array.isArray(a.props) ? a.props : []).filter((p) => isProp(p, frameCount)),
+  };
+}
+
+/** The footage projection is optional: without it (or malformed) the body keeps its baked texture. */
+function parseProjection(raw: unknown, frameCount: number): AvatarProjection | undefined {
+  const p = raw as Partial<AvatarProjection> | null | undefined;
+  if (!p || !isNumberArray(p.frame, 2) || !isNumberArray(p.lift, frameCount) || !p.cameras) return undefined;
+  const cameras: AvatarProjection["cameras"] = {};
+  for (const id of CAMERA_IDS) {
+    const c = p.cameras[id];
+    if (!c || ![c.f, c.cx, c.cy, c.k1, c.dt].every(Number.isFinite)) continue;
+    if (!isNumberArray(c.t, 3) || !isNumberArray(c.C, 3) || !Array.isArray(c.R) || c.R.length < 3 || !c.R.every((r) => isNumberArray(r, 3))) continue;
+    cameras[id] = c;
+  }
+  return Object.keys(cameras).length ? { ...(p as AvatarProjection), cameras } : undefined;
+}
+
+function isProp(raw: unknown, frameCount: number): raw is AvatarProp {
+  const p = raw as Partial<AvatarProp> | null;
+  const f = p?.frames;
+  if (!p || !f || typeof p.id !== "string" || typeof p.glb !== "string") return false;
+  return isNumberArray(f.lift, frameCount) && Array.isArray(f.pos) && f.pos.length >= frameCount && Array.isArray(f.quat) && f.quat.length >= frameCount && isNumberArray(f.pos[0], 3) && isNumberArray(f.quat[0], 4);
 }
 
 export const useAvatarStore = create<AvatarState>()((set, get) => ({

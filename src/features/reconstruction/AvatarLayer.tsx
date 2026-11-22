@@ -1,5 +1,15 @@
 /**
- * 3D MODEL renderer: the tracked person drawn as ONE reconstructed, articulated, textured body.
+ * 3D renderer of the tracked person: ONE reconstructed, articulated body, in two looks.
+ *
+ *   "hybrid" (3D + FOOTAGE, default)  the body carries the real camera pixels of the shown frame
+ *                                     wherever a camera sees it, and its baked texture elsewhere
+ *                                     (hybridProjection.ts). Pose and pixels change together, frame by
+ *                                     frame, exactly like the footage they come from.
+ *   "model"  (3D MODEL)               the body with the single texture baked over the whole clip,
+ *                                     animated continuously between frames.
+ *
+ * Objects the person handles (avatar.json `props`: the carried chair) are rigid meshes with their own
+ * pose per frame and are drawn in both looks the same way as the body.
  *
  * The body (experiments/reconstruction/avatar) is a skinned mesh fitted offline to all cameras
  * over the whole clip, delivered as a GLB whose single baked clip "motion" carries the pelvis
@@ -28,7 +38,11 @@ import { subjects } from "../../config/subjects";
 import { useReplayStore } from "../../store/useReplayStore";
 import { useViewStore } from "../../store/useViewStore";
 import { subjectSample } from "../sentry/SceneActors";
-import { avatarModelUrl, floorAt, useAvatarStore } from "./useAvatarStore";
+import type { CameraId } from "../../types/security";
+import { HYBRID_TUNING, HybridProjector, type HybridCrop, type HybridOwn } from "./hybridProjection";
+import type { AvatarMotion, AvatarProp } from "./ReconstructionTypes";
+import { getTexture, prefetchAround, useAppearanceStore } from "./useAppearanceStore";
+import { avatarModelUrl, floorAt, motionAt, useAvatarStore } from "./useAvatarStore";
 
 /** Draw order inside the opaque pass: room (0) -> X-ray silhouette (1) -> body (2). */
 const XRAY_ORDER = 1;
@@ -36,6 +50,12 @@ const BODY_ORDER = 2;
 /** Body colour when the asset carries no texture (placeholder / failed image). */
 const UNTEXTURED = "#4a4f58";
 const XRAY_COLOR = "#22d3ee";
+/** 3D + FOOTAGE: a frame whose cut-outs are still downloading is bridged by the last complete one for this many frames. */
+const HOLD_FRAMES = 3;
+/** 3D + FOOTAGE: the pose is evaluated on a grid of 1/32 frame (0.2 mm of walking) so an idle view re-renders nothing. */
+const POSE_GRID = 32;
+
+type Look = "model" | "hybrid";
 
 /**
  * MeshBasicMaterial (so three injects skinning, colour management and clipping itself) with a
@@ -46,7 +66,33 @@ const XRAY_COLOR = "#22d3ee";
  *   flat:  untextured asset: grey * (0.75 + 0.35 * form); a flat grey body needs the form term to read.
  *          form mixes a sky/ground hemisphere, a fixed key direction and a headlight.
  *   xray:  flat cyan with a rim falloff (additive).
+ * formShade returns that term as a GLSL block acting on `outgoingLight` (texel x colour).
  */
+function formShade(variant: "body" | "flat" | "xray") {
+  const form = /* glsl */ `
+          float avHemi = 0.5 + 0.5 * avN.y;
+          float avKey = max( dot( avN, normalize( vec3( 0.35, 0.8, 0.45 ) ) ), 0.0 );
+          float avForm = 0.4 * avHemi + 0.3 * avKey + 0.3 * avFacing;`;
+  const shade =
+    variant === "body"
+      ? /* glsl */ `${form}
+          outgoingLight = outgoingLight * ( 0.90 + 0.14 * avForm ) + vec3( 0.006 ) * avForm + vec3( 0.010 ) * avRim;`
+      : variant === "flat"
+        ? /* glsl */ `${form}
+          outgoingLight = outgoingLight * ( 0.75 + 0.35 * avForm ) + vec3( 0.010 ) * avForm + vec3( 0.022 ) * avRim;`
+        : /* glsl */ `
+          outgoingLight = diffuseColor.rgb * ( 0.45 + 1.1 * avRim );`;
+  return /* glsl */ `{
+          vec3 avN = normalize( vAvatarN );
+          #ifdef DOUBLE_SIDED
+            if ( ! gl_FrontFacing ) avN = - avN;
+          #endif
+          float avFacing = max( dot( avN, normalize( cameraPosition - vAvatarP ) ), 0.0 );
+          float avRim = pow( 1.0 - avFacing, 3.0 );
+          ${shade}
+        }`;
+}
+
 function shadeMaterial(mat: THREE.MeshBasicMaterial, variant: "body" | "flat" | "xray") {
   mat.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
@@ -62,34 +108,9 @@ function shadeMaterial(mat: THREE.MeshBasicMaterial, variant: "body" | "flat" | 
         #endif
         vAvatarP = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;`,
       );
-    const form = /* glsl */ `
-          float avHemi = 0.5 + 0.5 * avN.y;
-          float avKey = max( dot( avN, normalize( vec3( 0.35, 0.8, 0.45 ) ) ), 0.0 );
-          float avForm = 0.4 * avHemi + 0.3 * avKey + 0.3 * avFacing;`;
-    const shade =
-      variant === "body"
-        ? /* glsl */ `${form}
-          outgoingLight = outgoingLight * ( 0.90 + 0.14 * avForm ) + vec3( 0.006 ) * avForm + vec3( 0.010 ) * avRim;`
-        : variant === "flat"
-          ? /* glsl */ `${form}
-          outgoingLight = outgoingLight * ( 0.75 + 0.35 * avForm ) + vec3( 0.010 ) * avForm + vec3( 0.022 ) * avRim;`
-          : /* glsl */ `
-          outgoingLight = diffuseColor.rgb * ( 0.45 + 1.1 * avRim );`;
     shader.fragmentShader = shader.fragmentShader
       .replace("#include <common>", "#include <common>\nvarying vec3 vAvatarN;\nvarying vec3 vAvatarP;")
-      .replace(
-        "#include <opaque_fragment>",
-        /* glsl */ `{
-          vec3 avN = normalize( vAvatarN );
-          #ifdef DOUBLE_SIDED
-            if ( ! gl_FrontFacing ) avN = - avN;
-          #endif
-          float avFacing = max( dot( avN, normalize( cameraPosition - vAvatarP ) ), 0.0 );
-          float avRim = pow( 1.0 - avFacing, 3.0 );
-          ${shade}
-        }
-        #include <opaque_fragment>`,
-      );
+      .replace("#include <opaque_fragment>", `${formShade(variant)}\n#include <opaque_fragment>`);
   };
   mat.customProgramCacheKey = () => `sentry-avatar-${variant}`;
   return mat;
@@ -109,20 +130,101 @@ function makeShadowTexture() {
   return new THREE.CanvasTexture(c);
 }
 
+/** A rigid object next to the body (the carried chair): a wrapper group posed per frame. */
+interface PropModel {
+  root: THREE.Group;
+  /**
+   * Per-piece uniforms of its footage-on-model materials (empty without a projector): one entry per mesh
+   * of the GLB, `bit` = its index in the prop's `pieces` (-1: not listed, the object is one piece).
+   */
+  pieces: { bit: number; own: HybridOwn }[];
+  setLook: (look: Look) => void;
+  dispose: () => void;
+}
+
 interface AvatarModel {
   /** glTF scene root; stays at the origin with identity transform (root motion is in room coordinates). */
   root: THREE.Object3D;
   xray: THREE.SkinnedMesh;
   /** The GLB carries a colour texture (false: the body is drawn in neutral grey, no footage on it). */
   textured: boolean;
+  /** Puts the footage of the shown frame onto the body; null when the asset carries no camera data. */
+  projector: HybridProjector | null;
+  own: HybridOwn | null;
+  /** Index-aligned with motion.props; null while loading or when the file is missing. */
+  props: (PropModel | null)[];
+  setLook: (look: Look) => void;
   /** Pose the skeleton for a time on the baked clip (seconds). Idempotent and history-free. */
   setTime: (clipTime: number) => void;
   dispose: () => void;
 }
 
 const loader = new GLTFLoader();
+const BASE_URL = "/reconstruction";
 
-async function loadAvatarModel(url: string, subjectId: string): Promise<AvatarModel> {
+/**
+ * Static meshes of a prop GLB under one group, with a material per look. Every mesh is one piece of the
+ * object (`names`: the prop's `pieces`, matched to the GLB's node names) with its own outline uniforms,
+ * because a camera's matte may show some pieces of the object and not others (poseProp).
+ */
+async function loadProp(url: string, projector: HybridProjector | null, names: readonly string[] | undefined): Promise<PropModel> {
+  const gltf = await loader.loadAsync(url);
+  const root = new THREE.Group();
+  root.name = "avatar-prop";
+  root.add(gltf.scene);
+  const lift = { value: 0 }; // one rigid object: all pieces share its display offset
+  const pieces: PropModel["pieces"] = [];
+  const looks: { mesh: THREE.Mesh; model: THREE.Material; hybrid: THREE.Material | null }[] = [];
+  const owned = new Set<{ dispose: () => void }>();
+  const models = new Map<THREE.Material, THREE.Material>(); // 3D MODEL look: one material per source material
+  gltf.scene.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const src = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.MeshStandardMaterial;
+    const map = src.map ?? null;
+    if (map) {
+      map.colorSpace = THREE.SRGBColorSpace;
+      map.anisotropy = 4;
+      owned.add(map);
+    }
+    // alphaMode MASK (gaps between slats): alpha test, antialiased by coverage
+    const params: THREE.MeshBasicMaterialParameters = { map, color: map ? 0xffffff : src.color, side: src.side, toneMapped: false, name: "avatar-prop" };
+    let model = models.get(src);
+    if (!model) {
+      model = shadeMaterial(new THREE.MeshBasicMaterial({ ...params, alphaTest: src.alphaTest, alphaToCoverage: src.alphaTest > 0 }), "body");
+      models.set(src, model);
+      owned.add(model);
+      owned.add(src);
+    }
+    let hybrid: THREE.Material | null = null;
+    if (projector) {
+      const own: HybridOwn = { ...HybridProjector.own(), uHyLift: lift };
+      hybrid = projector.surfaceMaterial(params, formShade("body"), own).material;
+      projector.addOccluder(mesh, own, true);
+      // the glTF loader keeps the node's own name in userData (its `name` may carry a suffix to stay unique)
+      pieces.push({ bit: names ? names.indexOf((mesh.userData.name as string | undefined) ?? mesh.name) : -1, own });
+    }
+    mesh.material = model;
+    mesh.renderOrder = BODY_ORDER;
+    mesh.frustumCulled = false;
+    mesh.raycast = () => {};
+    looks.push({ mesh, model, hybrid });
+    owned.add(mesh.geometry);
+  });
+  return {
+    root,
+    pieces,
+    setLook: (look) => {
+      for (const l of looks) l.mesh.material = look === "hybrid" && l.hybrid ? l.hybrid : l.model;
+    },
+    dispose: () => {
+      owned.forEach((o) => o.dispose());
+      root.removeFromParent();
+    },
+  };
+}
+
+async function loadAvatarModel(url: string, subjectId: string, motion: AvatarMotion): Promise<AvatarModel> {
   const gltf = await loader.loadAsync(url);
   const root = gltf.scene;
   let body: THREE.SkinnedMesh | null = null;
@@ -142,10 +244,9 @@ async function loadAvatarModel(url: string, subjectId: string): Promise<AvatarMo
     map.colorSpace = THREE.SRGBColorSpace;
     map.anisotropy = 4;
   }
-  const bodyMat = shadeMaterial(
-    new THREE.MeshBasicMaterial({ map, color: map ? 0xffffff : UNTEXTURED, side: src.side, toneMapped: false, name: "avatar-body" }),
-    map ? "body" : "flat",
-  );
+  const variant = map ? "body" : "flat";
+  const params: THREE.MeshBasicMaterialParameters = { map, color: map ? 0xffffff : UNTEXTURED, side: src.side, toneMapped: false, name: "avatar-body" };
+  const bodyMat = shadeMaterial(new THREE.MeshBasicMaterial(params), variant);
   // Opaque queue on purpose (blending still applies): it must draw after the room but before the body.
   const xrayMat = shadeMaterial(
     new THREE.MeshBasicMaterial({
@@ -180,6 +281,15 @@ async function loadAvatarModel(url: string, subjectId: string): Promise<AvatarMo
   xray.visible = false;
   (mesh.parent ?? root).add(xray);
 
+  // Footage-on-model look: same mesh, a second material that samples the cameras of the shown frame.
+  const projector = motion.projection ? new HybridProjector(motion.projection) : null;
+  const hybrid = projector?.surfaceMaterial(params, formShade(variant)) ?? null;
+  if (projector && hybrid) {
+    projector.addOccluder(mesh, hybrid.own);
+    projector.fringe.visible = false;
+    root.add(projector.fringe);
+  }
+
   const mixer = new THREE.AnimationMixer(root);
   const action = mixer.clipAction(clip);
   action.setLoop(THREE.LoopOnce, 1);
@@ -195,13 +305,47 @@ async function loadAvatarModel(url: string, subjectId: string): Promise<AvatarMo
     mixer.setTime(tc);
   };
 
+  // Handled objects load on their own: the body never waits for them and a missing file only leaves them out.
+  let disposed = false;
+  let look: Look = "model";
+  const props: (PropModel | null)[] = (motion.props ?? []).map(() => null);
+  (motion.props ?? []).forEach((p, i) => {
+    loadProp(`${BASE_URL}/${motion.clip}/${p.glb}`, projector, p.pieces).then(
+      (prop) => {
+        if (disposed) return prop.dispose();
+        prop.root.name = `avatar-prop-${p.id}`;
+        prop.root.visible = false;
+        prop.setLook(look);
+        root.add(prop.root);
+        props[i] = prop;
+        projector?.invalidate();
+      },
+      (e) => console.warn(`[Sentry3D] prop ${p.id} of ${motion.clip} failed to load`, e),
+    );
+  });
+
   root.visible = false;
   return {
     root,
     xray,
     textured: !!map,
+    projector,
+    own: hybrid?.own ?? null,
+    props,
+    setLook: (next) => {
+      if (next === look) return;
+      look = next;
+      const on = look === "hybrid" && !!hybrid;
+      mesh.material = on ? hybrid.material : bodyMat;
+      if (projector) projector.fringe.visible = on;
+      for (const p of props) p?.setLook(look);
+      projector?.invalidate();
+    },
     setTime,
     dispose: () => {
+      disposed = true;
+      for (const p of props) p?.dispose();
+      projector?.dispose();
       mixer.stopAllAction();
       mixer.uncacheRoot(root);
       mesh.skeleton.dispose();
@@ -212,6 +356,38 @@ async function loadAvatarModel(url: string, subjectId: string): Promise<AvatarMo
       root.removeFromParent();
     },
   };
+}
+
+const qa = new THREE.Quaternion();
+const qb = new THREE.Quaternion();
+
+/** Pose a prop at (fractional) frame f; `shown` is the frame whose footage is on screen (hybrid look). */
+function poseProp(prop: PropModel, data: AvatarProp, f: number, shown: number, slots: readonly (CameraId | null)[] | null) {
+  const { pos, quat, lift, visible, inMatte, cut } = data.frames;
+  const last = pos.length - 1;
+  const k0 = Math.min(Math.max(Math.floor(f), 0), last);
+  const k1 = Math.min(k0 + 1, last);
+  const s = Math.min(Math.max(f - k0, 0), 1);
+  const a = pos[k0];
+  const b = pos[k1];
+  const up = lift[k0] + (lift[k1] - lift[k0]) * s;
+  prop.root.position.set(a[0] + (b[0] - a[0]) * s, a[1] + (b[1] - a[1]) * s + up, a[2] + (b[2] - a[2]) * s);
+  qa.fromArray(quat[k0]);
+  qb.fromArray(quat[k1]);
+  prop.root.quaternion.copy(qa).slerp(qb, s).normalize();
+  prop.root.visible = visible ? !!visible[Math.min(Math.max(Math.round(f), 0), last)] : true;
+  for (const piece of prop.pieces) {
+    piece.own.uHyLift.value = up;
+    // Its outline is that of a camera's matte only where that matte really shows it: a matte that contains
+    // the object often lacks some of its pieces (the thin legs), and those are drawn from the proxy.
+    const on = (i: number) => {
+      const id = slots?.[i];
+      if (!id) return 0;
+      const bits = piece.bit >= 0 ? cut?.[id]?.[shown] : undefined;
+      return (bits === undefined ? inMatte?.[id]?.[shown] : (bits >> piece.bit) & 1) ? 2 : 0;
+    };
+    piece.own.uHyTrimOn.value.set(on(0), on(1), on(2), on(3));
+  }
 }
 
 /** Contact shadow decal: soft ellipse laid on the floor under the body. */
@@ -243,7 +419,14 @@ interface Live {
   /** Loaded model per clip id, or "failed". */
   models: Record<string, AvatarModel | "failed">;
   shadow: THREE.Mesh | null;
+  /** 3D + FOOTAGE: the last frame that was shown with all its cut-outs. */
+  shown: { clip: string; k: number } | null;
 }
+
+const rootFit = new THREE.Vector3();
+const pelvis = new THREE.Vector3();
+const angles: number[] = [];
+const DEG = 180 / Math.PI;
 
 function SubjectAvatar({ subjectId }: { subjectId: string }) {
   const motions = useAvatarStore((s) => s.bySubject[subjectId]);
@@ -251,7 +434,7 @@ function SubjectAvatar({ subjectId }: { subjectId: string }) {
   const xray = useReplayStore((s) => s.xrayEnabled);
   const setStatus = useAvatarStore((s) => s.setStatus);
   const holder = useRef<THREE.Group>(null);
-  const live = useRef<Live>({ models: {}, shadow: null });
+  const live = useRef<Live>({ models: {}, shadow: null, shown: null });
 
   // Models are attached straight to the holder group: a slow or failed download can never
   // suspend or blank the scene, the subject simply keeps its fallback body meanwhile.
@@ -263,11 +446,12 @@ function SubjectAvatar({ subjectId }: { subjectId: string }) {
     const models: Live["models"] = {};
     slot.models = models;
     for (const motion of motions) {
-      loadAvatarModel(avatarModelUrl(motion), subjectId).then(
+      loadAvatarModel(avatarModelUrl(motion), subjectId, motion).then(
         (model) => {
           if (cancelled) return model.dispose();
           models[motion.clip] = model;
           group.add(model.root);
+          if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__sentryHybrid = model.projector;
         },
         (e) => {
           console.warn(`[Sentry3D] avatar model for ${motion.clip} failed to load`, e);
@@ -297,33 +481,112 @@ function SubjectAvatar({ subjectId }: { subjectId: string }) {
 
   // No longer drawing this subject once unmounted (lets the fallback body show again).
   useEffect(
-    () => () => setStatus({ subjectId, active: false, clip: null, frameK: null, cameras: null, placeholder: false, textured: false, reason: "renderer not mounted" }),
+    () => () => setStatus({ subjectId, active: false, clip: null, frameK: null, cameras: null, placeholder: false, textured: false, footage: null, reason: "renderer not mounted" }),
     [setStatus, subjectId],
   );
 
-  useFrame(() => {
+  useFrame(({ gl, camera }) => {
     const t = useReplayStore.getState().currentTime;
     const { models, shadow } = live.current;
     const hide = (reason: string) => {
       for (const m of Object.values(models)) if (m !== "failed") m.root.visible = false;
       if (shadow) shadow.visible = false;
-      setStatus({ subjectId, active: false, clip: null, frameK: null, cameras: null, placeholder: false, textured: false, reason });
+      setStatus({ subjectId, active: false, clip: null, frameK: null, cameras: null, placeholder: false, textured: false, footage: null, reason });
     };
-    if (mode !== "model") return hide(mode === "footage" ? "footage mode" : "debug avatar mode");
+    if (mode !== "model" && mode !== "hybrid") return hide(mode === "footage" ? "footage mode" : "debug avatar mode");
     const load = useAvatarStore.getState().loadStatus;
     if (load === "idle" || load === "loading") return hide("loading reconstruction");
     if (!motions?.length) return hide("no reconstructed body on this machine");
     if (!subjectSample(subjectId, t)) return hide("subject not present");
-    const at = floorAt(motions, t);
-    if (!at) return hide("no reconstructed body at this time");
-    if (!at.valid) return hide("no usable pose at this time");
+    const motion = motionAt(motions, t);
+    let at = floorAt(motions, t);
+    if (!motion || !at) return hide("no reconstructed body at this time");
     const model = models[at.clip];
     if (!model) return hide("loading 3D model");
     if (model === "failed") return hide("model failed to load");
 
+    const projector = mode === "hybrid" ? model.projector : null;
+    const projection = motion.projection;
+    const fps = motion.fps;
+    let frame = at.clipTime * fps; // (fractional) frame the pose is evaluated at
+    let shownK = at.k;
+    let footage: { cameras: CameraId[]; nearest: CameraId | null; offDeg: number | null } | null = null;
+
+    if (projector && projection) {
+      // --- which frame's footage is on screen: the current one, or (while its cut-outs download) the last complete one
+      const manifest = useAppearanceStore.getState().clips[motion.clip];
+      const cropsOf = (k: number) => {
+        let want = 0;
+        const crops = projector.slots.map((id): HybridCrop | null => {
+          const f = id ? manifest?.cameras[id]?.frames[k] : undefined;
+          if (!id || !f?.file || !f.cropPx) return null;
+          if (projection.use?.[id]?.[k] === false) return null; // this cut-out disagrees with the body (a sliver at the frame edge)
+          want++;
+          const texture = getTexture(motion.clip, f.file);
+          return texture ? { texture, rect: f.cropPx, known: projection.known?.[id]?.[k] ?? null, register: projection.register?.[id]?.[k] ?? null } : null;
+        });
+        return { crops, complete: crops.filter(Boolean).length === want };
+      };
+      let pick = cropsOf(at.k); // requested first, then the frames around it
+      prefetchAround(subjectId, t, 0.8, false);
+      const held = live.current.shown;
+      if (!pick.complete && held && held.clip === motion.clip && held.k !== at.k && Math.abs(held.k - at.k) <= HOLD_FRAMES && motion.frames.valid[held.k]) {
+        const prev = cropsOf(held.k);
+        if (prev.complete) {
+          pick = prev;
+          shownK = held.k;
+        }
+      }
+      if (pick.complete) live.current.shown = { clip: motion.clip, k: shownK };
+      if (shownK !== at.k) at = floorAt(motions, motion.t0 + shownK / fps) ?? at;
+
+      // --- pose of that frame. Camera c exposed its image k at clip time k / fps - dt_c (a fraction of a
+      // frame apart); the body takes the instant of the cameras the viewer looks along, so it lines up
+      // with the pixels it carries.
+      const r = motion.frames.root[shownK] ?? [at.x, at.y + 1, at.z];
+      const lift0 = projection.lift[shownK] ?? 0;
+      pelvis.set(r[0], r[1], r[2]);
+      projector.viewAngles(camera.position, pelvis, lift0, angles);
+      let wSum = 0;
+      let dt = 0;
+      let nearest = -1;
+      const on: CameraId[] = [];
+      projector.slots.forEach((id, i) => {
+        if (!id || !pick.crops[i]) return;
+        on.push(id);
+        const w = Math.exp(-((angles[i] / HYBRID_TUNING.viewSigma) ** 2)) + 1e-4;
+        wSum += w;
+        dt += w * (projection.cameras[id]?.dt ?? 0);
+        if (nearest < 0 || angles[i] < angles[nearest]) nearest = i;
+      });
+      const lastK = motion.frameCount - 1;
+      frame = Math.min(Math.max(Math.round((shownK - (wSum > 0 ? dt / wSum : 0) * fps) * POSE_GRID) / POSE_GRID, 0), lastK);
+      if (!motion.frames.valid[Math.floor(frame)] || !motion.frames.valid[Math.ceil(frame)]) frame = shownK;
+      const k0 = Math.floor(frame);
+      const lift = projection.lift[k0] + (projection.lift[Math.min(k0 + 1, lastK)] - projection.lift[k0]) * (frame - k0);
+      if (model.own) {
+        model.own.uHyLift.value = lift;
+        model.own.uHyTrimOn.value.set(1, 1, 1, 1); // the person is in every matte
+      }
+      rootFit.set(r[0], r[1] - lift0, r[2]);
+      projector.setFrame(pick.crops, rootFit, lift);
+      footage = { cameras: on, nearest: nearest >= 0 ? projector.slots[nearest] : null, offDeg: nearest >= 0 ? Math.round(angles[nearest] * DEG) : null };
+    }
+    if (!at.valid) return hide("no usable pose at this time");
+
     for (const m of Object.values(models)) if (m !== "failed") m.root.visible = m === model;
-    model.setTime(at.clipTime);
+    model.setLook(projector ? "hybrid" : "model");
+    model.setTime(frame / fps);
     model.xray.visible = xray;
+    motion.props?.forEach((data, i) => {
+      const prop = model.props[i];
+      if (prop) poseProp(prop, data, frame, shownK, projector?.slots ?? null);
+    });
+    if (projector) {
+      // the cameras' depth maps of this pose, before the frame is drawn
+      model.root.updateMatrixWorld(true);
+      projector.renderDepth(gl, `${shownK}|${frame}|${footage?.cameras.join() ?? ""}|${model.props.filter(Boolean).length}`);
+    }
 
     // Contact shadow: footprint-sized ellipse on the scanned floor under the body, turned with it.
     if (shadow) {
@@ -336,10 +599,11 @@ function SubjectAvatar({ subjectId }: { subjectId: string }) {
       subjectId,
       active: true,
       clip: at.clip,
-      frameK: at.k,
+      frameK: shownK,
       cameras: at.cameras,
-      placeholder: !!motions.find((m) => m.clip === at.clip)?.placeholder,
+      placeholder: !!motion.placeholder,
       textured: model.textured,
+      footage,
       reason: null,
     });
   });
@@ -353,9 +617,11 @@ function SubjectAvatar({ subjectId }: { subjectId: string }) {
  */
 export function AvatarLayer() {
   const load = useAvatarStore((s) => s.load);
+  const loadFootage = useAppearanceStore((s) => s.load);
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadFootage(); // the cut-outs the 3D + FOOTAGE look projects onto the body
+  }, [load, loadFootage]);
   return (
     <group name="AvatarLayer">
       {subjects.map((s) => (

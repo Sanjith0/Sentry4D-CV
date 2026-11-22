@@ -238,7 +238,7 @@ function SubjectAppearance({ subjectId, heightM }: { subjectId: string; heightM:
       shadow.visible = false;
       setStatus({ subjectId, active: false, cameraId: null, offSourceDeg: null, evidence: null, clip: null, frameK: null, feetHeightM: null, positionEstimated: false, reason });
     };
-    if (mode !== "footage") return hide(mode === "model" ? "3D model mode" : "debug avatar mode");
+    if (mode !== "footage") return hide(mode === "avatar" ? "debug avatar mode" : "3D model mode");
     if (!P) return hide("subject not present");
     prefetchAround(subjectId, t, 0.8);
 

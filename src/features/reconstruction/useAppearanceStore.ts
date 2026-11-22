@@ -103,14 +103,17 @@ export function getTexture(clip: string, file: string, color = true): THREE.Text
   return null;
 }
 
-/** Warm the cache for frames around master time t (all cameras of the covering clips). */
-export function prefetchAround(subjectId: string, t: number, seconds = 1) {
+/**
+ * Warm the cache for frames around master time t (all cameras of the covering clips).
+ * @param heightMaps also load the inflated-silhouette maps (only the cut-out renderer uses them).
+ */
+export function prefetchAround(subjectId: string, t: number, seconds = 1, heightMaps = true) {
   for (const clip of clipsAt(subjectId, t)) {
     for (const [, cam] of Object.entries(clip.cameras)) {
       for (const f of cam!.frames)
         if (f.file && Math.abs(f.masterTime - t) <= seconds) {
           getTexture(clip.clip, f.file);
-          if (f.depthFile) getTexture(clip.clip, f.depthFile, false);
+          if (heightMaps && f.depthFile) getTexture(clip.clip, f.depthFile, false);
         }
     }
   }
