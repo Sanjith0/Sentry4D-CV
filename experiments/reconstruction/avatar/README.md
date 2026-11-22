@@ -323,13 +323,44 @@ smoothed over time: every frame follows its own matte, so a leg can change betwe
 to the next, as it does in the mattes.
 
 **Colours of the proxy.** They are measured on the close views of the carried chair, as a high percentile of the
-chair pixels inside the outlines of the pieces: the 85th for the plastic panels (RGB 160, 165, 166), which is the
+chair pixels inside the outlines of the pieces: the 85th for the slatted panels (RGB 160, 165, 166), which is the
 lit surface (the rest is slat shadow and what shows through the gaps), and the 95th for the legs (159, 160, 150).
 A leg is a 2 cm tube a few pixels wide, so most of its pixels are mixed with what is behind it, and their 85th
 percentile (143, 138, 134) is a darker grey than any leg looks in the footage. The GLB's texture is opaque between
 its tiles and continues the colour of the tile next to it: a leg a few pixels wide on screen is drawn from a small
 mip level, which mixes its narrow tile with its surroundings, and black, transparent texels there made the legs
 dark and thin.
+
+**Finish of the proxy.** The chair is silver metal with a slight gloss, and one flat grey reads as matte plastic.
+`chair_model.py` therefore writes, next to the colour, what a renderer needs to light it as metal: metallic 1.0 and
+roughness 0.45; a tangent-space normal map on the same tiles as the colour (a slat is rounded at its edges, 50° over
+3.5 texels of 1.8 mm, and crowned by 11° across its width, so a highlight runs along every slat); and a second
+normal per vertex, `_SHADE_NORMAL`, for shading only: on a leg it points straight out from the axis (the leg is a
+square bar in the geometry and a round tube in the light), on the two large faces of a panel it leans 6° outwards
+towards each side (a pressed sheet is never dead flat, and without that a panel mirrors one direction and is one
+flat tone again). The geometry and its `NORMAL`s stay the flat boxes that were fitted to the footage.
+
+The viewer does not use scene lights for the subject (its colours are measured from footage), so the gloss is
+computed in `AvatarLayer.tsx` (`METAL_FINISH_GLSL`) for any prop material with metallic ≥ 0.5: the shading normal
+mirrors the viewing direction into a small model of this room (darker floor below, lit ceiling above with a soft
+horizon, daylight from the side of the glass wall, three soft highlights for the rows of ceiling lights whose width
+follows the roughness, a faint rim at grazing angles) and the result scales the measured grey between about 0.75 and
+1.35 plus the highlights (`METAL_TUNING`). It is applied to the proxy's own colour only: pixels of the footage that
+land on the chair already carry the real reflections and are left as they are, so the camera views are unchanged.
+The strengths are set by eye against the recording ("a little bit glossy"), not measured from it; there is no
+reflectance estimate of the chair. Checked at 20.5 s from CAM 01's own position: against the picture before this
+change only the grey proxy legs and the animated markers (ground ring, camera dot) differ; the person and the footage on
+the chair are identical.
+
+**Wireframe.** In the room's wireframe view a solid chair would be the only solid piece of furniture. The GLB
+carries a second scene, `wireframe`, with one mesh `wire` made for line drawing (651 vertices, 804 triangles): each
+panel as a single sheet with the gaps between its slats left open, each leg as a four-sided tube, cells at most
+4.5 cm long. The viewer draws it with the room's wire material whenever the room is in wireframe, with stronger
+lines than the room (opacity 0.75 against 0.3: at the room's strength a chair of this size disappears among the
+lines of the table and floor behind it) and with its faces written to the depth buffer only, so the lines of the
+room behind the chair do not show through it. The person stays as he is. Footage of the chair is then kept off
+him: the layer of a camera whose matte contains the chair keeps only the pixels that camera saw of the body, and
+the cards leave out matte pixels that lie around an object in the depth map. Out of wireframe nothing changes.
 
 **Which pixels go on the legs.** Away from a camera the legs (the prop's `plain` pieces: one plain colour) take only
 those of its pixels that look like that colour, by the colour test of "Tone of the footage": a leg is a few pixels
