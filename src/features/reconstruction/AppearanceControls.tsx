@@ -44,22 +44,25 @@ export function AppearanceControls() {
 
   return (
     <div className="mb-2 space-y-1.5 border-b border-ink-600 pb-2">
-      <div className="flex items-center gap-1">
-        <span className="label mr-1">Subject</span>
-        {MODES.map(({ id, label, title }) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setMode(id)}
-            title={title}
-            aria-pressed={mode === id}
-            className={`h-6 flex-auto rounded border px-1 text-[10px] whitespace-nowrap ${
-              mode === id ? "border-cyan-400/70 bg-cyan-400/15 text-cyan-100" : "border-ink-500 text-slate-400 hover:text-slate-100"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+      {/* The label sits above the row: four modes next to it are wider than the panel, and the last one was cut off. */}
+      <div className="space-y-1">
+        <div className="label">Subject</div>
+        <div className="flex items-center gap-1" role="group" aria-label="Subject look">
+          {MODES.map(({ id, label, title }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setMode(id)}
+              title={title}
+              aria-pressed={mode === id}
+              className={`h-6 flex-auto rounded border px-1 text-[10px] whitespace-nowrap ${
+                mode === id ? "border-cyan-400/70 bg-cyan-400/15 text-cyan-100" : "border-ink-500 text-slate-400 hover:text-slate-100"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
       {(mode === "model" || mode === "hybrid") && (
         <div className="text-[10px] leading-snug">
