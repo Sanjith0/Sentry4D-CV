@@ -91,37 +91,54 @@ Where it shows: the **Camera evidence** panel (bottom-right of the 3D view; clic
 
 Demo moment (verified in the real footage): **25.35 s**. CAM 01 is out of frame (person beside or below its mount), CAM 02 is tracking, so PERSON 01 is OBSERVED. Free-camera spot where they stand behind the bin and table: LOCATE, or `focusFreeCamera([1.2, 0.9, -2.2], [-0.94, 0.95, -6.06])` from dev tools.
 
-## The subject in 3D (reconstructed body, or segmented footage)
+## The subject in 3D (reconstructed body with the footage on it)
 
 The **Camera evidence** panel has a **SUBJECT** selector:
-- **3D MODEL** (default): one articulated, clothed, textured 3D body of the person, reconstructed from all four cameras.
-- **FOOTAGE:** one camera's actual segmented pixels, as a cut-out.
-- **DEBUG AVATAR:** the generic avatar (also what is shown when a clip has no reconstruction).
+- **3D + FOOTAGE** (default): the reconstructed 3D body carrying the real camera pixels of the shown instant. From a camera's own angle the subject is that camera's footage; in between, and on the sides no camera sees, it is the 3D model.
+- **3D MODEL:** the same body with only its baked texture (one texture fused over the whole clip).
+- **CUT-OUT:** one camera's actual segmented pixels, as a flat cut-out.
+- **DEBUG:** the generic avatar (also what is shown when a clip has no reconstruction).
+
+### 3D + FOOTAGE (`src/features/reconstruction/hybridProjection.ts`, `AvatarLayer.tsx`)
+
+The 3D MODEL is complete from every side but soft: its texture is one average over 21 seconds of a person who is about 300 px tall in the footage. The CUT-OUT is as sharp as the footage but flat. This look combines them the way image-based rendering does (view-dependent projective texturing):
+
+- **Surface:** the reconstructed body in the pose of the shown frame, plus the chair he picks up and carries (below).
+- **Colour:** every point of the surface is projected into the four camera frames of that instant, with the calibration the body was fitted with. Where a camera really sees the point (inside its cut-out, not hidden behind another part of the body in a depth map rendered from that camera, not at a grazing angle) its pixel is used. Cameras are weighted by how close they are to your viewing direction, so the camera you look along wins and the hand-over between two cameras is continuous while you orbit.
+- **Fill:** points no camera sees at that instant keep the baked texture of the 3D MODEL.
+- **Outline:** within 5° of a camera the silhouette is the footage's own. Slivers of the body outside that camera's cut-out are trimmed, and cut-out pixels the mesh does not cover (hair, loose cloth, fingers) are drawn on a card that follows the depth of the body. Both fade out by 12°, where the outline of the mesh takes over. A part the cut-out lacks because furniture stood in front of it (shins behind a table) is not trimmed: it is drawn from the other cameras or the 3D MODEL, so the body has no hole there when you stand closer than the furniture. Along such a part the rim of the cut-out is part furniture (the sofa's orange across a knee): `rims.py` replaces its colours with the person's own from a few pixels further in, the last 4 px are not projected, and the card stops short of it, so the body carries neither a line of the sofa nor a ledge where the cut-out ends.
+- **Registration:** where a camera's calibration is weakest (the person one or two metres from the wide-angle lens of CAM 01, or entering a frame at its edge) the fitted body and that camera's cut-out are more than 100 px apart in the worst frames, and footage would land on the wrong part of the body. `register.py` measures, per cut-out, the scale and shift that put it back on the body (needed for 128 of the 1077 cut-outs of clip02). 17 cut-outs that show only a sliver of the person or still disagree with the body are not projected; the body shows the other cameras and its baked texture there.
+- **The same frame, always:** pose and pixels both come from the master time, so pausing, scrubbing or stepping shows exactly what playing shows. While the cut-outs of a frame are still downloading, the last complete frame (at most 3 frames back) stays on screen.
+- **Labelled as what it is:** **OBSERVED VIEW** within 6° of a camera, otherwise **3D BODY + FOOTAGE**, with the number of cameras that contribute real pixels at that instant and the nearest camera's angle from your view. The LiDAR room occludes the subject; **X-ray** works as before.
+
+**The chair.** From 15 s he holds a chair, at 18.9 s he lifts it and from 19.8 s he carries it out; a body model alone shows empty hands. `chair.py` reconstructs the chair as a rigid object: a proxy of the café chair (seat, slatted backrest, four legs, with dimensions fitted to the views in which it stands alone) and one position and orientation per frame (standing, pulled, lifted, carried in both hands). The viewer draws it like the body, piece by piece (seat, backrest, each leg in six segments): real pixels for every piece a camera's cut-out shows, the grey proxy for the pieces it lacks (`register.py` decides that per cut-out), so the chair has its seat and four legs from every side in both 3D looks. The laptop he puts on the seat is not modelled.
+
+Limits: the head is 30 to 40 px wide in the footage, so that is the sharpness of the face from any angle; the lower body leaves the frame of CAM 01 and CAM 04 when he is close to them, and what is outside a frame or behind furniture is the 3D model or another camera, with a visible step in sharpness and width where it meets the footage (usually at knee or thigh height); the chair's pose is approximate while it is carried (2 to 3 cm, about 8°), and its thin legs are partly missing from the cut-outs, so they are often the grey proxy and can change between footage and proxy from one frame to the next.
 
 ### 3D MODEL (`src/features/reconstruction/AvatarLayer.tsx`)
 
-The person used to be drawn as the FOOTAGE cut-out pushed forward by a height map of its own silhouette: exact from the source camera, an inflated blob from anywhere else, and a different blob every time the source camera switched. The 3D MODEL replaces that with a real reconstruction:
+The person used to be drawn as the cut-out pushed forward by a height map of its own silhouette: exact from the source camera, an inflated blob from anywhere else, and a different blob every time the source camera switched. The 3D MODEL replaced that with a real reconstruction, and it is the surface the 3D + FOOTAGE look paints on:
 
 - **One body for the whole clip.** A parametric human body is fitted to the 2D keypoints and SAM 2 silhouettes of all four cameras over all frames: one shape, one clothing layer, one texture, and per frame only the root and the joint angles. It is a normal skinned GLB with a baked animation in room coordinates (`public/reconstruction/<clip>/avatar/subject-01.glb` + `avatar.json`).
 - **The same pose at the same time, always.** The pose is set from the master time (`mixer.setTime(masterTime − t0)`), so pausing, scrubbing or stepping backwards shows exactly what playing does. Nothing switches with the viewing angle.
-- **Texture is footage.** Every texel is the robust consensus of the camera pixels that saw it over the clip; surface that no camera saw (18 % on clip02) is filled from neighbouring / mirrored texture.
+- **Texture is footage.** Every texel is the robust consensus of the camera pixels that saw it over the clip; surface that no camera saw (20 % on clip02) is filled from neighbouring / mirrored texture. The cameras are brought to a common colour with one offset per camera and channel, so dark clothing is the same neutral dark whichever camera a texel came from.
 - **It drives the track.** Where the body exists, the subject's floor position, heading, ring and trail follow it instead of the sparse manual annotations (`refineTrajectory` in `useSubjectTracks.ts`); presence and camera evidence still come from the annotations.
-- **Labelled as what it is:** the panel shows **RECONSTRUCTED 3D BODY** with the number of cameras the pose is fitted from at that instant (cameras with a usable detection of the body, which can be fewer than the cameras marked as tracking), and says so when there is none and the pose is carried from neighbouring frames. The LiDAR room occludes it; **X-ray** works as before.
+- **Labelled as what it is:** the panel shows **RECONSTRUCTED 3D BODY** with the number of cameras the pose is fitted from at that instant (cameras with a usable detection of the body, which can be fewer than the cameras marked as tracking), and says so when there is none and the pose is carried from neighbouring frames.
 
-How it is built, what is measured against the footage and what is inferred: `experiments/reconstruction/avatar/README.md`. Measured on clip02 (315 frames, 966 camera views): median keypoint error 2.4 to 4.1 px (1.4 to 2.4 cm on the subject) per camera, silhouette IoU 0.80 to 0.90, planted feet move 0.3 mm per frame, no joint beyond its limits. Limits: the face is 30 to 40 px wide in the footage, so it is a blurred average; fingers and cloth wrinkles are not resolved; the carried laptop and chair are not modelled.
+How it is built, what is measured against the footage and what is inferred: `experiments/reconstruction/avatar/README.md`. Measured on clip02 (315 frames, 1077 camera views): median keypoint error 2.4 to 4.1 px (1.4 to 2.4 cm on the subject) per camera, silhouette IoU 0.79 to 0.88, planted feet move 0.3 mm per frame, no joint beyond its limits. Limits: the face is a blurred average in this look; fingers and cloth wrinkles are not resolved.
 
 ```bash
-cd experiments/reconstruction/avatar      # after the FOOTAGE steps below; CPU only, about 23 min for clip02
+cd experiments/reconstruction/avatar      # after the CUT-OUT steps below; CPU only, about 23 min for clip02 (+ 7 min for the chair)
 PY=../.venv-avatar/bin/python             # venv and the two ONNX models: see avatar/README.md
 export AVATAR_MODELS=../models
-for s in pose2d calibrate fit shape refine shape texture export validate export; do $PY $s.py --clip clip02 || break; done
+for s in pose2d calibrate fit shape refine shape texture chair register rims export validate export; do $PY $s.py --clip clip02 || break; done
 ```
 
-### FOOTAGE (segmented footage in 3D)
+### CUT-OUT (segmented footage in 3D)
 
-How FOOTAGE works (`src/features/reconstruction/AppearanceLayer.tsx`):
+How CUT-OUT works (`src/features/reconstruction/AppearanceLayer.tsx`):
 - Per master-time frame, the crop is placed on a vertical plane at the tracked position, facing its **source camera**, and projectively textured from that camera.
-  - Seen from the source camera it reproduces the footage exactly.
+  - Seen from the source camera it reproduces the footage exactly, except for the rim of a cut-out along furniture that hides the rest of the body: the avatar pipeline (`avatar/rims.py`) repaints it with the person's own colour, a few hundred pixels in about half of the cut-outs of clip02.
   - From elsewhere it is a flat cut-out at the person's real location.
   - Nothing is invented for unseen sides.
 - **SOURCE:** AUTO picks the camera closest to your viewing direction, with hysteresis; C1–C4 force one.
