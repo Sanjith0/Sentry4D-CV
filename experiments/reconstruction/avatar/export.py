@@ -4,9 +4,10 @@ The GLB is a standard skinned mesh with one baked animation in ROOM coordinates;
 carries what the viewer needs without parsing the GLB (floor point, heading, evidence per frame)
 and the measured accuracy of the reconstruction. Version 2 of the sidecar adds
 
-  projection  the refined cameras and, per cut-out, where its matte is authoritative and where the cut-out
-              belongs on the body (register.py), so the viewer can put the footage of the shown frame
-              back onto the body (3D + FOOTAGE look)
+  projection  the refined cameras and, per cut-out, where its matte is authoritative, where the cut-out
+              belongs on the body (register.py) and how much lighter or darker it shows each part of the
+              body than the baked texture does (tone.py), so the viewer can put the footage of the shown
+              frame back onto the body (3D + FOOTAGE look)
   props       rigid objects the person handles (prop_*.json from chair.py): pose per frame and, per
               camera and frame, whether that camera's matte contains the object and which of its
               pieces the matte really shows (register.py)
@@ -77,6 +78,22 @@ def projection(clip, fit, masks):
             f"{cam} {sum(r is not None for r in register[cam])} moved / {sum(u is False for u in use[cam])} not used" for cam in CAMS))
     else:
         print("  no register.json: the cut-outs are projected as filmed (run register.py)")
+    # tone of each cut-out against the baked texture, per body part (tone.py): sqrt(linear) footage minus baked, RGB
+    path = os.path.join(work_dir(clip), "tone.json")
+    if os.path.exists(path):
+        tone = load_json(path)
+        rows = {cam: (tone["cameras"][cam]["tone"][:N] + [None] * N)[:N] for cam in CAMS}
+        missing = [(cam, k) for ci, cam in enumerate(CAMS) for k in range(N) if (ci, k) in masks and rows[cam][k] is None]
+        if missing:
+            raise SystemExit(f"tone.json lacks {len(missing)} cut-outs (e.g. {missing[:4]}): run tone.py --clip {clip} first")
+        scale = 0.001
+        out["tone"] = {"parts": tone["parts"], "joints": tone["joints"], "scale": scale,
+                       "cameras": {cam: [None if (ci, k) not in masks else [int(round(v / scale)) for part in rows[cam][k] for v in part] for k in range(N)]
+                                   for ci, cam in enumerate(CAMS)}}
+        print(f"  tone of the footage against the baked texture, {len(tone['parts'])} body parts: " + ", ".join(
+            f"{cam} {np.median([np.mean(t) * scale for t in out['tone']['cameras'][cam] if t is not None]):+.3f}" for cam in CAMS))
+    else:
+        print("  no tone.json: the footage is compared and shown in the texture's own tone (run tone.py)")
     return out
 
 
@@ -133,7 +150,7 @@ def props(clip, wd, out_dir, masks, N):
             shown = {cam: (reg["cameras"][cam].get("shown", {}).get(kind) or [])[:N] for cam in CAMS}
             entry["pieces"] = names
             entry["frames"]["cut"] = {cam: [int(b) if b is not None else 0 for b in shown[cam]] + [0] * (N - len(shown[cam])) for cam in CAMS}
-        for key in ("dims", "metrics", "rest"):
+        for key in ("dims", "metrics", "rest", "plain"):
             if key in p:
                 entry[key] = p[key]
         out.append(entry)

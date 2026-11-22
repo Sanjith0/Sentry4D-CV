@@ -489,10 +489,15 @@ class Track:
 
 
 # ---------------------------------------------------------------- output
+PANEL_PCT, LEG_PCT = 85, 95
+
+
 def colours(sc, C, P, R, frames):
-    """RGB of the plastic panels and of the metal legs over the close views of the carried chair:
-    the 85th percentile of the mask pixels inside their outlines, which is the lit surface (the rest
-    is slat shadow, what shows through the gaps and, on the thin legs, pixels mixed with the floor)."""
+    """RGB of the plastic panels and of the metal legs over the close views of the carried chair: a high
+    percentile of the mask pixels inside their outlines, which is the lit surface (the rest is slat shadow,
+    what shows through the gaps and, on the legs, pixels mixed with what is behind them). The 85th for the
+    panels; the 95th for the legs, which are 2 cm tubes a few pixels wide, so that most of their pixels are
+    such mixtures (their 85th percentile is a darker grey than any leg looks in the footage)."""
     panel, leg = [], []
     for k in frames:
         for c in CAMS:
@@ -502,7 +507,7 @@ def colours(sc, C, P, R, frames):
                 img, ok = CM.frame(sc.clip, c, k)[y0:y1, x0:x1], cmp["mask"] & cmp["valid"] & (cmp["body"] == 0)
                 panel.append(img[ok & (M.raster(cmp["polys"][:2], ok.shape, (x0, y0)) > 0)])
                 leg.append(img[ok & (M.raster(cmp["polys"][2:], ok.shape, (x0, y0)) > 0) & (M.raster(cmp["polys"][:2], ok.shape, (x0, y0)) == 0)])
-    return [[int(round(v)) for v in np.percentile(np.concatenate(px), 85, axis=0)[::-1]] for px in (panel, leg)]
+    return [[int(round(v)) for v in np.percentile(np.concatenate(px), pct, axis=0)[::-1]] for px, pct in ((panel, PANEL_PCT), (leg, LEG_PCT))]
 
 
 def write_outputs(sc, g, ks, P, R, grips, touch, away, log):
@@ -542,7 +547,7 @@ def write_outputs(sc, g, ks, P, R, grips, touch, away, log):
     nv, nf = M.write_glb(os.path.join(public_dir(sc.clip), "avatar", "chair-01.glb"), d, metrics["panelRGB"], metrics["legRGB"],
                          {"dims": {k: round(v, 4) for k, v in dims.items()}})
     out = {"id": "chair-01", "kind": "chair", "glb": "avatar/chair-01.glb", "frameCount": N,
-           "dims": {k: round(v, 4) for k, v in dims.items()},
+           "dims": {k: round(v, 4) for k, v in dims.items()}, "plain": M.PLAIN,
            "frames": {"pos": np.round(pos, 4).tolist(), "quat": np.round(quat, 5).tolist(), "lift": np.round(lift, 4).tolist(),
                       "held": [bool(k >= up) for k in range(N)], "visible": [True] * N, "fitted": fitted},
            "metrics": metrics}

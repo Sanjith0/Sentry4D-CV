@@ -33,6 +33,10 @@ PARTS = ["seat", "back", "leg_fl", "leg_fr", "leg_rl", "leg_rr"]
 LEG_SEGMENTS = 6                                     # lengths a leg is cut into (7 cm each)
 # what the viewer shows or cuts one by one, in the bit order of avatar.json `cut`; leg pieces run from the seat down
 PIECES = PARTS[:2] + [f"{leg}_{j}" for leg in PARTS[2:] for j in range(LEG_SEGMENTS)]
+# pieces of one plain colour (the tube legs; the panels are slats with gaps): away from a camera the viewer puts
+# only those of its pixels on them that look like that colour. A leg is a few pixels wide and the pose of a
+# carried chair is known to 2-3 cm, so some of the pixels that land on it are the trousers behind it.
+PLAIN = [p for p in PIECES if p.startswith("leg_")]
 
 # faces of a hexahedron whose corners are indexed a + 2 b + 4 c along right-handed local axes (u, v, w)
 _QUADS = {"-w": (0, 2, 3, 1), "+w": (4, 5, 7, 6), "-v": (0, 1, 5, 4), "+v": (2, 6, 7, 3), "-u": (0, 4, 6, 2), "+u": (1, 3, 7, 5)}
@@ -157,9 +161,13 @@ def _panel_alpha(h, w, slots, x_margin, y0, y1, gap, radius, round_top_only):
 def texture(rgb, metal, dark=0.85):
     """RGBA texture (TEX x TEX): the measured colour `rgb` of the plastic panels with a faint slat
     shading and darker undersides, the gaps between the slats in alpha, and the measured colour
-    `metal` of the legs. Tiles as in _TILES."""
-    img = np.zeros((TEX, TEX, 4), np.float32)
+    `metal` of the legs. Tiles as in _TILES. What lies between the tiles is opaque and has the colour of
+    the tile next to it: a leg is a few pixels wide on screen and is drawn from a small mip level, which
+    mixes its narrow tile with whatever surrounds it (black, transparent texels there darken and thin the legs)."""
     rgb, metal = np.asarray(rgb, np.float32), np.asarray(metal, np.float32)
+    img = np.ones((TEX, TEX, 4), np.float32)
+    img[..., :3] = rgb
+    img[_TILES["leg"][1] - 4:, _TILES["leg"][0]:, :3] = metal
     for name, (x0, y0, x1, y1) in _TILES.items():
         h, w = y1 - y0, x1 - x0
         tile = np.ones((h, w, 4), np.float32)
