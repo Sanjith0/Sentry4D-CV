@@ -188,8 +188,6 @@ interface Choice {
 
 function SubjectAppearance({ subjectId, heightM }: { subjectId: string; heightM: number }) {
   const camera = useThree((s) => s.camera);
-  const mode = useViewStore((s) => s.subjectRenderMode);
-  const xray = useReplayStore((s) => s.xrayEnabled);
   const setStatus = useAppearanceStore((s) => s.setStatus);
   const lastCam = useRef<CameraId | null>(null);
 
@@ -230,6 +228,9 @@ function SubjectAppearance({ subjectId, heightM }: { subjectId: string; heightM:
   useFrame(() => {
     const r = useReplayStore.getState();
     const v = useViewStore.getState();
+    // read here, not rendered: a change of look lands in the frame it is made in
+    const mode = v.subjectRenderMode;
+    const xray = r.xrayEnabled;
     const t = r.currentTime;
     const sample = subjectSample(subjectId, t);
     const P = sample?.position ?? null;

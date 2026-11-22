@@ -3,6 +3,7 @@ import { BrightnessContrast, EffectComposer, HueSaturation, N8AO, Vignette } fro
 import { roomConfig } from "../config/roomConfig";
 import { useReplayStore } from "../store/useReplayStore";
 import { useViewStore } from "../store/useViewStore";
+import { useDemoStore } from "../features/demo/useDemoStore";
 import { SharpenEffect } from "./effects/SharpenEffect";
 
 /** Post-processing chain. Disabled entirely in "performance" quality. Tunables in roomConfig.rendering. */
@@ -10,6 +11,8 @@ export function PostFX() {
   const quality = useViewStore((s) => s.quality);
   const cctv = useReplayStore((s) => s.cameraMode === "cctv");
   const calibrating = useViewStore((s) => s.calibrating);
+  // The demo walkthrough cuts between CCTV and free views every few frames; it draws its own vignette.
+  const demo = useDemoStore((s) => s.phase !== "idle");
   const r = roomConfig.rendering;
   const sharpen = useMemo(() => new SharpenEffect(r.sharpen), [r.sharpen]);
   useEffect(() => () => sharpen.dispose(), [sharpen]);
@@ -33,7 +36,7 @@ export function PostFX() {
   if (r.sharpen > 0) effects.push(<primitive key="sharpen" object={sharpen} />);
   if (r.contrast) effects.push(<BrightnessContrast key="bc" contrast={r.contrast} />);
   if (r.saturation) effects.push(<HueSaturation key="hs" saturation={r.saturation} />);
-  if (cctv && !calibrating) effects.push(<Vignette key="vig" offset={0.3} darkness={0.6} />);
+  if (cctv && !calibrating && !demo) effects.push(<Vignette key="vig" offset={0.3} darkness={0.6} />);
 
   return <EffectComposer multisampling={quality === "ultra" ? 8 : 4}>{effects}</EffectComposer>;
 }

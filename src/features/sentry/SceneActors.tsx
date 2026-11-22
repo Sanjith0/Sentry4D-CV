@@ -23,6 +23,7 @@ import { evidenceAt } from "./useEvidence";
 import { appearanceActive } from "../reconstruction/AppearanceLayer";
 import { useAppearanceStore } from "../reconstruction/useAppearanceStore";
 import { avatarActive, useAvatarStore } from "../reconstruction/useAvatarStore";
+import { demoLook } from "../demo/demoLook";
 import type { SubjectEvidence } from "./evidence";
 import { Humanoid, type HumanoidHandle } from "./Humanoid";
 import { useSubjectTracks, type SubjectTrack } from "./useSubjectTracks";
@@ -118,6 +119,23 @@ const SubjectActor = memo(function SubjectActor({ track, xray }: { track: Subjec
     (trail.line.material as THREE.Material).dispose();
   }, [trail]);
 
+  // The debug body is the fallback: hidden while the footage or the 3D model renderer draws this subject.
+  // Those renderers report from their own per-frame work, so the body follows their stores rather than this
+  // component's frame: whichever of the three runs first, the switch happens within one frame (the body never
+  // shows next to a renderer, and no frame is left without the subject).
+  useEffect(() => {
+    const sync = () => {
+      if (body.current) body.current.visible = !appearanceActive(subject.id) && !avatarActive(subject.id);
+    };
+    sync();
+    const offAppearance = useAppearanceStore.subscribe(sync);
+    const offAvatar = useAvatarStore.subscribe(sync);
+    return () => {
+      offAppearance();
+      offAvatar();
+    };
+  }, [subject.id]);
+
   useFrame(({ clock }) => {
     const t = useReplayStore.getState().currentTime;
     const st = trajectory.sample(t);
@@ -126,10 +144,8 @@ const SubjectActor = memo(function SubjectActor({ track, xray }: { track: Subjec
     const g = root.current;
     if (!g) return;
     g.visible = st.visible;
-    // The debug body is the fallback: hidden while the footage or the 3D model renderer draws this subject.
-    if (body.current) body.current.visible = !appearanceActive(subject.id) && !avatarActive(subject.id);
     // drei <Html> ignores parent visibility: hide the tag explicitly when absent.
-    if (labelEl.current) labelEl.current.style.display = st.visible ? "" : "none";
+    if (labelEl.current) labelEl.current.style.display = st.visible && !(demoLook.active && demoLook.hideTags) ? "" : "none";
     if (st.visible) {
       // y is 0 for annotation-only tracks; with a reconstructed body it is the scanned floor under it
       // (a few centimetres off y = 0), so the ring lies on the floor the body stands on, not under it.
@@ -199,7 +215,7 @@ const SubjectActor = memo(function SubjectActor({ track, xray }: { track: Subjec
       sight.geom.setDrawRange(0, k * 2);
       sight.geom.attributes.position.needsUpdate = true;
       if (k) sight.lines.computeLineDistances();
-      sight.mat.depthTest = !xray;
+      sight.mat.depthTest = !useReplayStore.getState().xrayEnabled;
     }
 
     // Live selection details (~4 Hz, only when changed).

@@ -15,7 +15,19 @@ export const buildUniforms = {
   uWireMode: { value: 0 },
   /** Seconds since the build started (drives pulses / flicker). */
   uBuildTime: { value: 0 },
+  /** World Y below which the wireframe is not drawn (scan geometry under the floor; off by default). */
+  uBuildMinY: { value: -1e6 },
+  /** Strength of the room's wireframe lines (1 = as built; a script may dim them behind a subject). */
+  uBuildWireGain: { value: 1 },
+  /** Strength of the floor grid that rides the wireframe front (1 = as built). */
+  uBuildGridGain: { value: 1 },
 };
+
+/**
+ * The room's wireframe twin while it is mounted. Nothing of it passes its shader while the textured front
+ * is above the room, so whoever drives the uniforms can skip drawing it then (it is every edge of the scan).
+ */
+export const buildWire: { object: THREE.Object3D | null } = { object: null };
 
 const WIRE_DURATION = 4.0;
 const TEX_DELAY = 1.8;
@@ -25,6 +37,8 @@ export const BUILD_TOTAL = TEX_DELAY + TEX_DURATION;
 let played = false;
 let wireMode = false;
 let building = false;
+/** True while the demo walkthrough drives the uniforms itself (see features/demo). */
+let scripted = false;
 
 /** Resting state of the uniforms when no build is running: textured, or wireframe only. */
 function settle() {
@@ -36,7 +50,31 @@ function settle() {
 /** Wireframe view toggle. During the page-load build it takes effect when the build ends. */
 export function setWireMode(on: boolean) {
   wireMode = on;
-  if (!building) settle();
+  if (!building && !scripted) settle();
+}
+
+/**
+ * Hands the build uniforms to a script (the demo walkthrough) or takes them back. While scripted, the
+ * page-load reveal and the wireframe toggle leave the uniforms alone; on release they settle to the
+ * resting state for the current wireframe toggle.
+ */
+export function setBuildScripted(on: boolean) {
+  scripted = on;
+  if (on) {
+    played = true;
+    building = false;
+  } else {
+    buildUniforms.uBuildTime.value = 0;
+    buildUniforms.uBuildMinY.value = -1e6;
+    buildUniforms.uBuildWireGain.value = 1;
+    buildUniforms.uBuildGridGain.value = 1;
+    if (buildWire.object) buildWire.object.visible = true;
+    settle();
+  }
+}
+
+export function isBuildScripted() {
+  return scripted;
 }
 let startAt: number | null = null;
 
@@ -44,7 +82,9 @@ let startAt: number | null = null;
 export function shouldPlayBuild() {
   if (played) return false;
   const reduced = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  const skip = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("intro") === "0";
+  const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  // `?demo=…` starts the walkthrough straight away, which stages its own build.
+  const skip = scripted || params?.get("intro") === "0" || params?.has("demo") === true;
   if (reduced || skip) {
     played = true;
     return false;
@@ -60,6 +100,7 @@ const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
  * Returns false once finished (uniforms are left fully revealed).
  */
 export function stepBuild(now: number, y0: number, y1: number): boolean {
+  if (scripted) return false;
   if (startAt === null) startAt = now;
   const t = now - startAt;
   buildUniforms.uBuildTime.value = t;
@@ -81,6 +122,7 @@ export function isBuildFinished() {
 }
 
 export function primeBuild(y0: number) {
+  if (scripted) return;
   startAt = null;
   building = true;
   buildUniforms.uWireMode.value = 0;
@@ -91,12 +133,13 @@ export function primeBuild(y0: number) {
 export function finishBuild() {
   played = true;
   building = false;
-  settle();
+  if (!scripted) settle();
 }
 
 const BUILD_PARS = /* glsl */ `
 varying vec3 vBuildWorld;
 uniform float uBuildTexY; uniform float uBuildWireY; uniform vec3 uBuildGlow; uniform float uWireMode; uniform float uBuildTime;
+uniform float uBuildMinY; uniform float uBuildWireGain;
 float bHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }`;
 
 function chainKey(material: THREE.Material, tag: string) {
@@ -147,9 +190,10 @@ if (uBuildTexY < 1e5) {
 /**
  * Wireframe overlay: visible between the texture front and the wire front, brightest at its leading edge.
  * `opacity`: strength of a line (0.3 suits the room scan, whose many layers of lines add up; a single small
- * object next to it needs more to be made out).
+ * object next to it needs more to be made out). `dimmable`: follows uBuildWireGain (the room does; an object
+ * drawn next to it keeps its own strength).
  */
-export function makeBuildWireMaterial(clippingPlanes: THREE.Plane[], opacity = 0.3) {
+export function makeBuildWireMaterial(clippingPlanes: THREE.Plane[], opacity = 0.3, dimmable = true) {
   const m = new THREE.MeshBasicMaterial({
     color: "#3cc8ff",
     wireframe: true,
@@ -162,12 +206,13 @@ export function makeBuildWireMaterial(clippingPlanes: THREE.Plane[], opacity = 0
   });
   m.onBeforeCompile = (shader) => {
     injectVaryings(shader);
+    if (!dimmable) shader.uniforms.uBuildWireGain = { value: 1 };
     shader.fragmentShader = shader.fragmentShader
       .replace("#include <common>", `#include <common>\n${BUILD_PARS}`)
       .replace(
         "#include <clipping_planes_fragment>",
         `#include <clipping_planes_fragment>
-if (vBuildWorld.y > uBuildWireY || vBuildWorld.y < uBuildTexY - 0.04) discard;`,
+if (vBuildWorld.y > uBuildWireY || vBuildWorld.y < uBuildTexY - 0.04 || vBuildWorld.y < uBuildMinY) discard;`,
       )
       .replace(
         "#include <opaque_fragment>",
@@ -186,10 +231,10 @@ if (vBuildWorld.y > uBuildWireY || vBuildWorld.y < uBuildTexY - 0.04) discard;`,
   float sparkle = step(0.985, bHash(floor(vBuildWorld * 9.0) + floor(uBuildTime * 8.0))) * building * 2.0;
   float wireModeGain = uWireMode * (1.0 - building);
   gl_FragColor.rgb = col * (0.35 + 2.8 * lead + 1.6 * pulse + sparkle + 0.35 * wireModeGain) * flick * trail * 0.9;
-  gl_FragColor.a *= trail; }`,
+  gl_FragColor.a *= trail * uBuildWireGain; }`,
       );
   };
-  m.customProgramCacheKey = () => "sentry3d-build-wire-v2";
+  m.customProgramCacheKey = () => `sentry3d-build-wire-v3${dimmable ? "" : "-fixed"}`;
   return m;
 }
 
@@ -207,7 +252,7 @@ export function makeBuildScanPlane(width: number, depth: number, center: THREE.V
         gl_Position = projectionMatrix * viewMatrix * w;
       }`,
     fragmentShader: /* glsl */ `
-      uniform float uBuildTime; uniform float uBuildWireY; uniform vec3 uBuildGlow; varying vec2 vXZ; varying vec2 vUv2;
+      uniform float uBuildTime; uniform float uBuildWireY; uniform float uBuildGridGain; uniform vec3 uBuildGlow; varying vec2 vXZ; varying vec2 vUv2;
       void main() {
         if (uBuildWireY > 1e5) discard;
         vec2 g = abs(fract(vXZ * 2.0) - 0.5);
@@ -215,7 +260,7 @@ export function makeBuildScanPlane(width: number, depth: number, center: THREE.V
         vec2 e = min(vUv2, 1.0 - vUv2);
         float edge = smoothstep(0.0, 0.08, min(e.x, e.y));
         float sweep = pow(0.5 + 0.5 * sin(vXZ.y * 1.5 - uBuildTime * 6.0), 6.0);
-        float a = (0.05 + 0.35 * grid + 0.12 * sweep) * edge;
+        float a = (0.05 + 0.35 * grid + 0.12 * sweep) * edge * uBuildGridGain;
         gl_FragColor = vec4(mix(uBuildGlow, vec3(1.0), grid * 0.4) * 1.4, a);
       }`,
     transparent: true,

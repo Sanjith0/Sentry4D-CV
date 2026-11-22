@@ -15,10 +15,19 @@ import { AnnotationPanel } from "../features/annotation/AnnotationPanel";
 import { useEvidenceSync } from "../features/sentry/useEvidence";
 import { EvidencePanel } from "../features/sentry/EvidencePanel";
 import { InvestigatorPanel } from "../features/investigator/InvestigatorPanel";
+import { DemoOverlay } from "../features/demo/DemoOverlay";
+import { DemoWall } from "../features/demo/DemoWall";
+import { useDemoStore } from "../features/demo/useDemoStore";
 
 function useShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // The demo walkthrough owns the viewer while it runs: Escape leaves it, nothing else gets through.
+      if (useDemoStore.getState().phase !== "idle") {
+        if (e.code === "Escape") useDemoStore.getState().stop();
+        if (!e.metaKey && !e.ctrlKey && !e.altKey) e.preventDefault();
+        return;
+      }
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
       if (e.code === "Escape") {
@@ -125,18 +134,27 @@ export default function App() {
   useShortcuts();
   useEvidenceSync();
   const annotating = useViewStore((s) => s.annotating);
+  const demo = useDemoStore((s) => s.phase !== "idle");
+  // sentry4d.vercel.app/?demo starts the walkthrough by itself (for screen recordings and shared links)
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has("demo")) useDemoStore.getState().start();
+  }, []);
   return (
     <div className="flex h-full flex-col">
       <Header />
       <div className="flex min-h-0 flex-1">
         {annotating && <AnnotationPanel />}
-        <main className="relative min-w-0 flex-1 bg-ink-950">
+        {/* The demo walkthrough takes the whole window: the viewport grows over the panels (which stay
+            mounted underneath: the four recordings keep playing there) and gets the demo's own overlay. */}
+        <main className={demo ? "fixed inset-0 z-[80] bg-ink-950" : "relative min-w-0 flex-1 bg-ink-950"}>
           <Scene3D />
-          <ViewportHud />
-          {!annotating && <EvidencePanel />}
+          {!demo && <ViewportHud />}
+          {!annotating && !demo && <EvidencePanel />}
           <LoadingOverlay />
-          <EnlargedFeed />
-          <CameraSyncPanel />
+          {!demo && <EnlargedFeed />}
+          {!demo && <CameraSyncPanel />}
+          {demo && <DemoWall />}
+          {demo && <DemoOverlay />}
         </main>
         <InvestigatorPanel />
         <CCTVPanel />

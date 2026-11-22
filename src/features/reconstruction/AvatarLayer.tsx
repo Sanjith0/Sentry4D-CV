@@ -48,6 +48,7 @@ import { HYBRID_TUNING, HybridProjector, type HybridCrop, type HybridFinish, typ
 import type { AvatarMotion, AvatarProp } from "./ReconstructionTypes";
 import { getTexture, prefetchAround, useAppearanceStore } from "./useAppearanceStore";
 import { avatarModelUrl, floorAt, motionAt, useAvatarStore } from "./useAvatarStore";
+import { demoLook } from "../demo/demoLook";
 
 /** Draw order inside the opaque pass: room (0) -> X-ray silhouette (1) -> body (2). */
 const XRAY_ORDER = 1;
@@ -88,7 +89,12 @@ function formShade(variant: "body" | "flat" | "xray", after = "") {
         ? /* glsl */ `${form}
           outgoingLight = outgoingLight * ( 0.75 + 0.35 * avForm ) + vec3( 0.010 ) * avForm + vec3( 0.022 ) * avRim;`
         : /* glsl */ `
-          outgoingLight = diffuseColor.rgb * ( 0.45 + 1.1 * avRim );`;
+          float avTint = 0.45 + 1.1 * avRim;
+          // hologram (demo walkthrough): rim light, fine scan lines drifting up, one bright band sweeping the body
+          float avLines = 0.55 + 0.45 * sin( vAvatarP.y * 170.0 - uAvHoloTime * 9.0 );
+          float avBand = exp( - abs( vAvatarP.y - uAvHoloBand ) * 11.0 );
+          float avHolo = ( 0.07 + 1.25 * pow( 1.0 - avFacing, 1.6 ) ) * avLines + 0.9 * avBand;
+          outgoingLight = diffuseColor.rgb * mix( avTint, avHolo, uAvHolo );`;
   return /* glsl */ `{
           vec3 avN = normalize( vAvatarN );
           #ifdef DOUBLE_SIDED
@@ -101,10 +107,17 @@ function formShade(variant: "body" | "flat" | "xray", after = "") {
         }`;
 }
 
+/**
+ * X-ray shell as a hologram (demo walkthrough): 0 = the flat X-ray tint, 1 = scan lines, rim light and a
+ * bright band at world height uAvHoloBand. Shared by every X-ray material.
+ */
+const holoUniforms = { uAvHolo: { value: 0 }, uAvHoloTime: { value: 0 }, uAvHoloBand: { value: -10 } };
+const HOLO_PARS = "uniform float uAvHolo;\nuniform float uAvHoloTime;\nuniform float uAvHoloBand;";
+
 /** `finish`: a look on top of the form term (a metal object's sheen), the same one its footage-on-model material fills with. */
 function shadeMaterial(mat: THREE.MeshBasicMaterial, variant: "body" | "flat" | "xray", finish: HybridFinish | null = null) {
   mat.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, finish?.uniforms);
+    Object.assign(shader.uniforms, finish?.uniforms, variant === "xray" ? holoUniforms : null);
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", `#include <common>\nvarying vec3 vAvatarN;\nvarying vec3 vAvatarP;\n${finish?.vertexPars ?? ""}`)
       .replace(
@@ -127,10 +140,10 @@ function shadeMaterial(mat: THREE.MeshBasicMaterial, variant: "body" | "flat" | 
             outgoingLight = hyFill;
           }` : "";
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", `#include <common>\nvarying vec3 vAvatarN;\nvarying vec3 vAvatarP;\n${finish?.fragmentPars ?? ""}`)
+      .replace("#include <common>", `#include <common>\nvarying vec3 vAvatarN;\nvarying vec3 vAvatarP;\n${variant === "xray" ? HOLO_PARS : ""}\n${finish?.fragmentPars ?? ""}`)
       .replace("#include <opaque_fragment>", `${formShade(variant, after)}\n#include <opaque_fragment>`);
   };
-  mat.customProgramCacheKey = () => `sentry-avatar-${variant}${finish ? `-${finish.key}` : ""}`;
+  mat.customProgramCacheKey = () => `sentry-avatar-v2-${variant}${finish ? `-${finish.key}` : ""}`;
   return mat;
 }
 
@@ -312,6 +325,11 @@ interface AvatarModel {
   /** Index-aligned with motion.props; null while loading or when the file is missing. */
   props: (PropModel | null)[];
   setLook: (look: Look) => void;
+  /**
+   * Demo walkthrough: draw the X-ray shell over the whole body (not only where something hides it) at
+   * `strength` 0..1; `hideBody` leaves out the textured body, so only the shell shows. (0, false) = normal.
+   */
+  setHologram: (strength: number, hideBody: boolean) => void;
   /** Pose the skeleton for a time on the baked clip (seconds). Idempotent and history-free. */
   setTime: (clipTime: number) => void;
   dispose: () => void;
@@ -390,7 +408,7 @@ async function loadProp(url: string, projector: HybridProjector | null, names: r
   // The room's lines are faint and lie in many layers; a chair of such lines alone is lost among those behind
   // it. So its lines are stronger, and its faces are drawn into the depth buffer only (after the person, before
   // the room's lines): what is behind a face is hidden as by the solid chair, the face itself stays empty.
-  const wireMaterial = makeBuildWireMaterial(ceilingPlanes, PROP_WIRE_OPACITY);
+  const wireMaterial = makeBuildWireMaterial(ceilingPlanes, PROP_WIRE_OPACITY, false);
   const faceMaterial = new THREE.MeshBasicMaterial({ colorWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2, clippingPlanes: ceilingPlanes, name: "avatar-prop-wire-face" });
   owned.add(wireMaterial);
   owned.add(faceMaterial);
@@ -536,6 +554,11 @@ async function loadAvatarModel(url: string, subjectId: string, motion: AvatarMot
   });
 
   root.visible = false;
+  let holo = 0;
+  let bodyHidden = false;
+  const showFringe = () => {
+    if (projector) projector.fringe.visible = look === "hybrid" && !!hybrid && !bodyHidden;
+  };
   return {
     root,
     xray,
@@ -548,9 +571,27 @@ async function loadAvatarModel(url: string, subjectId: string, motion: AvatarMot
       look = next;
       const on = look === "hybrid" && !!hybrid;
       mesh.material = on ? hybrid.material : bodyMat;
-      if (projector) projector.fringe.visible = on;
+      showFringe();
       for (const p of props) p?.setLook(look);
       projector?.invalidate();
+    },
+    setHologram: (strength, hideBody) => {
+      if (strength === holo && hideBody === bodyHidden) return;
+      const on = strength > 0;
+      if (on !== holo > 0) {
+        // over everything and after the body, instead of only where the room is in front
+        xrayMat.depthFunc = on ? THREE.AlwaysDepth : THREE.GreaterDepth;
+        xray.renderOrder = on ? BODY_ORDER + 3 : XRAY_ORDER;
+      }
+      xrayMat.opacity = on ? Math.min(1, strength) : 0.6;
+      holo = strength;
+      if (hideBody !== bodyHidden) {
+        bodyHidden = hideBody;
+        // still writes depth: the shell keeps a clean silhouette against what is behind it
+        bodyMat.colorWrite = !hideBody;
+        if (hybrid) hybrid.material.colorWrite = !hideBody;
+        showFringe();
+      }
     },
     setTime,
     dispose: () => {
@@ -644,8 +685,6 @@ const DEG = 180 / Math.PI;
 
 function SubjectAvatar({ subjectId }: { subjectId: string }) {
   const motions = useAvatarStore((s) => s.bySubject[subjectId]);
-  const mode = useViewStore((s) => s.subjectRenderMode);
-  const xray = useReplayStore((s) => s.xrayEnabled);
   const setStatus = useAvatarStore((s) => s.setStatus);
   const holder = useRef<THREE.Group>(null);
   const live = useRef<Live>({ models: {}, shadow: null, shown: null });
@@ -700,7 +739,10 @@ function SubjectAvatar({ subjectId }: { subjectId: string }) {
   );
 
   useFrame(({ gl, camera }) => {
-    const t = useReplayStore.getState().currentTime;
+    // The look is read here, not rendered: a change of mode lands in the frame it is made in, together with
+    // everything else that frame sets (no frame with the old body in the new look).
+    const mode = useViewStore.getState().subjectRenderMode;
+    const { currentTime: t, xrayEnabled: xray } = useReplayStore.getState();
     const { models, shadow } = live.current;
     const hide = (reason: string) => {
       for (const m of Object.values(models)) if (m !== "failed") m.root.visible = false;
@@ -749,7 +791,7 @@ function SubjectAvatar({ subjectId }: { subjectId: string }) {
         return { crops, complete: crops.filter(Boolean).length === want };
       };
       let pick = cropsOf(at.k); // requested first, then the frames around it
-      prefetchAround(subjectId, t, 0.8, false);
+      if (!demoLook.active) prefetchAround(subjectId, t, 0.8, false); // the walkthrough loads its frames up front
       const held = live.current.shown;
       if (!pick.complete && held && held.clip === motion.clip && held.k !== at.k && Math.abs(held.k - at.k) <= HOLD_FRAMES && motion.frames.valid[held.k]) {
         const prev = cropsOf(held.k);
@@ -798,7 +840,12 @@ function SubjectAvatar({ subjectId }: { subjectId: string }) {
     for (const m of Object.values(models)) if (m !== "failed") m.root.visible = m === model;
     model.setLook(projector ? "hybrid" : "model");
     model.setTime(frame / fps);
-    model.xray.visible = xray;
+    const holo = demoLook.active ? demoLook.hologram : 0;
+    model.setHologram(holo, holo > 0 && demoLook.hideBody);
+    holoUniforms.uAvHolo.value = holo > 0 ? demoLook.holoStyle : 0;
+    holoUniforms.uAvHoloTime.value = demoLook.applied;
+    holoUniforms.uAvHoloBand.value = demoLook.holoBand;
+    model.xray.visible = xray || holo > 0;
     // Wireframe view (once the room is shown as one: after the page-load reveal): the handled objects are drawn
     // as wireframes like the room. The cameras whose cut-out of the shown frame contains such an object then keep
     // its pixels off the person.

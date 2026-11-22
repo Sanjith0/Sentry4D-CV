@@ -74,6 +74,39 @@ export function clipsAt(subjectId: string, t: number): AppearanceClipManifest[] 
 const MAX_TEXTURES = 240; // colour + height map per frame
 const cache = new Map<string, { tex: THREE.Texture | null; promise: Promise<THREE.Texture> }>();
 const loader = new THREE.TextureLoader();
+/** Keys kept regardless of the LRU limit (the demo walkthrough loads all the frames it shows up front). */
+const pinned = new Set<string>();
+
+function trim() {
+  if (cache.size - pinned.size <= MAX_TEXTURES) return;
+  for (const [key, entry] of cache) {
+    if (pinned.has(key)) continue;
+    entry.tex?.dispose();
+    cache.delete(key);
+    if (cache.size - pinned.size <= MAX_TEXTURES) break;
+  }
+}
+
+/**
+ * Load a frame and keep it until `unpinAll()`: resolves with its texture, or null if it cannot be loaded.
+ * `texture.image` is the decoded picture (also usable on a 2D canvas).
+ */
+export function pinTexture(clip: string, file: string): Promise<THREE.Texture | null> {
+  const key = `${clip}/${file}`;
+  pinned.add(key);
+  getTexture(clip, file);
+  return cache.get(key)?.promise.catch(() => null) ?? Promise.resolve(null);
+}
+
+/** A pinned (or otherwise resident) frame, without touching the LRU order; null if it is not loaded. */
+export function peekTexture(clip: string, file: string): THREE.Texture | null {
+  return cache.get(`${clip}/${file}`)?.tex ?? null;
+}
+
+export function unpinAll() {
+  pinned.clear();
+  trim();
+}
 
 /** @param color true for footage (sRGB), false for data maps (height fields). */
 export function getTexture(clip: string, file: string, color = true): THREE.Texture | null {
@@ -93,13 +126,12 @@ export function getTexture(clip: string, file: string, color = true): THREE.Text
     entry.tex = t;
     return t;
   });
-  entry.promise.catch(() => cache.delete(key));
+  entry.promise.catch(() => {
+    cache.delete(key);
+    pinned.delete(key);
+  });
   cache.set(key, entry);
-  while (cache.size > MAX_TEXTURES) {
-    const [oldKey, old] = cache.entries().next().value!;
-    old.tex?.dispose();
-    cache.delete(oldKey);
-  }
+  trim();
   return null;
 }
 

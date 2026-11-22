@@ -6,6 +6,7 @@ import { CCTV_ASPECT, FRUSTUM_LENGTH } from "../config/cameras";
 import { useCameras } from "../store/useReplayStore";
 import { CAMERA_STATE_COLOR, CAMERA_STATE_LABEL, useEvidenceStore } from "../features/sentry/useEvidence";
 import { poseQuaternion } from "../lib/cameraMath";
+import { demoLook } from "../features/demo/demoLook";
 
 // Marker geometry opens along +Z; cameras look down -Z.
 const FLIP = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
@@ -34,6 +35,9 @@ function frustumGeometry(fov: number, aspect: number, length: number) {
 function CameraMarker({ cam, index }: { cam: SecurityCamera; index: number }) {
   const group = useRef<THREE.Group>(null);
   const ring = useRef<THREE.MeshBasicMaterial>(null);
+  const coverage = useRef<THREE.Group>(null);
+  const coverageFill = useRef<THREE.MeshBasicMaterial>(null);
+  const coverageEdge = useRef<THREE.LineBasicMaterial>(null);
   const selected = useReplayStore((s) => s.selectedCameraId === cam.id);
   const viewingThrough = useReplayStore((s) => s.cameraMode === "cctv" && s.selectedCameraId === cam.id);
   const viewThroughCamera = useReplayStore((s) => s.viewThroughCamera);
@@ -50,14 +54,27 @@ function CameraMarker({ cam, index }: { cam: SecurityCamera; index: number }) {
   const evidence = useEvidenceStore((s) => s.byCamera[cam.id]);
   const tracking = evidence === "tracking";
 
-  useFrame(({ clock }) => {
-    if (!ring.current) return;
-    const pulse = selected || tracking ? 0.6 + 0.4 * Math.sin(clock.elapsedTime * (tracking ? 8 : 5)) : 0.5;
-    ring.current.opacity = pulse;
-  });
-
   const active = selected || hovered || tracking;
   const color = active ? CYAN : DIM;
+
+  useFrame(({ clock }) => {
+    // Looking through this camera, its own housing must not draw. Read from the store rather than from the
+    // rendered state: the demo walkthrough can move the viewpoint into a camera and select it within one
+    // frame, before React has re-rendered this marker, and the lens would fill that frame.
+    if (group.current) {
+      const s = useReplayStore.getState();
+      group.current.visible = !(s.cameraMode === "cctv" && s.selectedCameraId === cam.id);
+    }
+    if (ring.current) ring.current.opacity = selected || tracking ? 0.6 + 0.4 * Math.sin(clock.elapsedTime * (tracking ? 8 : 5)) : 0.5;
+    if (coverage.current) {
+      // The demo walkthrough unfolds the volumes one camera after another; otherwise they are simply drawn.
+      const u = demoLook.active ? Math.min(1, Math.max(0, demoLook.coverage * 2.2 - index * 0.4)) : 1;
+      const k = u * u * (3 - 2 * u);
+      coverage.current.scale.setScalar(0.25 + 0.75 * k);
+      if (coverageFill.current) coverageFill.current.opacity = (active ? 0.12 : 0.045) * k;
+      if (coverageEdge.current) coverageEdge.current.opacity = (active ? 0.9 : 0.35) * k;
+    }
+  });
 
   return (
     <group position={cam.position}>
@@ -98,12 +115,12 @@ function CameraMarker({ cam, index }: { cam: SecurityCamera; index: number }) {
         </group>
 
         {showCoverage && (
-          <group raycast={() => null}>
+          <group ref={coverage} raycast={() => null}>
             <mesh geometry={g} raycast={() => null} renderOrder={2}>
-              <meshBasicMaterial color={color} transparent opacity={active ? 0.12 : 0.045} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} />
+              <meshBasicMaterial ref={coverageFill} color={color} transparent opacity={active ? 0.12 : 0.045} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} />
             </mesh>
             <lineSegments geometry={edges} raycast={() => null}>
-              <lineBasicMaterial color={color} transparent opacity={active ? 0.9 : 0.35} toneMapped={false} />
+              <lineBasicMaterial ref={coverageEdge} color={color} transparent opacity={active ? 0.9 : 0.35} toneMapped={false} />
             </lineSegments>
           </group>
         )}

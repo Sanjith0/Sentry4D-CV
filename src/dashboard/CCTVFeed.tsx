@@ -3,6 +3,7 @@ import { Eye, Maximize2, Minimize2, VideoOff } from "lucide-react";
 import { useReplayStore } from "../store/useReplayStore";
 import { useViewStore } from "../store/useViewStore";
 import { videoRegistry } from "../lib/videoRegistry";
+import { demoLook } from "../features/demo/demoLook";
 import { CAMERA_STATE_COLOR, CAMERA_STATE_LABEL, useEvidenceStore } from "../features/sentry/useEvidence";
 import type { FeedStatus, SecurityCamera } from "../types/security";
 import { formatClock, formatWallClock } from "../lib/format";
@@ -44,6 +45,11 @@ function useVideoSync(video: React.RefObject<HTMLVideoElement | null>, cam: Secu
     v.addEventListener("seeked", onSeeked);
 
     const sync = (hard: boolean) => {
+      if (demoLook.holdVideos) {
+        // Demo walkthrough, recordings off screen: time is scrubbed every frame, do not chase it with seeks.
+        if (!v.paused) v.pause();
+        return;
+      }
       const s = useReplayStore.getState();
       const vt = s.currentTime + (s.cameraOffsets[cam.id] ?? 0);
       const dur = v.duration;

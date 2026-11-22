@@ -1,5 +1,6 @@
-import { Footprints, Ghost, Radar, ScanEye, Users, BrainCircuit } from "lucide-react";
+import { Footprints, Ghost, Radar, ScanEye, Users, BrainCircuit, Clapperboard } from "lucide-react";
 import { useInvestigatorStore } from "../features/investigator/useInvestigatorStore";
+import { useDemoStore } from "../features/demo/useDemoStore";
 import { incidentConfig } from "../config/incident";
 import { useReplayStore } from "../store/useReplayStore";
 import { useViewStore } from "../store/useViewStore";
@@ -18,15 +19,15 @@ function RoomStatusChip() {
     error: ["text-red-300", "Scan failed · placeholder"],
   } as const;
   const [cls, text] = map[status];
+  const dims = b ? `${b.size[0].toFixed(2)}×${b.size[1].toFixed(2)}×${b.size[2].toFixed(2)} m` : null;
   return (
-    <div className="flex shrink-0 items-center gap-2 font-mono text-[11px]" title={err ?? undefined}>
+    <div className="flex shrink-0 items-center gap-2 font-mono text-[11px]" title={err ?? dims ?? undefined}>
       <span className={`h-1.5 w-1.5 rounded-full bg-current ${cls}`} />
       <span className={cls}>{text}</span>
-      {b && (
-        <span className="text-slate-500">
-          {b.size[0].toFixed(2)}×{b.size[1].toFixed(2)}×{b.size[2].toFixed(2)} m
-        </span>
-      )}
+      {/* The room's size gives way first when the window is too narrow for the whole header (it stays in the
+          tooltip): the header needs 1,764 px to show it next to the complete incident name, so it appears from
+          1800 px up. */}
+      {dims && <span className="hidden text-slate-500 min-[1800px]:inline">{dims}</span>}
     </div>
   );
 }
@@ -98,6 +99,16 @@ export function Header() {
           <span className="font-mono text-sm text-slate-100">{subjects}</span>
           <span className="label">subjects</span>
         </div>
+        <ToolButton
+          onClick={(e) => {
+            if (e.detail) e.currentTarget.blur(); // clicked with the pointer: leave the keyboard with the viewer
+            useDemoStore.getState().start();
+          }}
+          title="Demo mode: a 20-second automatic walkthrough, from the four recordings to the 3D reconstruction (Esc to exit)"
+          className="!border-cyan-400/60 !bg-cyan-400/10 !text-cyan-100 shadow-[0_0_14px_-4px_rgba(34,211,238,0.8)] hover:!border-cyan-300 hover:!bg-cyan-400/20"
+        >
+          <Clapperboard className="h-3.5 w-3.5" /> DEMO MODE
+        </ToolButton>
         <ToolButton
           active={annotating}
           onClick={() => {

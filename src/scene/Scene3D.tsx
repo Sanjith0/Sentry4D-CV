@@ -18,6 +18,7 @@ import { CalibrationControls } from "./CalibrationControls";
 import { AnnotationLayer } from "../features/annotation/AnnotationLayer";
 import { AppearanceLayer } from "../features/reconstruction/AppearanceLayer";
 import { AvatarLayer } from "../features/reconstruction/AvatarLayer";
+import { DemoDirector } from "../features/demo/DemoDirector";
 
 export function SceneLighting() {
   const l = roomConfig.lighting;
@@ -91,6 +92,7 @@ export function Scene3D() {
       <CameraControls />
       <CalibrationBridge />
       <ViewportCameraProbe />
+      <DemoDirector />
       <PostFX />
     </Canvas>
   );

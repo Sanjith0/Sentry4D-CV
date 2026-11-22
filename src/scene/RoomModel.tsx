@@ -8,7 +8,8 @@ import { useReplayStore } from "../store/useReplayStore";
 import type { RoomBounds, Vec3 } from "../types/security";
 import { ceilingPlanes, setCeilingCut } from "./ceilingClip";
 import { applyWindowClip } from "./windowWallClip";
-import { applyBuildClip, finishBuild, makeBuildScanPlane, makeBuildWireMaterial, primeBuild, setWireMode, shouldPlayBuild, stepBuild } from "./buildIntro";
+import { useDemoStore } from "../features/demo/useDemoStore";
+import { applyBuildClip, buildWire, finishBuild, makeBuildScanPlane, makeBuildWireMaterial, primeBuild, setWireMode, shouldPlayBuild, stepBuild } from "./buildIntro";
 
 const DEG = Math.PI / 180;
 
@@ -140,12 +141,20 @@ export function RoomModel({ url = roomConfig.url, config = roomConfig, onLoaded 
   }, [gltf, config, anisotropy]);
 
   const wireframe = useViewStore((s) => s.wireframe);
+  // The demo walkthrough stages its own melt / rebuild with the same wireframe.
+  const demo = useDemoStore((s) => s.phase !== "idle");
   const [building, setBuilding] = useState(() => shouldPlayBuild());
   useEffect(() => setWireMode(wireframe), [wireframe]);
   useEffect(() => {
     if (building) primeBuild(sweep[0]);
   }, [building, sweep]);
   useEffect(() => () => finishBuild(), []);
+  useEffect(() => {
+    buildWire.object = wire;
+    return () => {
+      if (buildWire.object === wire) buildWire.object = null;
+    };
+  }, [wire]);
   useFrame((state) => {
     if (!building) return;
     if (!stepBuild(state.clock.elapsedTime, sweep[0], sweep[1])) setBuilding(false);
@@ -166,7 +175,7 @@ export function RoomModel({ url = roomConfig.url, config = roomConfig, onLoaded 
   return (
     <>
       <primitive object={object} />
-      {(building || wireframe) && <primitive object={wire} />}
+      {(building || wireframe || demo) && <primitive object={wire} />}
     </>
   );
 }
