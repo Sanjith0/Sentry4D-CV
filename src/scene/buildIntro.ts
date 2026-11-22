@@ -144,13 +144,17 @@ if (uBuildTexY < 1e5) {
   material.needsUpdate = true;
 }
 
-/** Wireframe overlay: visible between the texture front and the wire front, brightest at its leading edge. */
-export function makeBuildWireMaterial(clippingPlanes: THREE.Plane[]) {
+/**
+ * Wireframe overlay: visible between the texture front and the wire front, brightest at its leading edge.
+ * `opacity`: strength of a line (0.3 suits the room scan, whose many layers of lines add up; a single small
+ * object next to it needs more to be made out).
+ */
+export function makeBuildWireMaterial(clippingPlanes: THREE.Plane[], opacity = 0.3) {
   const m = new THREE.MeshBasicMaterial({
     color: "#3cc8ff",
     wireframe: true,
     transparent: true,
-    opacity: 0.3,
+    opacity,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
     toneMapped: false,

@@ -9,7 +9,9 @@
  *                                     animated continuously between frames.
  *
  * Objects the person handles (avatar.json `props`: the carried chair) are rigid meshes with their own
- * pose per frame and are drawn in both looks the same way as the body.
+ * pose per frame and are drawn in both looks the same way as the body. An object whose GLB material is
+ * metallic also gets that metal's sheen (METAL_FINISH), and while the room is shown as a wireframe the
+ * object is drawn as one too, in the room's wireframe material.
  *
  * The body (experiments/reconstruction/avatar) is a skinned mesh fitted offline to all cameras
  * over the whole clip, delivered as a GLB whose single baked clip "motion" carries the pelvis
@@ -34,12 +36,15 @@ import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { roomConfig } from "../../config/roomConfig";
 import { subjects } from "../../config/subjects";
+import { buildUniforms, makeBuildWireMaterial } from "../../scene/buildIntro";
+import { ceilingPlanes } from "../../scene/ceilingClip";
 import { useReplayStore } from "../../store/useReplayStore";
 import { useViewStore } from "../../store/useViewStore";
 import { subjectSample } from "../sentry/SceneActors";
 import type { CameraId } from "../../types/security";
-import { HYBRID_TUNING, HybridProjector, type HybridCrop, type HybridOwn } from "./hybridProjection";
+import { HYBRID_TUNING, HybridProjector, type HybridCrop, type HybridFinish, type HybridOwn } from "./hybridProjection";
 import type { AvatarMotion, AvatarProp } from "./ReconstructionTypes";
 import { getTexture, prefetchAround, useAppearanceStore } from "./useAppearanceStore";
 import { avatarModelUrl, floorAt, motionAt, useAvatarStore } from "./useAvatarStore";
@@ -54,6 +59,8 @@ const XRAY_COLOR = "#22d3ee";
 const HOLD_FRAMES = 3;
 /** 3D + FOOTAGE: the pose is evaluated on a grid of 1/32 frame (0.2 mm of walking) so an idle view re-renders nothing. */
 const POSE_GRID = 32;
+/** Wireframe view: strength of an object's lines (the room's are 0.3, in many layers). */
+const PROP_WIRE_OPACITY = 0.75;
 
 type Look = "model" | "hybrid";
 
@@ -68,7 +75,7 @@ type Look = "model" | "hybrid";
  *   xray:  flat cyan with a rim falloff (additive).
  * formShade returns that term as a GLSL block acting on `outgoingLight` (texel x colour).
  */
-function formShade(variant: "body" | "flat" | "xray") {
+function formShade(variant: "body" | "flat" | "xray", after = "") {
   const form = /* glsl */ `
           float avHemi = 0.5 + 0.5 * avN.y;
           float avKey = max( dot( avN, normalize( vec3( 0.35, 0.8, 0.45 ) ) ), 0.0 );
@@ -90,13 +97,16 @@ function formShade(variant: "body" | "flat" | "xray") {
           float avFacing = max( dot( avN, normalize( cameraPosition - vAvatarP ) ), 0.0 );
           float avRim = pow( 1.0 - avFacing, 3.0 );
           ${shade}
+          ${after}
         }`;
 }
 
-function shadeMaterial(mat: THREE.MeshBasicMaterial, variant: "body" | "flat" | "xray") {
+/** `finish`: a look on top of the form term (a metal object's sheen), the same one its footage-on-model material fills with. */
+function shadeMaterial(mat: THREE.MeshBasicMaterial, variant: "body" | "flat" | "xray", finish: HybridFinish | null = null) {
   mat.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, finish?.uniforms);
     shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nvarying vec3 vAvatarN;\nvarying vec3 vAvatarP;")
+      .replace("#include <common>", `#include <common>\nvarying vec3 vAvatarN;\nvarying vec3 vAvatarP;\n${finish?.vertexPars ?? ""}`)
       .replace(
         "#include <project_vertex>",
         /* glsl */ `#include <project_vertex>
@@ -106,14 +116,160 @@ function shadeMaterial(mat: THREE.MeshBasicMaterial, variant: "body" | "flat" | 
         #else
           vAvatarN = normalize( mat3( modelMatrix ) * normal );
         #endif
-        vAvatarP = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;`,
+        vAvatarP = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;
+        ${finish?.vertexMain ?? ""}`,
       );
+    const after = finish ? /* glsl */ `{
+            vec3 hyFill = outgoingLight;
+            vec3 hyN = avN;
+            vec3 hyV = normalize( cameraPosition - vAvatarP );
+            ${finish.fill}
+            outgoingLight = hyFill;
+          }` : "";
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nvarying vec3 vAvatarN;\nvarying vec3 vAvatarP;")
-      .replace("#include <opaque_fragment>", `${formShade(variant)}\n#include <opaque_fragment>`);
+      .replace("#include <common>", `#include <common>\nvarying vec3 vAvatarN;\nvarying vec3 vAvatarP;\n${finish?.fragmentPars ?? ""}`)
+      .replace("#include <opaque_fragment>", `${formShade(variant, after)}\n#include <opaque_fragment>`);
   };
-  mat.customProgramCacheKey = () => `sentry-avatar-${variant}`;
+  mat.customProgramCacheKey = () => `sentry-avatar-${variant}${finish ? `-${finish.key}` : ""}`;
   return mat;
+}
+
+/**
+ * Sheen of a satin metal object (the silver chair), on top of its measured colour.
+ *
+ * The object's texture holds one measured grey, which is what a matte surface would show from anywhere. Metal
+ * has no colour of its own: it shows what it mirrors, blurred by its roughness. In this room that is the lit
+ * ceiling above, the floor below and the daylight of the glass wall on one side, so the same grey is lighter
+ * where the mirrored direction points up or at the glass and darker where it points down, and it changes as
+ * the viewer moves. On top lie the soft highlights of the ceiling lights and a lighter rim at grazing angles
+ * (Fresnel).
+ *
+ * The proxy is six flat boxes, on which each of those would be one flat tone per face. What it is lit with is
+ * therefore the asset's shading normal: the `_SHADE_NORMAL` of each vertex (a leg is a round tube) turned by
+ * the normal map (every slat slightly crowned, with rounded edges), so each slat and each leg carries its own
+ * light edge. Colours are linear; everything is a factor on the measured colour, so the mean stays close to it.
+ *
+ * uPropFinish: x strength of the sheen (the material's metallic factor), y exponent of the highlights (from
+ * its roughness), z 1 when uPropNormalMap is a normal map, w that map's scale.
+ */
+const METAL_TUNING = {
+  /** Share of the measured colour that follows the mirrored surroundings (the rest stays as measured). */
+  mirror: 1.0,
+  /** Mirrored brightness, as a factor on the measured colour: looking down at the floor, up at the ceiling. */
+  floor: 0.75,
+  ceiling: 1.35,
+  /** Sine of the elevation over which the mirrored brightness goes from floor to ceiling (blur of the horizon). */
+  horizon: 0.4,
+  /** Daylight of the glass wall, added where the mirrored direction points at it, and how narrow that patch is. */
+  window: 0.5,
+  windowExponent: 6,
+  /** Highlights of the ceiling lights (factor on the measured colour at their centre). */
+  light: 0.8,
+  /** Rim at grazing angles. */
+  rim: 0.4,
+};
+
+/** One set for every metal object, so the look can be tuned from the console (window.__sentryMetal in dev). */
+const metalUniforms = {
+  uPropTuneA: { value: new THREE.Vector4(METAL_TUNING.mirror, METAL_TUNING.floor, METAL_TUNING.ceiling, METAL_TUNING.horizon) },
+  /** w: debug (1: the shading normal as a colour). */
+  uPropTuneB: { value: new THREE.Vector4(METAL_TUNING.window, METAL_TUNING.light, METAL_TUNING.rim, 0) },
+  /** xyz: horizontal direction from the room towards its glass wall. */
+  uPropWindow: { value: new THREE.Vector4(Math.sign(roomConfig.windowWall.glassX) || -1, 0, 0, METAL_TUNING.windowExponent) },
+};
+
+const METAL_FINISH_GLSL = {
+  vertexPars: /* glsl */ `
+attribute vec3 _shade_normal;
+varying vec3 vPropShade;`,
+  vertexMain: /* glsl */ `
+vPropShade = normalize( mat3( modelMatrix ) * _shade_normal );`,
+  fragmentPars: /* glsl */ `
+uniform sampler2D uPropNormalMap;
+uniform vec4 uPropFinish;
+uniform vec4 uPropTuneA;                // mirror, floor, ceiling, horizon
+uniform vec4 uPropTuneB;                // window, light, rim, debug
+uniform vec4 uPropWindow;               // xyz: towards the glass wall, w: exponent
+varying vec3 vPropShade;
+// N: flat normal of the face, towards the viewer. V: unit vector to the viewer. uv: texture coordinate.
+vec3 propSheen( vec3 c, vec3 N, vec3 V, vec2 uv ) {
+  vec3 S = normalize( vPropShade );
+  if ( dot( S, N ) < 0.0 ) S = - S;
+  if ( uPropFinish.z > 0.5 ) {
+    // tangent frame of the texture from screen-space derivatives: dP = T du + B dv
+    vec3 px = dFdx( vAvatarP );
+    vec3 py = dFdy( vAvatarP );
+    vec2 ux = dFdx( uv );
+    vec2 uy = dFdy( uv );
+    float det = ux.x * uy.y - uy.x * ux.y;
+    if ( abs( det ) > 1e-14 ) {
+      vec3 T = ( px * uy.y - py * ux.y ) * sign( det );
+      vec3 B = ( py * ux.x - px * uy.x ) * sign( det );
+      T -= S * dot( S, T );
+      B -= S * dot( S, B );
+      if ( dot( T, T ) > 0.0 && dot( B, B ) > 0.0 ) {
+        vec3 m = texture2D( uPropNormalMap, uv ).xyz * 2.0 - 1.0;
+        // glTF normal maps: +Y runs against v
+        m.xy *= uPropFinish.w;
+        S = normalize( normalize( T ) * m.x - normalize( B ) * m.y + S * max( m.z, 0.05 ) );
+      }
+    }
+  }
+  if ( uPropTuneB.w > 0.5 ) return S * 0.5 + 0.5;
+  float nv = clamp( dot( S, V ), 0.0, 1.0 );
+  vec3 R = reflect( - V, S );
+  // what the surface mirrors, blurred: the floor below, the lit ceiling above, daylight from the glass wall
+  float env = mix( uPropTuneA.y, uPropTuneA.z, smoothstep( - uPropTuneA.w, uPropTuneA.w, R.y ) );
+  env += uPropTuneB.x * pow( max( dot( R, uPropWindow.xyz ), 0.0 ), uPropWindow.w );
+  // the ceiling lights: rows of fixtures overhead, mirrored as soft highlights
+  float n = uPropFinish.y;
+  float lights = pow( max( dot( R, vec3( 0.0, 1.0, 0.0 ) ), 0.0 ), n )
+    + 0.7 * pow( max( dot( R, vec3( 0.42, 0.8, 0.43 ) ), 0.0 ), n )
+    + 0.7 * pow( max( dot( R, vec3( - 0.5, 0.78, - 0.38 ) ), 0.0 ), n );
+  float rim = pow( 1.0 - nv, 5.0 );
+  return c * ( 1.0 + uPropFinish.x * ( uPropTuneA.x * ( env - 1.0 ) + uPropTuneB.y * lights + uPropTuneB.z * rim ) );
+}`,
+  // (vMapUv is declared after the pars: handed in from here)
+  fill: /* glsl */ `
+#ifdef USE_MAP
+  hyFill = propSheen( hyFill, hyN, hyV, vMapUv );
+#else
+  hyFill = propSheen( hyFill, hyN, hyV, vec2( 0.0 ) );
+#endif`,
+};
+
+/** Flat normal map for a metal object without one. */
+let flatNormalMap: THREE.DataTexture | null = null;
+function getFlatNormalMap() {
+  if (!flatNormalMap) {
+    flatNormalMap = new THREE.DataTexture(new Uint8Array([128, 128, 255, 255]), 1, 1, THREE.RGBAFormat);
+    flatNormalMap.needsUpdate = true;
+  }
+  return flatNormalMap;
+}
+
+/** The sheen for a source material (null: not a metal). */
+function metalFinish(src: THREE.MeshStandardMaterial): HybridFinish | null {
+  const metal = src.metalness ?? 0;
+  if (!(metal >= 0.5)) return null;
+  // Width of a highlight from the roughness: Blinn-Phong exponent 2 / a^2 - 2 with a = roughness^2, a quarter of
+  // it for a lobe around the mirrored direction (roughness 0.45: about 12, a highlight some 20 degrees wide).
+  const a = Math.max(src.roughness ?? 0.5, 0.2) ** 2;
+  const exponent = Math.min(Math.max((2 / (a * a) - 2) / 4, 2), 200);
+  const normalMap = src.map ? (src.normalMap ?? null) : null; // it is read at the colour texture's coordinates
+  if (normalMap) {
+    normalMap.colorSpace = THREE.NoColorSpace;
+    normalMap.anisotropy = 4;
+  }
+  return {
+    key: "metal",
+    uniforms: {
+      ...metalUniforms,
+      uPropNormalMap: { value: normalMap ?? getFlatNormalMap() },
+      uPropFinish: { value: new THREE.Vector4(metal, exponent, normalMap ? 1 : 0, src.normalScale?.x ?? 1) },
+    },
+    ...METAL_FINISH_GLSL,
+  };
 }
 
 /** Soft radial texture for the contact shadow decal (same idea as the footage renderer). */
@@ -139,6 +295,8 @@ interface PropModel {
    */
   pieces: { bit: number; own: HybridOwn }[];
   setLook: (look: Look) => void;
+  /** Draw the object as a wireframe (the room's wireframe view) instead of its surface. */
+  setWire: (on: boolean) => void;
   dispose: () => void;
 }
 
@@ -166,6 +324,10 @@ const BASE_URL = "/reconstruction";
  * Static meshes of a prop GLB under one group, with a material per look. Every mesh is one piece of the
  * object (`names`: the prop's `pieces`, matched to the GLB's node names) with its own outline uniforms,
  * because a camera's matte may show some pieces of the object and not others (poseProp).
+ *
+ * A GLB may carry a second scene named "wireframe": the object's surfaces as a mesh of small cells, which
+ * is what the wireframe view draws (the solid proxy is a few large boxes, whose edges alone would not read
+ * as the object next to the room scan's dense mesh). Without one the solid meshes are drawn as wires.
  */
 async function loadProp(url: string, projector: HybridProjector | null, names: readonly string[] | undefined, plain: readonly string[] | undefined): Promise<PropModel> {
   const gltf = await loader.loadAsync(url);
@@ -176,7 +338,7 @@ async function loadProp(url: string, projector: HybridProjector | null, names: r
   const pieces: PropModel["pieces"] = [];
   const looks: { mesh: THREE.Mesh; model: THREE.Material; hybrid: THREE.Material | null }[] = [];
   const owned = new Set<{ dispose: () => void }>();
-  const models = new Map<THREE.Material, THREE.Material>(); // 3D MODEL look: one material per source material
+  const models = new Map<THREE.Material, { model: THREE.Material; finish: HybridFinish | null }>(); // per source material
   gltf.scene.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
@@ -189,13 +351,18 @@ async function loadProp(url: string, projector: HybridProjector | null, names: r
     }
     // alphaMode MASK (gaps between slats): alpha test, antialiased by coverage
     const params: THREE.MeshBasicMaterialParameters = { map, color: map ? 0xffffff : src.color, side: src.side, toneMapped: false, name: "avatar-prop" };
-    let model = models.get(src);
-    if (!model) {
-      model = shadeMaterial(new THREE.MeshBasicMaterial({ ...params, alphaTest: src.alphaTest, alphaToCoverage: src.alphaTest > 0 }), "body");
-      models.set(src, model);
-      owned.add(model);
+    let made = models.get(src);
+    if (!made) {
+      const finish = metalFinish(src);
+      if (src.normalMap) owned.add(src.normalMap);
+      made = { model: shadeMaterial(new THREE.MeshBasicMaterial({ ...params, alphaTest: src.alphaTest, alphaToCoverage: src.alphaTest > 0 }), "body", finish), finish };
+      models.set(src, made);
+      owned.add(made.model);
       owned.add(src);
     }
+    const { model, finish } = made;
+    // the normal the sheen is lit with (a round tube on a leg's flat faces); the face normal where the asset has none
+    if (finish && !mesh.geometry.getAttribute("_shade_normal")) mesh.geometry.setAttribute("_shade_normal", mesh.geometry.getAttribute("normal"));
     let hybrid: THREE.Material | null = null;
     if (projector) {
       // the glTF loader keeps the node's own name in userData (its `name` may carry a suffix to stay unique)
@@ -205,7 +372,7 @@ async function loadProp(url: string, projector: HybridProjector | null, names: r
       // pixel decides it only on the pieces of one plain colour (a chair's legs): a panel of slats shows what is
       // behind it through its gaps, and its baked colour is one measured grey.
       own.uHyAlike.value = plain?.includes(name) ? 1 : 0;
-      hybrid = projector.surfaceMaterial(params, formShade("body"), own).material;
+      hybrid = projector.surfaceMaterial(params, formShade("body"), own, finish).material;
       projector.addOccluder(mesh, own, true);
       pieces.push({ bit: names ? names.indexOf(name) : -1, own });
     }
@@ -216,11 +383,50 @@ async function loadProp(url: string, projector: HybridProjector | null, names: r
     looks.push({ mesh, model, hybrid });
     owned.add(mesh.geometry);
   });
+
+  // The object as a wireframe, in the material of the room's wireframe (same colours by height, same ceiling
+  // cut). It replaces the surface on screen only: the solid meshes keep their own `visible`, which is what the
+  // projector's depth maps go by, so the cameras' pixels of the object still stay off the person.
+  // The room's lines are faint and lie in many layers; a chair of such lines alone is lost among those behind
+  // it. So its lines are stronger, and its faces are drawn into the depth buffer only (after the person, before
+  // the room's lines): what is behind a face is hidden as by the solid chair, the face itself stays empty.
+  const wireMaterial = makeBuildWireMaterial(ceilingPlanes, PROP_WIRE_OPACITY);
+  const faceMaterial = new THREE.MeshBasicMaterial({ colorWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2, clippingPlanes: ceilingPlanes, name: "avatar-prop-wire-face" });
+  owned.add(wireMaterial);
+  owned.add(faceMaterial);
+  const wire = gltf.scenes.find((sc) => sc !== gltf.scene && sc.name === "wireframe") ?? gltf.scene.clone(true);
+  wire.name = "avatar-prop-wire";
+  wire.visible = false;
+  const wires: THREE.Mesh[] = [];
+  wire.traverse((o) => {
+    if ((o as THREE.Mesh).isMesh) wires.push(o as THREE.Mesh);
+  });
+  for (const mesh of wires) {
+    (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).forEach((m) => {
+      if (!owned.has(m)) owned.add(m); // the wireframe scene's own (unused) material
+    });
+    mesh.material = wireMaterial;
+    mesh.frustumCulled = false;
+    mesh.raycast = () => {};
+    owned.add(mesh.geometry);
+    const face = new THREE.Mesh(mesh.geometry, faceMaterial);
+    face.name = "avatar-prop-wire-face";
+    face.renderOrder = BODY_ORDER + 1;
+    face.frustumCulled = false;
+    face.raycast = () => {};
+    mesh.add(face);
+  }
+  root.add(wire);
+
   return {
     root,
     pieces,
     setLook: (look) => {
       for (const l of looks) l.mesh.material = look === "hybrid" && l.hybrid ? l.hybrid : l.model;
+    },
+    setWire: (on) => {
+      gltf.scene.visible = !on;
+      wire.visible = on;
     },
     dispose: () => {
       owned.forEach((o) => o.dispose());
@@ -459,7 +665,7 @@ function SubjectAvatar({ subjectId }: { subjectId: string }) {
           if (cancelled) return model.dispose();
           models[motion.clip] = model;
           group.add(model.root);
-          if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__sentryHybrid = model.projector;
+          if (import.meta.env.DEV) Object.assign(window, { __sentryHybrid: model.projector, __sentryMetal: metalUniforms });
         },
         (e) => {
           console.warn(`[Sentry3D] avatar model for ${motion.clip} failed to load`, e);
@@ -593,10 +799,22 @@ function SubjectAvatar({ subjectId }: { subjectId: string }) {
     model.setLook(projector ? "hybrid" : "model");
     model.setTime(frame / fps);
     model.xray.visible = xray;
+    // Wireframe view (once the room is shown as one: after the page-load reveal): the handled objects are drawn
+    // as wireframes like the room. The cameras whose cut-out of the shown frame contains such an object then keep
+    // its pixels off the person.
+    const wire = buildUniforms.uWireMode.value > 0.5;
+    let open = 0;
     motion.props?.forEach((data, i) => {
       const prop = model.props[i];
-      if (prop) poseProp(prop, data, frame, shownK, projector?.slots ?? null);
+      if (prop) {
+        poseProp(prop, data, frame, shownK, projector?.slots ?? null);
+        prop.setWire(wire);
+      }
+      if (wire) projector?.slots.forEach((id, s) => {
+        if (id && (data.frames.cut?.[id]?.[shownK] || data.frames.inMatte?.[id]?.[shownK])) open |= 1 << s;
+      });
     });
+    projector?.setSeeThrough(open, wire && !!motion.props?.length);
     if (projector) {
       // the cameras' depth maps of this pose, before the frame is drawn
       model.root.updateMatrixWorld(true);

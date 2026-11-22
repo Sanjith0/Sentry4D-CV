@@ -28,6 +28,13 @@
  *            other cameras or the baked texture, and the card stops short of it so that the footage
  *            outline does not end in a ledge where the furniture's edge was.
  *
+ *   finish   the fill of an object can have a look of its own on top of its baked texture (the sheen of a metal
+ *            chair, HybridFinish). It is put on the fill only, after every test that compares a camera's pixel
+ *            with the baked colour, so what the footage covers and which pixels it takes do not depend on it
+ *   see-     an object drawn as a wireframe (the room's wireframe view) no longer covers the person. A camera's
+ *   through  cut-out that contains that object still does: its layer over the blend then keeps only the pixels
+ *            that camera saw of the person, and every card leaves out what lies around the object (setSeeThrough)
+ *
  * Seen from a camera's own position the subject is therefore that camera's cut-out pixel for pixel
  * (the exporter repaints the cut-out's rim along furniture with the person's own colour, avatar/rims.py);
  * anywhere else it is a solid body carrying the nearest real pixels.
@@ -189,6 +196,22 @@ export interface HybridOwn {
   uHyAlike: { value: number };
 }
 
+/**
+ * A look of the fill beyond its baked texture (a metal object's sheen). The GLSL of `fill` acts on `hyFill`
+ * (vec3, linear: the baked look of this fragment) with `hyN` (unit normal, towards the viewer) and `hyV` (unit
+ * vector to the viewer) in scope, and may use the varyings vAvatarN, vAvatarP and whatever the pars declare.
+ */
+export interface HybridFinish {
+  /** Names the shader variant (materials with the same key share a program). */
+  key: string;
+  uniforms: Record<string, THREE.IUniform>;
+  vertexPars: string;
+  /** After the world position and normal are known. */
+  vertexMain: string;
+  fragmentPars: string;
+  fill: string;
+}
+
 /** World normal and position, and per camera slot the tone of that camera's footage at this point of the body. */
 const SURFACE_VARYINGS = /* glsl */ `
 varying vec3 vAvatarN;
@@ -246,6 +269,7 @@ uniform vec4 uHyEdge[ ${SLOTS} ];       // px, the frame edges that cut this cut
 uniform vec4 uHyDepRect[ ${SLOTS} ];    // px
 uniform vec2 uHyDepZ[ ${SLOTS} ];       // near depth of the window (m), 1 / range
 uniform float uHyOn[ ${SLOTS} ];
+uniform float uHyOpen[ ${SLOTS} ];      // 1: this camera's matte contains an object that is drawn as a wireframe
 uniform vec2 uHyDepSize;
 uniform vec4 uHyTuneA;                  // view sigma, near0, near1, far floor
 uniform vec4 uHyTuneB;                  // facing0, facing1, guard px, bias (m)
@@ -475,6 +499,10 @@ void hyCamera( sampler2D crop, sampler2D dep, sampler2D share, int i, vec3 X, ve
   // the viewer leaves. (Not a share of that blend: the camera the viewer looks along outweighs the others there so
   // much that a pixel that failed the tests, a line of floor in the matte's rim, would stay at full strength for as
   // long as a trace of this layer is left.)
+  // An object in this matte that is drawn as a wireframe does not cover this surface any more, but its pixels are
+  // still in the cut-out: of the layer only what this camera saw of the surface itself is kept (first along its
+  // ray, clear of the object's outline, the surface's own colour). The rest comes from the blend and the fill.
+  if ( uHyOpen[ i ] > 0.5 ) own *= vis * ( 1.0 - guard ) * ( 1.0 - unlike );
   acc.seen += pixel * ( own * shown );
   acc.sdbg += tint * ( own * shown );
   acc.sw += own * shown;
@@ -505,8 +533,11 @@ const SURFACE_MAIN = /* glsl */ `
     hySeen = mix( hy.sdbg / max( hy.sw, 1e-6 ), hySeen, 0.35 );
     outgoingLight = mix( vec3( 0.5 ), outgoingLight, 0.35 );
   }
-  // fill, on it the pixels that hold from anywhere, on those the cut-out of the camera the viewer is at
-  outgoingLight = mix( mix( outgoingLight, hyProj, hyK ), hySeen, hyA );
+  // fill (in its own finish, if it has one), on it the pixels that hold from anywhere, on those the cut-out of the
+  // camera the viewer is at
+  vec3 hyFill = outgoingLight;
+  /*HY_FILL*/
+  outgoingLight = mix( mix( hyFill, hyProj, hyK ), hySeen, hyA );
   // Tone of the picture. Footage and fill were mixed in the baked texture's tone. At a camera the picture takes the
   // tone that camera films this part of the body in at this moment (its pixels are then exactly the recorded ones,
   // and the fill beside them matches); elsewhere the cameras' tones by direction and facing.
@@ -634,6 +665,7 @@ uniform vec4 uTuneC;                // w: reach (fraction of the crop height)
 uniform vec4 uTuneF;                // x: share of the person outside the matte from which a hidden part begins; z: neighbourhood (x reach); w: rim (px)
 uniform vec4 uTuneG;                // next to a hidden part of the person: shares of hidden body between which the card fades out; neighbourhood (x reach)
 uniform float uLift;
+uniform float uOpen;                // 1: the objects the person handles are drawn as wireframes
 varying vec2 vUv;
 varying vec2 vDuv;
 varying vec3 vWorld;
@@ -666,6 +698,15 @@ void main() {
       float core = smoothstep( 0.25, 0.75, m ) / max( smoothstep( 0.25, 0.75, t.a ), 1e-4 );
       a *= mix( 1.0, core, smoothstep( 0.8 * uTuneF.x, 1.2 * uTuneF.x, leftOut ) * smoothstep( 0.03, 0.2, mid.g ) );
     }
+  }
+  // Around an object that is drawn as a wireframe the matte pixels beside the mesh are that object's (its pose is
+  // known to a few centimetres), not the person's hair or cloth: left out. The depth map holds person and objects,
+  // the share map the person alone; what the first has more of within reach (uTuneC.w) is the object.
+  if ( a >= 0.1 && uOpen > 0.5 ) {
+    vec2 duv = clamp( vDuv, 0.0, 1.0 );
+    float tx = 0.5 * ( ${SHARE_W}.0 / ( uDepRect.z - uDepRect.x ) + ${SHARE_H}.0 / ( uDepRect.w - uDepRect.y ) );
+    float lod = log2( max( uTuneC.w * ( uCropRect.w - uCropRect.y ) * tx, 1.0 ) );
+    a *= 1.0 - smoothstep( 0.02, 0.1, textureLod( uDep, duv, lod + 1.0 ).a - textureLod( uShare, duv, lod ).g );
   }
   if ( a < 0.1 ) discard;
   gl_FragColor = vec4( t.rgb, a );
@@ -805,6 +846,7 @@ export class HybridProjector {
       uHyDepRect: { value: vec4s() },
       uHyDepZ: { value: Array.from({ length: SLOTS }, () => new THREE.Vector2(0, 1)) },
       uHyOn: { value: Array.from({ length: SLOTS }, () => 0) },
+      uHyOpen: { value: Array.from({ length: SLOTS }, () => 0) },
       uHyToneTex: { value: this.toneTexture },
       uHyDepSize: { value: new THREE.Vector2(DEPTH_W, DEPTH_H) },
       uHyTuneA: { value: new THREE.Vector4(t.viewSigma, t.near0, t.near1, t.farFloor) },
@@ -851,6 +893,7 @@ export class HybridProjector {
           uZRef: { value: 0 },
           uBack: { value: t.fringeBack },
           uLift: { value: 0 },
+          uOpen: { value: 0 },
           uTuneA: this.shared.uHyTuneA,
           uTuneC: this.shared.uHyTuneC,
           uTuneF: this.shared.uHyTuneF,
@@ -899,18 +942,23 @@ export class HybridProjector {
    * Material that draws a surface with the footage projected onto it, falling back to `map`.
    * `baked` is the GLSL that turns outgoingLight (the texel) into the 3D MODEL look.
    */
-  surfaceMaterial(params: THREE.MeshBasicMaterialParameters, baked: string, own: HybridOwn = HybridProjector.own()): { material: THREE.MeshBasicMaterial; own: HybridOwn } {
+  surfaceMaterial(
+    params: THREE.MeshBasicMaterialParameters,
+    baked: string,
+    own: HybridOwn = HybridProjector.own(),
+    finish: HybridFinish | null = null,
+  ): { material: THREE.MeshBasicMaterial; own: HybridOwn } {
     const material = new THREE.MeshBasicMaterial({ ...params, alphaToCoverage: true, toneMapped: false });
     material.onBeforeCompile = (shader) => {
-      Object.assign(shader.uniforms, this.shared, own);
+      Object.assign(shader.uniforms, this.shared, own, finish?.uniforms);
       shader.vertexShader = shader.vertexShader
-        .replace("#include <common>", `#include <common>\n${SURFACE_VARYINGS}\n${SURFACE_VERT_PARS}`)
-        .replace("#include <project_vertex>", `#include <project_vertex>\n${SURFACE_VERT_MAIN}`);
+        .replace("#include <common>", `#include <common>\n${SURFACE_VARYINGS}\n${SURFACE_VERT_PARS}\n${finish?.vertexPars ?? ""}`)
+        .replace("#include <project_vertex>", `#include <project_vertex>\n${SURFACE_VERT_MAIN}\n${finish?.vertexMain ?? ""}`);
       shader.fragmentShader = shader.fragmentShader
-        .replace("#include <common>", `#include <common>\n${SURFACE_VARYINGS}\n${SURFACE_PARS}`)
-        .replace("#include <opaque_fragment>", `${baked}\n${SURFACE_MAIN}`);
+        .replace("#include <common>", `#include <common>\n${SURFACE_VARYINGS}\n${SURFACE_PARS}\n${finish?.fragmentPars ?? ""}`)
+        .replace("#include <opaque_fragment>", `${baked}\n${SURFACE_MAIN.replace("/*HY_FILL*/", finish?.fill ?? "")}`);
     };
-    material.customProgramCacheKey = () => "sentry-hybrid-surface";
+    material.customProgramCacheKey = () => (finish ? `sentry-hybrid-surface-${finish.key}` : "sentry-hybrid-surface");
     this.materials.push(material);
     return { material, own };
   }
@@ -1086,6 +1134,19 @@ export class HybridProjector {
     gl.setClearColor(this.clear, prevAlpha);
     gl.autoClear = prevAuto;
     gl.xr.enabled = prevXr;
+  }
+
+  /**
+   * The handled objects are drawn as wireframes (`wire`), so their pixels are kept off the person.
+   * `slotBits` (bit i = slots[i]): the cameras whose matte of the shown frame contains such an object. In those
+   * the object's pixels lie on the person's surface; in every camera they line the outline of the object where it
+   * stands in front of the person, which is what the cards draw.
+   */
+  setSeeThrough(slotBits: number, wire: boolean) {
+    for (let i = 0; i < SLOTS; i++) {
+      this.shared.uHyOpen.value[i] = wire ? (slotBits >> i) & 1 : 0;
+      this.fringeMeshes[i].material.uniforms.uOpen.value = wire ? 1 : 0;
+    }
   }
 
   /** Force the next renderDepth (after a prop finished loading, a context restore...). */
