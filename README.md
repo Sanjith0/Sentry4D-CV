@@ -1,4 +1,4 @@
-# Sentry3D (Sentry4D-CV)
+# Sentry4D (Sentry4D-CV)
 
 Interactive 3D security investigation console: a LiDAR-scanned room, a video-game-style free camera, four virtual CCTV cameras, and one master replay timeline that drives the recordings and the 3D scene together.
 
