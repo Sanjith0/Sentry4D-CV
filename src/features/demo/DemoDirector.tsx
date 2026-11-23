@@ -63,7 +63,29 @@ const point = new THREE.Vector3();
 const subjectMeta = subjects.find((s) => s.id === DEMO_SUBJECT);
 
 /** Demo times drawn once behind the loading card: every look, and the path, has its shaders compiled by then. */
-const WARM_UP = [3.7, 6.9, 8.1, 9.2, 10.9, 13.2, 14.7, 16.5, 18.6, 19.7, 21.5, 22.2, 23.0, 23.4];
+const WARM_UP = [3.7, 6.9, 8.1, 9.2, 10.9, 12.7, 13.9, 15.9, 18.1, 19.2, 21.0, 21.7, 22.5, 22.9];
+
+/**
+ * The subject's feet at incident time t for the camera to aim at: a Gaussian average over nearby moments
+ * (±SMOOTH_REACH s of incident time), so his step-to-step sway and the track's jitter do not shake the camera
+ * when it follows him, above all while the replay runs several times faster than real time. Null if absent at t.
+ */
+const SMOOTH_REACH = 0.5;
+const SMOOTH_TAPS = 9;
+function smoothedSubject(t: number): Vec3 | null {
+  if (!subjectSample(DEMO_SUBJECT, t)) return null;
+  const acc: Vec3 = [0, 0, 0];
+  let wsum = 0;
+  for (let i = 0; i < SMOOTH_TAPS; i++) {
+    const dt = SMOOTH_REACH * ((2 * i) / (SMOOTH_TAPS - 1) - 1);
+    const st = subjectSample(DEMO_SUBJECT, t + dt);
+    if (!st) continue;
+    const w = Math.exp(-0.5 * (dt / (SMOOTH_REACH / 2)) ** 2);
+    for (let k = 0; k < 3; k++) acc[k] += w * st.position[k];
+    wsum += w;
+  }
+  return [acc[0] / wsum, acc[1] / wsum, acc[2] / wsum];
+}
 
 const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
 const frames = async (n: number) => {
@@ -170,9 +192,10 @@ export function DemoDirector() {
 
     // ---- camera
     const here = subjectSample(DEMO_SUBJECT, T);
+    const aimAt = here ? smoothedSubject(T) : null;
     const frozen = subjectSample(DEMO_SUBJECT, FREEZE_TIME);
     const subject: Vec3 = frozen ? frozen.position : [-0.05, bounds.min[1], 0.42];
-    const cam = cameraAt(e, { poses: replay.cameraPoses, bounds, aspect: size.width / Math.max(size.height, 1), subject, live: here ? here.position : null });
+    const cam = cameraAt(e, { poses: replay.cameraPoses, bounds, aspect: size.width / Math.max(size.height, 1), subject, live: aimAt });
     camera.position.set(cam.p[0], cam.p[1], cam.p[2]);
     if (cam.up) camera.up.set(cam.up[0], cam.up[1], cam.up[2]);
     else camera.up.set(0, 1, 0);

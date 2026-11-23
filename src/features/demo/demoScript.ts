@@ -17,12 +17,12 @@ import { homePose } from "../../scene/cameraPoses";
  *   8.4  the camera swings out to the overview while time rewinds and the room drains to the floor grid
  *   9.85 the empty grid and the four cameras' coverage; the room is rebuilt from the scan
  *  11.7  straight above the room: the subject's whole path across the floor, drawn in red
- *  14.0  incident replay while the camera orbits the room and comes down to the subject
- *  18.4  wireframe room: the subject alone, lifting the chair
- *  20.7  freeze; free camera around the subject: footage / X-ray / tracking / full texture
- *  23.7  end card
+ *  13.2  incident replay while the camera orbits the room and comes down to the subject
+ *  17.9  wireframe room: the subject alone, lifting the chair
+ *  20.2  freeze; free camera around the subject: footage / X-ray / tracking / full texture
+ *  23.2  end card
  */
-export const DEMO_DURATION = 24.9;
+export const DEMO_DURATION = 24.4;
 /** How long the end card stays before the demo closes itself. */
 export const END_HOLD_SECONDS = 5;
 export const DEMO_SUBJECT = "subject-01";
@@ -40,10 +40,10 @@ export const BEAT = {
   pivot: 8.4,
   rebuild: 9.85,
   path: 11.7,
-  orbit: 14.0,
-  isolate: 18.4,
-  freeze: 20.7,
-  end: 23.7,
+  orbit: 13.2,
+  isolate: 17.9,
+  freeze: 20.2,
+  end: 23.2,
 } as const;
 
 export const CAMERA_ORDER: CameraId[] = ["cam1", "cam2", "cam3", "cam4"];
@@ -281,7 +281,7 @@ export interface PathState {
 }
 
 /** The path is drawn from PATH.draw[0] to PATH.draw[1], stays under the orbit and is gone as the room turns to wire. */
-const PATH = { draw: [BEAT.path + 0.55, BEAT.path + 1.7], out: [BEAT.isolate - 0.35, BEAT.isolate + 0.25] } as const;
+const PATH = { draw: [BEAT.path + 0.45, BEAT.path + 1.2], out: [BEAT.isolate - 0.35, BEAT.isolate + 0.25] } as const;
 
 /** The subject's whole path on the floor, in red: drawn from above, then walked along under the orbit. */
 export function pathAt(e: number): PathState {
@@ -545,15 +545,21 @@ function homeAngles(ctx: DemoContext) {
  * (90 = straight down, with the side the camera came up from at the bottom of the screen), moved in until
  * the room fills the frame and centred in the part of it the overlay leaves free.
  */
-function fit(ctx: DemoContext, azimuth: number, elevation: number): DemoCam & { up: Vec3 } {
-  const b = ctx.bounds;
-  const home = homePose("orbit", b, ctx.aspect);
+/** From the target towards the camera, the screen's right and up, for a view from azimuth/elevation (degrees). */
+function viewAxes(azimuth: number, elevation: number) {
   const az = azimuth * DEG;
   const el = elevation * DEG;
   const dir: Vec3 = [Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)];
-  const f: Vec3 = [-dir[0], -dir[1], -dir[2]];
   const right: Vec3 = [Math.cos(az), 0, -Math.sin(az)];
   const up: Vec3 = [-Math.sin(el) * Math.sin(az), Math.cos(el), -Math.sin(el) * Math.cos(az)];
+  return { dir, right, up };
+}
+
+function fit(ctx: DemoContext, azimuth: number, elevation: number): DemoCam & { up: Vec3 } {
+  const b = ctx.bounds;
+  const home = homePose("orbit", b, ctx.aspect);
+  const { dir, right, up } = viewAxes(azimuth, elevation);
+  const f: Vec3 = [-dir[0], -dir[1], -dir[2]];
   const tan = Math.tan((home.fov * DEG) / 2);
   const corners: Vec3[] = [];
   for (const x of [b.min[0], b.max[0]]) for (const y of [b.min[1], b.max[1]]) for (const z of [b.min[2], b.max[2]]) corners.push([x, y, z]);
@@ -596,9 +602,80 @@ function fit(ctx: DemoContext, azimuth: number, elevation: number): DemoCam & { 
 /** Straight above the room its long side lies across the screen, the end the subject comes in by on the right. */
 const TOP_AZ = 90;
 /** The camera is straight above the room by here; the path is drawn under it. */
-const TOP_AT = BEAT.path + 1.05;
+const TOP_AT = BEAT.path + 0.9;
 /** From here the orbit leaves the whole room for the subject. */
 const CLOSE_FROM = inOrbit(0.52);
+/**
+ * The whole room framed from above and round it (top view and orbit), from azimuth/elevation in degrees.
+ * fit() alone moves in jerks: its distance and aim change speed abruptly whenever another corner of the room
+ * becomes the one touching the frame's edge, which made the orbit look choppy. So fit() is sampled along the
+ * way and its aim and distance are smoothed over time (Gaussian, WIDE_SIGMA s); the view direction itself is
+ * already smooth. The room may come a few per cent closer to the frame's edge than fit() allows.
+ */
+const WIDE_STEP = 1 / 60;
+const WIDE_SIGMA = 0.32;
+/** Smoothed framing from here (the camera is straight above the room) to the end of the orbit. */
+const WIDE_FROM = TOP_AT;
+let wideCache: { key: string; t: Vec3[]; d: number[] } | null = null;
+
+function wideAngles(e: number, ctx: DemoContext): { az: number; el: number } {
+  if (e < BEAT.orbit) {
+    const home = homeAngles(ctx);
+    const u = easeInOut(span(e, BEAT.path, TOP_AT));
+    return { az: lerp(home.az + 8, TOP_AZ, u) + 2 * span(e, TOP_AT, BEAT.orbit), el: lerp(home.el, 90, u) };
+  }
+  return { az: orbitAz(e, ctx), el: pchip([BEAT.orbit, CLOSE_FROM, BEAT.isolate], [90, 46, 40], e) };
+}
+
+function wideView(e: number, ctx: DemoContext): DemoCam & { up: Vec3 } {
+  const { az, el } = wideAngles(e, ctx);
+  if (e < WIDE_FROM) return fit(ctx, az, el);
+  const b = ctx.bounds;
+  const key = [ctx.aspect, ...b.min, ...b.max, ...ctx.subject, ...ctx.poses.cam1.position, ...ctx.poses.cam4.position].map((v) => v.toFixed(4)).join(",");
+  if (wideCache?.key !== key) {
+    const t: Vec3[] = [];
+    const d: number[] = [];
+    for (let x = WIDE_FROM; x <= BEAT.isolate + WIDE_STEP / 2; x += WIDE_STEP) {
+      const a = wideAngles(x, ctx);
+      const f = fit(ctx, a.az, a.el);
+      t.push(f.t);
+      d.push(Math.hypot(...sub(f.p, f.t)));
+    }
+    wideCache = { key, t, d };
+  }
+  const { t: ts, d: ds } = wideCache;
+  const n = ds.length;
+  const at = clamp01((e - WIDE_FROM) / (BEAT.isolate - WIDE_FROM)) * (n - 1);
+  const reach = Math.ceil((3 * WIDE_SIGMA) / WIDE_STEP);
+  const c = Math.round(at);
+  let wsum = 0;
+  let dd = 0;
+  const tt: Vec3 = [0, 0, 0];
+  for (let i = Math.max(0, c - reach); i <= Math.min(n - 1, c + reach); i++) {
+    const w = Math.exp(-0.5 * (((i - at) * WIDE_STEP) / WIDE_SIGMA) ** 2);
+    wsum += w;
+    dd += w * ds[i];
+    for (let k = 0; k < 3; k++) tt[k] += w * ts[i][k];
+  }
+  const raw = fit(ctx, az, el);
+  // eased in from fit() itself while the camera has only just arrived above the room (it barely moves there)
+  const s = smooth(span(e, WIDE_FROM, WIDE_FROM + 0.3));
+  const dist = lerp(Math.hypot(...sub(raw.p, raw.t)), (dd / wsum) * 1.02, s);
+  const tgt = lerp3(raw.t, [tt[0] / wsum, tt[1] / wsum, tt[2] / wsum], s);
+  const { dir, up } = viewAxes(az, el);
+  return { p: [tgt[0] + dir[0] * dist, tgt[1] + dir[1] * dist, tgt[2] + dir[2] * dist], t: tgt, up, roll: 0, fov: raw.fov };
+}
+
+/** Degrees round the subject from the orbit on: round the room, in to him, round the frozen moment, ending on CAM 01's side. */
+function orbitAz(e: number, ctx: DemoContext) {
+  const cam1 = throughCamera("cam1", ctx);
+  const cam4 = throughCamera("cam4", ctx);
+  const S = ctx.subject;
+  const az4 = unwrap(Math.atan2(cam4.p[0] - S[0], cam4.p[2] - S[2]) / DEG, TOP_AZ + 260);
+  const azEnd = unwrap(Math.atan2(cam1.p[0] - S[0], cam1.p[2] - S[2]) / DEG, az4 + 180);
+  return pchip([BEAT.orbit, BEAT.isolate, BEAT.freeze, BEAT.end, DEMO_DURATION], [TOP_AZ + 2, az4 - 18, az4 + 52, azEnd, azEnd + 15], e);
+}
+
 /** Where the orbit hands over to the free camera: metres from the subject, and above the floor. */
 const CLOSE = { r: 3.6, h: 4.2 };
 
@@ -673,21 +750,14 @@ export function cameraAt(e: number, ctx: DemoContext): DemoCam {
     };
   }
 
-  if (e < BEAT.orbit) {
-    // Up to straight above the room, turning its long side across the screen; a slow creep while the path is drawn.
-    const u = easeInOut(span(e, BEAT.path, TOP_AT));
-    return fit(ctx, lerp(home.az + 8, TOP_AZ, u) + 2 * span(e, TOP_AT, BEAT.orbit), lerp(home.el, 90, u));
-  }
+  // Up to straight above the room, turning its long side across the screen; a slow creep while the path is drawn.
+  if (e < BEAT.orbit) return wideView(e, ctx);
 
   // From here on the camera keeps turning the same way: round the room and down (orbit), in to the subject
   // (isolate), round the frozen moment (free camera), ending on CAM 01's side of the subject (filmed sharpest).
-  const cam4 = throughCamera("cam4", ctx);
   const S = ctx.subject;
   const xs = [BEAT.isolate, BEAT.freeze, BEAT.end, DEMO_DURATION];
-  const az4 = unwrap(Math.atan2(cam4.p[0] - S[0], cam4.p[2] - S[2]) / DEG, TOP_AZ + 260);
-  const azEnd = unwrap(Math.atan2(cam1.p[0] - S[0], cam1.p[2] - S[2]) / DEG, az4 + 180);
-  const azDeg = pchip([BEAT.orbit, ...xs], [TOP_AZ + 2, az4 - 18, az4 + 52, azEnd, azEnd + 15], e);
-  const az = azDeg * DEG;
+  const az = orbitAz(e, ctx) * DEG;
   const r = pchip(xs, [CLOSE.r, 2.3, 2.35, 3.1], e);
   const h = pchip(xs, [CLOSE.h, S[1] + 1.5, S[1] + 1.5, S[1] + 1.8], e);
   const feet = ctx.live ?? S;
@@ -696,7 +766,7 @@ export function cameraAt(e: number, ctx: DemoContext): DemoCam {
   if (e >= BEAT.isolate) return close;
 
   // Orbit: the whole room in the frame, from straight above down to a three-quarter view, then in to the subject.
-  const wide = fit(ctx, azDeg, pchip([BEAT.orbit, CLOSE_FROM, BEAT.isolate], [90, 46, 40], e));
+  const wide = wideView(e, ctx);
   const w = easeInOut(span(e, CLOSE_FROM, BEAT.isolate));
   // (straight down the world's up is the view axis: the fit's own up keeps the room's long side across the screen)
   return { p: lerp3(wide.p, close.p, w), t: lerp3(wide.t, close.t, w), up: w > 0 ? undefined : wide.up, roll: 0, fov: close.fov };
