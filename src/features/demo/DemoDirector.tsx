@@ -64,7 +64,7 @@ const point = new THREE.Vector3();
 const subjectMeta = subjects.find((s) => s.id === DEMO_SUBJECT);
 
 /** Demo times drawn once behind the loading card: every look, and the path, has its shaders compiled by then. */
-const WARM_UP = [3.7, 6.9, 8.1, 9.2, 10.9, 12.7, 13.9, 15.9, 18.1, 19.2, 21.0, 21.7, 22.5, 22.9];
+const WARM_UP = [3.7, 6.9, 8.1, 9.8, 11.5, 13.3, 14.5, 16.5, 18.7, 19.8, 21.6, 22.3, 23.1, 23.5];
 
 /**
  * The subject's feet at incident time t for the camera to aim at: a Gaussian average over nearby moments

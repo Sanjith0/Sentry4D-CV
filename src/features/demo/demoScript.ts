@@ -13,16 +13,16 @@ import { homePose } from "../../scene/cameraPoses";
  *   2.0  push into CAM 01, then the viewport flies through the room to CAM 02, 03, 04 and back to 01 (as the
  *        viewer's camera buttons do), each camera's recording dissolving in on arrival: the subject in every view
  *   6.0  real footage 100% → 0% on CAM 01: the 3D reconstruction is underneath, same framing
- *   7.6  the room melts to its wireframe
- *   8.4  the camera swings out to the overview while time rewinds and the room drains to the floor grid
- *   9.85 the empty grid and the four cameras' coverage; the room is rebuilt from the scan
- *  11.7  straight above the room: the subject's whole path across the floor, drawn in red
- *  13.2  incident replay while the camera orbits the room and comes down to the subject
- *  17.9  wireframe room: the subject alone, lifting the chair
- *  20.2  slow motion; free camera around the subject as he walks: footage / X-ray / full texture
- *  23.2  end card
+ *   7.6  LIDAR DIGITAL TWIN: the room melts to its wireframe (held 1.4 s)
+ *   9.0  the camera swings out to the overview while time rewinds and the room drains to the floor grid
+ *  10.45 the empty grid and the four cameras' coverage; the room is rebuilt from the scan
+ *  12.3  straight above the room: the subject's whole path across the floor, drawn in red
+ *  13.8  incident replay while the camera orbits the room and comes down to the subject
+ *  18.5  wireframe room: the subject alone, lifting the chair
+ *  20.8  slow motion; free camera around the subject as he walks: footage / X-ray / full texture
+ *  23.8  end card
  */
-export const DEMO_DURATION = 24.4;
+export const DEMO_DURATION = 25.0;
 /** How long the end card stays before the demo closes itself. */
 export const END_HOLD_SECONDS = 5;
 export const DEMO_SUBJECT = "subject-01";
@@ -41,13 +41,13 @@ export const BEAT = {
   lock: 2.0,
   reveal: 6.0,
   melt: 7.6,
-  pivot: 8.4,
-  rebuild: 9.85,
-  path: 11.7,
-  orbit: 13.2,
-  isolate: 17.9,
-  freeze: 20.2,
-  end: 23.2,
+  pivot: 9.0,
+  rebuild: 10.45,
+  path: 12.3,
+  orbit: 13.8,
+  isolate: 18.5,
+  freeze: 20.8,
+  end: 23.8,
 } as const;
 
 export const CAMERA_ORDER: CameraId[] = ["cam1", "cam2", "cam3", "cam4"];
