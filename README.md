@@ -200,7 +200,7 @@ Click a camera marker in the 3D view to look through it (its feed highlights). C
 | At | What it shows |
 |---|---|
 | 0.0 s | the four CCTV recordings side by side, already playing; the subject picked out in each one (SAM 2.1 mask) |
-| 2.0 s | SUBJECT LOCKED: push into CAM 01, then the 3D view flies through the room to CAM 02, 03, 04 and back to 01, the way the camera buttons move it; each camera's recording dissolves out as it leaves and back in on arrival (X-ray tint, recordings at 2×) |
+| 2.0 s | SUBJECT LOCKED: push into CAM 01, then the 3D view flies through the room to CAM 02, 03, 04 and back to 01, the way the camera buttons move it; each camera's recording dissolves out as it leaves and back in on arrival, and the flights keep the recordings' grain and darker exposure (X-ray tint, recordings at 2×) |
 | 6.0 s | REAL FOOTAGE 100% → 0% on CAM 01: the 3D reconstruction under the same camera, same instant |
 | 7.6 s | the room melts to its wireframe; the camera swings out while time rewinds |
 | 9.85 s | the bare floor grid and the four cameras' coverage; the room is rebuilt from the scan |

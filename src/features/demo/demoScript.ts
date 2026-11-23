@@ -519,6 +519,11 @@ export function lockCamAt(e: number): CameraId | null {
 
 /** 0..1: the CCTV look (scan lines) over the viewport while it is CAM 01. */
 export const scanLinesAt = (e: number) => 1 - span(e, LEFT_CAM1, LEFT_CAM1 + 0.2);
+/**
+ * 0..1: the CCTV grade (grain and the recordings' darker exposure) over the 3D view while the viewport flies
+ * between cameras in the pass, so the flights keep the look of the recordings they dissolve out of and into.
+ */
+export const cctvGradeAt = (e: number) => (e >= BEAT.lock && e < LOCK_END ? 1 - passFootage(e) : 0);
 
 const unwrap = (deg: number, near: number) => deg + 360 * Math.round((near - deg) / 360);
 

@@ -10,6 +10,7 @@ import {
   BEAT,
   chapterAt,
   CHAPTERS,
+  cctvGradeAt,
   clamp01,
   DEMO_SUBJECT,
   easeOut,
@@ -36,6 +37,43 @@ const widgetAt = (e: number): Widget => {
   if (e >= BEAT.freeze && e < BEAT.end) return "looks";
   return null;
 };
+/** Grain flickers at the recordings' own pace, not the screen's. */
+const GRAIN_FPS = 15;
+/** Grain is drawn at this fraction of the screen's size and stretched (coarser, like a security camera's). */
+const GRAIN_SCALE = 0.5;
+/**
+ * One frame of CCTV grain on canvas c: dark, slightly blue speckle at a fixed opacity, which both darkens the
+ * picture under it toward the recordings' exposure and puts sensor noise on it. Seeded by the frame number,
+ * so the same moment of the demo always gets the same grain.
+ */
+function paintGrain(c: HTMLCanvasElement, frame: number) {
+  const w = Math.max(2, Math.round(c.clientWidth * GRAIN_SCALE));
+  const h = Math.max(2, Math.round(c.clientHeight * GRAIN_SCALE));
+  if (c.width !== w || c.height !== h) {
+    c.width = w;
+    c.height = h;
+  }
+  const g = c.getContext("2d");
+  if (!g) return;
+  const img = g.createImageData(w, h);
+  const px = img.data;
+  let seed = (frame * 2654435761) >>> 0 || 1;
+  const rand = () => {
+    seed ^= seed << 13;
+    seed ^= seed >>> 17;
+    seed ^= seed << 5;
+    return (seed >>> 0) / 4294967296;
+  };
+  for (let i = 0; i < px.length; i += 4) {
+    const v = 4 + 40 * (rand() + rand());
+    px[i] = v * 0.88;
+    px[i + 1] = v * 0.97;
+    px[i + 2] = v * 1.12;
+    px[i + 3] = 150;
+  }
+  g.putImageData(img, 0, 0);
+}
+
 /** The camera named in the top bar: the one whose picture is on screen (once the wall's own labels are gone). */
 const namedCamAt = (e: number) => (e >= BEAT.lock + 0.3 ? lockCamAt(e) : null);
 /** The cameras that see the subject at demo time e, as one string ("cam1 cam3"): the replay's SEEN BY chips. */
@@ -80,6 +118,8 @@ export function DemoOverlay() {
   const marks = useRef<(HTMLDivElement | null)[]>([]);
   const flash = useRef<HTMLDivElement>(null);
   const lines = useRef<HTMLDivElement>(null);
+  const grain = useRef<HTMLCanvasElement>(null);
+  const grainFrame = useRef(-1);
   const end = useRef<HTMLDivElement>(null);
   const bracket = useRef<HTMLDivElement>(null);
   const bracketText = useRef<HTMLDivElement>(null);
@@ -146,6 +186,17 @@ export function DemoOverlay() {
       if (flash.current) flash.current.style.opacity = flashAt(e).toFixed(3);
       // CCTV look (scan lines) while the viewport is one of the cameras
       if (lines.current) lines.current.style.opacity = scanLinesAt(e).toFixed(3);
+      // ... and the recordings' grain while it flies between them
+      const grade = cctvGradeAt(e);
+      if (grain.current) {
+        grain.current.style.opacity = grade.toFixed(3);
+        grain.current.style.visibility = grade > 0.002 ? "visible" : "hidden";
+        const f = Math.floor(e * GRAIN_FPS);
+        if (grade > 0.002 && f !== grainFrame.current) {
+          grainFrame.current = f;
+          paintGrain(grain.current, f);
+        }
+      }
       if (end.current) {
         const u = span(e, BEAT.end, BEAT.end + 0.45);
         end.current.style.opacity = String(u);
@@ -210,6 +261,7 @@ export function DemoOverlay() {
       {live && (
         <>
           <div className="vignette absolute inset-0 opacity-70" />
+          <canvas ref={grain} className="absolute inset-0 h-full w-full" style={{ opacity: 0, visibility: "hidden" }} />
           <div ref={lines} className="scanlines absolute inset-0" style={{ opacity: 0 }} />
           <div ref={flash} className="absolute inset-0 bg-cyan-50" style={{ opacity: 0 }} />
 
