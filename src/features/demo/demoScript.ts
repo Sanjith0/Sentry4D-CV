@@ -117,13 +117,14 @@ interface LockLeg {
   len: number;
 }
 const LOCK_LEGS: LockLeg[] = [
-  { from: "cam1", to: "cam2", at: 2.6, len: 0.45 },
-  { from: "cam2", to: "cam3", at: 3.35, len: 0.75 },
-  { from: "cam3", to: "cam4", at: 4.4, len: 0.45 },
-  { from: "cam4", to: "cam1", at: 5.15, len: 0.75 },
+  { from: "cam1", to: "cam2", at: 2.55, len: 0.6 },
+  { from: "cam2", to: "cam3", at: 3.23, len: 0.9 },
+  { from: "cam3", to: "cam4", at: 4.21, len: 0.6 },
+  { from: "cam4", to: "cam1", at: 4.89, len: 0.9 },
 ];
-const LEAVE = 0.12;
-const ARRIVE = 0.12;
+/** Each recording is up on its own for only this long between two legs: the pass keeps moving. */
+const LEAVE = 0.1;
+const ARRIVE = 0.1;
 /** Back in CAM 01. */
 const LOCK_END = LOCK_LEGS[LOCK_LEGS.length - 1].at + LOCK_LEGS[LOCK_LEGS.length - 1].len;
 const LOCK_TIME = DEMO_START_TIME + BEAT.lock;
@@ -528,10 +529,25 @@ export function lockCamAt(e: number): CameraId | null {
 /** 0..1: the CCTV look (scan lines) over the viewport while it is CAM 01. */
 export const scanLinesAt = (e: number) => 1 - span(e, LEFT_CAM1, LEFT_CAM1 + 0.2);
 /**
- * 0..1: the CCTV grade (grain and the recordings' darker exposure) over the 3D view while the viewport flies
- * between cameras in the pass, so the flights keep the look of the recordings they dissolve out of and into.
+ * 0..1: the CCTV grain over the 3D view while the viewport flies between cameras in the pass, so the flights
+ * keep the texture of the recordings they dissolve out of and into (their exposure: cctvExposureAt).
  */
 export const cctvGradeAt = (e: number) => (e >= BEAT.lock && e < LOCK_END ? 1 - passFootage(e) : 0);
+/**
+ * 0..1: the recordings' exposure over the 3D view. Through the pass the feeds are dimmed around the subject's
+ * cut-out, so the room they dissolve into gets the same darker picture (a CSS filter on the viewport's canvas,
+ * matched against the frames on either side of each dissolve). It is on for the whole pass, under the
+ * recordings as well, so a dissolve never mixes a dimmed feed with a bright room; it lifts with the feeds'
+ * dimming after the pass, before the "real footage" slider shows the room.
+ */
+export const cctvExposureAt = (e: number) => (e < BEAT.lock ? 0 : 1 - smooth(span(e, LOCK_END - 0.05, BEAT.reveal + 0.2)));
+export const CCTV_EXPOSURE = { brightness: 0.46, contrast: 1.12, saturate: 0.94 };
+export function cctvFilterAt(e: number): string {
+  const g = cctvExposureAt(e);
+  if (g <= 0.002) return "";
+  const { brightness: b, contrast: c, saturate: s } = CCTV_EXPOSURE;
+  return `brightness(${lerp(1, b, g).toFixed(3)}) contrast(${lerp(1, c, g).toFixed(3)}) saturate(${lerp(1, s, g).toFixed(3)})`;
+}
 
 const unwrap = (deg: number, near: number) => deg + 360 * Math.round((near - deg) / 360);
 
@@ -743,7 +759,8 @@ const CLOSE = { r: 3.6, h: 4.2 };
 const FLY_DIP = 0.25;
 const FLY_WIDEN = 8;
 const FLY_AIM = 0.75;
-const smoother = (t: number) => t * t * t * (t * (6 * t - 15) + 10);
+/** Leg easing: at rest at both cameras, but quicker off and onto them than a quintic (less dead time at each). */
+const smoother = smooth;
 const norm = (v: Vec3): Vec3 => {
   const l = Math.hypot(v[0], v[1], v[2]) || 1;
   return [v[0] / l, v[1] / l, v[2] / l];

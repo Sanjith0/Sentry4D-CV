@@ -42,9 +42,9 @@ const GRAIN_FPS = 15;
 /** Grain is drawn at this fraction of the screen's size and stretched (coarser, like a security camera's). */
 const GRAIN_SCALE = 0.5;
 /**
- * One frame of CCTV grain on canvas c: dark, slightly blue speckle at a fixed opacity, which both darkens the
- * picture under it toward the recordings' exposure and puts sensor noise on it. Seeded by the frame number,
- * so the same moment of the demo always gets the same grain.
+ * One frame of CCTV grain on canvas c: faint, slightly blue speckle around the recordings' mid-dark level, so it
+ * puts sensor noise on the picture without veiling it (the exposure itself is matched by cctvFilterAt on the
+ * canvas). Seeded by the frame number, so the same moment of the demo always gets the same grain.
  */
 function paintGrain(c: HTMLCanvasElement, frame: number) {
   const w = Math.max(2, Math.round(c.clientWidth * GRAIN_SCALE));
@@ -65,11 +65,11 @@ function paintGrain(c: HTMLCanvasElement, frame: number) {
     return (seed >>> 0) / 4294967296;
   };
   for (let i = 0; i < px.length; i += 4) {
-    const v = 4 + 40 * (rand() + rand());
+    const v = 6 + 44 * (rand() + rand());
     px[i] = v * 0.88;
     px[i + 1] = v * 0.97;
     px[i + 2] = v * 1.12;
-    px[i + 3] = 150;
+    px[i + 3] = 64;
   }
   g.putImageData(img, 0, 0);
 }

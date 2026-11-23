@@ -19,6 +19,7 @@ import {
   buildAt,
   cameraAt,
   cctvAt,
+  cctvFilterAt,
   ceilingShown,
   coverageAt,
   CAMERA_ORDER,
@@ -168,6 +169,11 @@ function takeSnapshot(): Snapshot {
   };
 }
 
+/** CSS filter on the viewport's canvas (the recordings' exposure through the pass), set only when it changes. */
+function setCanvasFilter(canvas: HTMLCanvasElement, filter: string) {
+  if (canvas.style.filter !== filter) canvas.style.filter = filter;
+}
+
 /**
  * Runs the demo walkthrough from inside the canvas. Every frame, before the scene's own per-frame work,
  * it sets the incident time, the camera, the room build fronts, the ceiling and the subject look from
@@ -189,6 +195,9 @@ export function DemoDirector() {
     const view = useViewStore.getState();
     const manual = useDemoStore.getState().manual;
     const bounds = view.roomBounds ?? FALLBACK_BOUNDS;
+
+    // ---- the recordings' exposure on the 3D view while it flies between cameras
+    setCanvasFilter(gl.domElement, cctvFilterAt(e));
 
     // ---- incident time
     const T = incidentTime(e);
@@ -398,6 +407,7 @@ export function DemoDirector() {
     const snap = snapshot.current;
     if (!snap) return;
     snapshot.current = null;
+    setCanvasFilter(gl.domElement, "");
     demoLook.active = false;
     demoLook.hologram = 0;
     demoLook.hideBody = false;
@@ -438,7 +448,7 @@ export function DemoDirector() {
       currentTime: Math.min(Math.max(snap.time, 0), s.duration),
       seekToken: s.seekToken + 1,
     }));
-  }, [phase]);
+  }, [phase, gl]);
 
   useFrame((three) => {
     const s = useDemoStore.getState();
