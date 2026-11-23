@@ -206,10 +206,10 @@ Click a camera marker in the 3D view to look through it (its feed highlights). C
 | 9.0 s | the subject fades out as a hologram mid-stride; the camera swings out while time rewinds and the wireframe room thins away under a descending scan grid |
 | 10.45 s | the bare floor grid and the four cameras' coverage; the room is rebuilt from the scan, and at 11.3 s the replay starts (1.6x): the subject walks in while his whole path is drawn on the floor, the part he has walked in cyan and the part still ahead of him in red |
 | 12.3 s | straight above the room as he walks (entry, dwell and exit labels, metres walked so far) |
-| 13.8 s | the replay carries on (1.6x while he walks, up to 3.6x only while he stands at the table) while the camera orbits the whole room and comes down to the subject (the scanned frames of the window wall dissolve, so the room stays open to the camera as it passes outside) |
-| 18.5 s | wireframe room, the subject alone with the tracking readout; the camera closes in and holds near the CCTV cameras' lines of sight (where he is shown from real footage), hurrying across the angles between them |
-| 20.8 s | slow motion (0.4×): a free camera circles the subject and walks with him as he carries the chair on: real footage / X-ray / full 3D, with the room re-textured under the full 3D; the orbit lingers on the recorded views and moves faster between them |
-| 23.8 s | end card (stays 5 s, then the demo closes itself) |
+| 13.8 s | the replay carries on (1.6x while he walks, up to 2.7x only while he stands at the table) while the camera orbits the whole room and comes down to the subject (the scanned frames of the window wall dissolve, so the room stays open to the camera as it passes outside) |
+| 19.1 s | wireframe room, the subject alone with the tracking readout; the camera closes in and holds near the CCTV cameras' lines of sight (where he is shown from real footage), hurrying across the angles between them |
+| 21.8 s | slow motion (0.4×): a free camera circles the subject and walks with him as he carries the chair on: real footage / X-ray / full 3D, with the room re-textured under the full 3D; it comes to rest in front of him, just off CAM 01's line of sight, as he walks towards the camera |
+| 23.8 s | end card over that front view, with a slow push in (stays 5 s, then the demo closes itself) |
 
 **Esc** leaves at any time (on a touch screen: tap, then EXIT DEMO). For a clean screen recording put the browser in full screen first. The walkthrough is built for a landscape window; an upright phone gets a simplified stacked layout.
 

@@ -21,9 +21,10 @@ import { homePose } from "../../scene/cameraPoses";
  *  12.3  straight above the room as he walks
  *  13.8  the replay carries on while the camera orbits the room and comes down to the subject (faster only
  *        while he stands at the table)
- *  18.5  wireframe room: the subject alone, lifting the chair
- *  20.8  slow motion; free camera around the subject as he walks: footage / X-ray / full texture
- *  23.8  end card
+ *  19.1  wireframe room: the subject alone, lifting the chair
+ *  21.8  slow motion; free camera round the subject as he walks: footage / X-ray / full texture, coming to
+ *        rest in front of him on CAM 01's side as he walks towards it with the chair
+ *  23.8  end card over that view (a slow push in)
  */
 export const DEMO_DURATION = 25.0;
 /** How long the end card stays before the demo closes itself. */
@@ -48,8 +49,8 @@ export const BEAT = {
   rebuild: 10.45,
   path: 12.3,
   orbit: 13.8,
-  isolate: 18.5,
-  freeze: 20.8,
+  isolate: 19.1,
+  freeze: 21.8,
   end: 23.8,
 } as const;
 
@@ -265,7 +266,7 @@ const NONE = -1e6;
 /** Wireframe room behind the subject: its lines at this strength, so the subject stays the brightest thing. */
 const WIRE_DIM = 0.5;
 /** The subject alone in the wireframe room: the texture is gone by WIRE.in[1] and back from WIRE.out[0]. */
-const WIRE = { in: [BEAT.isolate - 0.2, BEAT.isolate + 0.5], out: [BEAT.freeze + 1.6, BEAT.freeze + 2.25] } as const;
+const WIRE = { in: [BEAT.isolate - 0.2, BEAT.isolate + 0.5], out: [BEAT.freeze + 1.1, BEAT.freeze + 1.75] } as const;
 /** Demo time at share `f` of the orbit (its moments are set as shares, so they follow when it is retimed). */
 const inOrbit = (f: number) => BEAT.orbit + f * (BEAT.isolate - BEAT.orbit);
 
@@ -374,8 +375,8 @@ export const pathReadout = (e: number) => e >= BEAT.path && e < BEAT.orbit;
 export type DemoLookName = "footage" | "xray" | "texture";
 export const FREEZE_LOOKS: { name: DemoLookName; at: number; label: string }[] = [
   { name: "footage", at: BEAT.freeze, label: "REAL FOOTAGE" },
-  { name: "xray", at: BEAT.freeze + 0.7, label: "X-RAY" },
-  { name: "texture", at: BEAT.freeze + 1.6, label: "FULL 3D" },
+  { name: "xray", at: BEAT.freeze + 0.55, label: "X-RAY" },
+  { name: "texture", at: BEAT.freeze + 1.1, label: "FULL 3D" },
 ];
 
 export interface LookState {
@@ -760,14 +761,20 @@ function wideView(e: number, ctx: DemoContext): DemoCam & { up: Vec3 } {
   return { p: [tgt[0] + dir[0] * dist, tgt[1] + dir[1] * dist, tgt[2] + dir[2] * dist], t: tgt, up, roll: 0, fov: raw.fov };
 }
 
-/** Degrees round the subject from the orbit on: round the room, in to him, round the frozen moment, ending on CAM 01's side. */
+/**
+ * Degrees round the subject from the orbit on: round the room, in to him, round him as he walks, ending in
+ * front of him just inside CAM 01's line of sight (HERO_OFF degrees off it, away from the window wall): he
+ * walks towards the camera carrying the chair, seen from where CAM 01 filmed him. It comes to rest there by
+ * the end card and holds (the circle walks with him, so the camera backs away as he comes on).
+ */
+const HERO_OFF = -8;
 function orbitAz(e: number, ctx: DemoContext) {
   const cam1 = throughCamera("cam1", ctx);
   const cam4 = throughCamera("cam4", ctx);
   const S = ctx.subject;
   const az4 = unwrap(Math.atan2(cam4.p[0] - S[0], cam4.p[2] - S[2]) / DEG, TOP_AZ + 260);
-  const azEnd = unwrap(Math.atan2(cam1.p[0] - S[0], cam1.p[2] - S[2]) / DEG, az4 + 180);
-  return pchip([BEAT.orbit, BEAT.isolate, BEAT.freeze, BEAT.end, DEMO_DURATION], [TOP_AZ + 2, az4 - 18, az4 + 52, azEnd, azEnd + 15], e);
+  const azEnd = unwrap(Math.atan2(cam1.p[0] - S[0], cam1.p[2] - S[2]) / DEG + HERO_OFF, az4 + 180);
+  return pchip([BEAT.orbit, BEAT.isolate, BEAT.freeze, BEAT.end, DEMO_DURATION], [TOP_AZ + 2, az4 - 18, az4 + 95, azEnd, azEnd], e);
 }
 
 /**
@@ -912,10 +919,11 @@ export function cameraAt(e: number, ctx: DemoContext): DemoCam {
   const lingered = lingerAz(az0, orbitAz(BEAT.isolate, ctx), orbitAz(DEMO_DURATION, ctx), feet, ctx);
   // eased in once the camera is down with him (until then it was following the room orbit's pace)
   const az = lerp(az0, lingered, smooth(span(e, BEAT.isolate, BEAT.isolate + 0.8))) * DEG;
-  const r = pchip(xs, [CLOSE.r, 2.3, 2.35, 3.1], e);
-  const h = pchip(xs, [CLOSE.h, S[1] + 1.5, S[1] + 1.5, S[1] + 1.8], e);
+  // (under the end card a slow push in: pulling back would take the camera through the window wall)
+  const r = pchip(xs, [CLOSE.r, 2.3, 2.35, 2.15], e);
+  const h = pchip(xs, [CLOSE.h, S[1] + 1.5, S[1] + 1.5, S[1] + 1.45], e);
   const chest: Vec3 = [feet[0], feet[1] + 0.98, feet[2]];
-  const close: DemoCam = { p: [C[0] + r * Math.sin(az), h, C[2] + r * Math.cos(az)], t: chest, roll: 0, fov: pchip(xs, [home.fov, 58, 55, 55], e) };
+  const close: DemoCam = { p: [C[0] + r * Math.sin(az), h, C[2] + r * Math.cos(az)], t: chest, roll: 0, fov: pchip(xs, [home.fov, 58, 55, 54], e) };
   if (e >= BEAT.isolate) return close;
 
   // Orbit: the whole room in the frame, from straight above down to a three-quarter view, then in to the subject.
