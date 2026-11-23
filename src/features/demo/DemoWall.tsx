@@ -21,8 +21,6 @@ const SUBJECT_FILL = 0.5;
 const MAX_PUNCH = 1.9;
 /** ...and towards this point of the picture (clear of the top bar and of the caption). */
 const AIM = [0.5, 0.46];
-/** Whip between two cameras: the picture is smeared sideways by up to this factor. */
-const SMEAR = 70;
 
 interface Rect {
   x: number;
@@ -260,34 +258,12 @@ function drawFeed(ctx: CanvasRenderingContext2D, env: Env, cam: SecurityCamera, 
   }
 }
 
-/** Sideways smear of everything drawn so far (the whip between two cameras); amount 0..1. */
-let narrow: HTMLCanvasElement | null = null;
-function smear(ctx: CanvasRenderingContext2D, el: HTMLCanvasElement, amount: number) {
-  narrow ??= document.createElement("canvas");
-  // squeezed to a few columns and stretched back: every row keeps its height and loses its detail along the pan
-  const w = Math.max(6, Math.round(el.width / (1 + amount * SMEAR)));
-  if (narrow.width !== w || narrow.height !== el.height) {
-    narrow.width = w;
-    narrow.height = el.height;
-  }
-  const g = narrow.getContext("2d")!;
-  g.imageSmoothingEnabled = true;
-  g.imageSmoothingQuality = "high";
-  g.globalCompositeOperation = "copy";
-  g.drawImage(el, 0, 0, el.width, el.height, 0, 0, w, el.height);
-  ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(narrow, 0, 0, w, el.height, 0, 0, el.width, el.height);
-  ctx.restore();
-}
-
 /**
  * The opening of the demo walkthrough, drawn from the same <video> elements the feed panel plays: the four
  * recordings as a CCTV wall with the subject's SAM 2.1 cut-out lit in each, a push into CAM 01 until it
- * fills the screen, a quick pass through the other three cameras and back (each closer in on the subject),
- * and the fade ("real footage" 100% → 0%) onto the 3D viewport underneath, which shows the same view.
+ * fills the screen, each camera's recording in turn as the viewport underneath flies from camera to camera
+ * (dissolving out as it leaves one and back in as it arrives at the next), and the fade ("real footage"
+ * 100% → 0%) onto the 3D viewport underneath, which shows the same view.
  */
 export function DemoWall() {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -370,7 +346,7 @@ export function DemoWall() {
         // Tile names, clocks and frames grow with the tile, so they leave early: before they slide under the
         // demo's own top bar and caption.
         const chrome = Math.max(0, 1 - z * 2.5);
-        const first = wall.views[0];
+        const first = wall.view;
         securityCameras.slice(0, 4).forEach((cam, i) => {
           const r: Rect = { x: x0 + (i % cols) * (tw + gap) * k, y: y0 + Math.floor(i / cols) * (tileH + gap * k), w: tw * k, h: tileH };
           if (r.x >= W || r.y >= H) return;
@@ -387,27 +363,13 @@ export function DemoWall() {
         return;
       }
 
-      // One camera is the screen; during a whip the next one slides in beside it.
-      for (const view of wall.views) {
-        const cam = securityCameras.find((c) => c.id === view.cam);
-        if (!cam) continue;
-        const r: Rect = { x: view.x * W, y: endY, w: W, h: endH };
-        drawFeed(ctx, env, cam, r, style(r, 1, 0, view.punch, view.focusTime));
-      }
-      if (wall.streak > 0.01) {
-        smear(ctx, el, wall.streak);
-        // the edge between the two pictures, as a streak of light
-        const edge = wall.views[1] ? wall.views[1].x * W + (wall.views[1].x > 0 ? 0 : W) : 0;
-        const half = 0.05 * W;
-        const light = ctx.createLinearGradient(edge - half, 0, edge + half, 0);
-        light.addColorStop(0, "rgba(165,243,252,0)");
-        light.addColorStop(0.5, `rgba(207,250,254,${0.5 * wall.streak})`);
-        light.addColorStop(1, "rgba(165,243,252,0)");
-        ctx.globalCompositeOperation = "lighter";
-        ctx.fillStyle = light;
-        ctx.fillRect(edge - half, endY, 2 * half, endH);
-        ctx.globalCompositeOperation = "source-over";
-      }
+      // One camera is the screen (portrait: the band its recording takes in the viewport looking through it).
+      const view = wall.view;
+      const cam = securityCameras.find((c) => c.id === view.cam);
+      if (!cam) return;
+      const bandH = portrait ? H * Math.min(1, footageBand(replay.cameraPoses[cam.id].fov, aspect)) : H;
+      const r: Rect = { x: 0, y: (H - bandH) / 2, w: W, h: bandH };
+      drawFeed(ctx, env, cam, r, style(r, 1, 0, view.punch, view.focusTime));
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);

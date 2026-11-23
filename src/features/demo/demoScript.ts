@@ -10,18 +10,19 @@ import { homePose } from "../../scene/cameraPoses";
  * frame by frame (recording) with the same result.
  *
  *   0.0  wall of the four CCTV feeds, already playing; the subject picked out in each
- *   2.0  push into CAM 01, then a quick pass through CAM 02, 03, 04 and back: the subject locked in every view
- *   4.7  real footage 100% → 0% on CAM 01: the 3D reconstruction is underneath, same framing
- *   6.3  the room melts to its wireframe
- *   7.1  the camera swings out to the overview while time rewinds and the room drains to the floor grid
- *   8.55 the empty grid and the four cameras' coverage; the room is rebuilt from the scan
- *  10.4  straight above the room: the subject's whole path across the floor, drawn in red
- *  12.7  incident replay while the camera orbits the room and comes down to the subject
- *  17.7  wireframe room: the subject alone, lifting the chair
- *  20.0  freeze; free camera around the subject: footage / X-ray / tracking / full texture
- *  23.4  end card
+ *   2.0  push into CAM 01, then the viewport flies through the room to CAM 02, 03, 04 and back to 01 (as the
+ *        viewer's camera buttons do), each camera's recording dissolving in on arrival: the subject in every view
+ *   6.0  real footage 100% → 0% on CAM 01: the 3D reconstruction is underneath, same framing
+ *   7.6  the room melts to its wireframe
+ *   8.4  the camera swings out to the overview while time rewinds and the room drains to the floor grid
+ *   9.85 the empty grid and the four cameras' coverage; the room is rebuilt from the scan
+ *  11.7  straight above the room: the subject's whole path across the floor, drawn in red
+ *  14.0  incident replay while the camera orbits the room and comes down to the subject
+ *  18.4  wireframe room: the subject alone, lifting the chair
+ *  20.7  freeze; free camera around the subject: footage / X-ray / tracking / full texture
+ *  23.7  end card
  */
-export const DEMO_DURATION = 24.6;
+export const DEMO_DURATION = 24.9;
 /** How long the end card stays before the demo closes itself. */
 export const END_HOLD_SECONDS = 5;
 export const DEMO_SUBJECT = "subject-01";
@@ -34,15 +35,15 @@ export const FREEZE_TIME = 20.5;
 export const BEAT = {
   wall: 0,
   lock: 2.0,
-  reveal: 4.7,
-  melt: 6.3,
-  pivot: 7.1,
-  rebuild: 8.55,
-  path: 10.4,
-  orbit: 12.7,
-  isolate: 17.7,
-  freeze: 20.0,
-  end: 23.4,
+  reveal: 6.0,
+  melt: 7.6,
+  pivot: 8.4,
+  rebuild: 9.85,
+  path: 11.7,
+  orbit: 14.0,
+  isolate: 18.4,
+  freeze: 20.7,
+  end: 23.7,
 } as const;
 
 export const CAMERA_ORDER: CameraId[] = ["cam1", "cam2", "cam3", "cam4"];
@@ -100,30 +101,61 @@ const REWOUND_TIME = 3.6;
 const RISE = BEAT.rebuild + 0.25;
 
 /**
- * The pass through the cameras at the lock. The whip into `to` starts at `at` and takes WHIP seconds;
- * dir 1: the next view comes in from the right, -1: from the left (back to CAM 01).
+ * The pass through the cameras at the lock. Leg by leg the viewport flies from one CCTV camera to the next
+ * (as the viewer's own camera buttons move it), turned towards the subject on the way; the recording of the
+ * camera it leaves dissolves out over the first LEAVE seconds of a leg, the next one's in over the last ARRIVE.
+ * The long legs cross the whole room (CAM 02 → 03, CAM 04 → 01).
  */
-const WHIP = 0.2;
-const LOCK_CUTS: { at: number; to: CameraId; dir: 1 | -1 }[] = [
-  { at: 2.75, to: "cam2", dir: 1 },
-  { at: 3.3, to: "cam3", dir: 1 },
-  { at: 3.85, to: "cam4", dir: 1 },
-  { at: 4.4, to: "cam1", dir: -1 },
+interface LockLeg {
+  from: CameraId;
+  to: CameraId;
+  at: number;
+  len: number;
+}
+const LOCK_LEGS: LockLeg[] = [
+  { from: "cam1", to: "cam2", at: 2.6, len: 0.45 },
+  { from: "cam2", to: "cam3", at: 3.35, len: 0.75 },
+  { from: "cam3", to: "cam4", at: 4.4, len: 0.45 },
+  { from: "cam4", to: "cam1", at: 5.15, len: 0.75 },
 ];
-/** Back on CAM 01. */
-const LOCK_END = LOCK_CUTS[LOCK_CUTS.length - 1].at + WHIP;
+const LEAVE = 0.12;
+const ARRIVE = 0.12;
+/** Back in CAM 01. */
+const LOCK_END = LOCK_LEGS[LOCK_LEGS.length - 1].at + LOCK_LEGS[LOCK_LEGS.length - 1].len;
+const LOCK_TIME = DEMO_START_TIME + BEAT.lock;
 /**
  * The recordings run faster through the lock: the subject stands at the table for five seconds, and the
- * pass ends as he lifts the chair, so the reveal that follows shows him carrying it towards CAM 01.
+ * pass ends (incident time REVEAL_TIME) as he lifts the chair, so the reveal that follows shows him carrying
+ * it towards CAM 01.
  */
-const LOCK_RATE = 3;
-const LOCK_TIME = DEMO_START_TIME + BEAT.lock;
-const REVEAL_TIME = LOCK_TIME + LOCK_RATE * (LOCK_END - BEAT.lock);
+const REVEAL_TIME = 20.6;
+const LOCK_RATE = (REVEAL_TIME - LOCK_TIME) / (LOCK_END - BEAT.lock);
 /** Where the incident clock stops once the footage is gone (it coasts on for 0.4 s of incident time). */
 const HELD_TIME = REVEAL_TIME + (BEAT.melt - LOCK_END) + 0.4;
-/** The replay under the orbit: from the empty room to the subject at the table, at this rate. */
-const ORBIT_RATE = 3;
-const ISOLATE_TIME = REWOUND_TIME + ORBIT_RATE * (BEAT.isolate - BEAT.orbit);
+/** The replay under the orbit: from the empty room (REWOUND_TIME) to the subject at the table (ISOLATE_TIME). */
+const ISOLATE_TIME = 18.6;
+const ORBIT_RATE = (ISOLATE_TIME - REWOUND_TIME) / (BEAT.isolate - BEAT.orbit);
+
+/** The leg under way at e and its progress 0..1, or null while the viewport rests in a camera. */
+function lockLegAt(e: number): { leg: LockLeg; u: number } | null {
+  for (const leg of LOCK_LEGS) if (e > leg.at && e < leg.at + leg.len) return { leg, u: (e - leg.at) / leg.len };
+  return null;
+}
+
+/** The camera the viewport is in, or (mid-leg) the nearer one; CAM 01 outside the pass. */
+function lockStop(e: number): CameraId {
+  let id: CameraId = "cam1";
+  for (const leg of LOCK_LEGS) if (e >= leg.at + leg.len / 2) id = leg.to;
+  return id;
+}
+
+/** 0..1: how much of the recording is on screen through the pass (0 while the viewport flies). */
+function passFootage(e: number): number {
+  const at = lockLegAt(e);
+  if (!at) return 1;
+  const { leg } = at;
+  return Math.max(1 - smooth(span(e, leg.at, leg.at + LEAVE)), smooth(span(e, leg.at + leg.len - ARRIVE, leg.at + leg.len)));
+}
 
 /** While true the recordings are on screen and play by themselves (at videoRate). */
 export const videosLive = (e: number) => e < BEAT.melt;
@@ -187,14 +219,16 @@ const NONE = -1e6;
 /** Wireframe room behind the subject: its lines at this strength, so the subject stays the brightest thing. */
 const WIRE_DIM = 0.5;
 /** The subject alone in the wireframe room: the texture is gone by WIRE.in[1] and back from WIRE.out[0]. */
-const WIRE = { in: [BEAT.isolate - 0.2, BEAT.isolate + 0.5], out: [BEAT.freeze + 2.5, BEAT.freeze + 3.3] } as const;
+const WIRE = { in: [BEAT.isolate - 0.2, BEAT.isolate + 0.5], out: [BEAT.freeze + 2.2, BEAT.freeze + 2.9] } as const;
+/** Demo time at share `f` of the orbit (its moments are set as shares, so they follow when it is retimed). */
+const inOrbit = (f: number) => BEAT.orbit + f * (BEAT.isolate - BEAT.orbit);
 
 /**
  * The scanned frames of the window wall: 1 drawn, 0 left out. The orbit passes outside that wall, where what
  * the scan caught of its frames would stand between the camera and the room. They go while the camera is still
  * at the end of the room, and are back, as wireframe first, once the room has turned to wire.
  */
-export const windowFramesAt = (e: number) => (e < WIRE.in[1] ? 1 - smooth(span(e, BEAT.orbit + 2.0, BEAT.orbit + 2.7)) : 1);
+export const windowFramesAt = (e: number) => (e < WIRE.in[1] ? 1 - smooth(span(e, inOrbit(0.4), inOrbit(0.54))) : 1);
 
 /** Room build fronts at demo time e; floorY / topY = the room's floor and ceiling heights. */
 export function buildAt(e: number, floorY: number, topY: number): BuildState {
@@ -264,7 +298,7 @@ export function pathAt(e: number): PathState {
  * Pixels by which the scene's tag on the subject is moved up: the orbit sees him from far and from above,
  * where a tag just over his head would cover him.
  */
-export const tagLiftAt = (e: number) => (e >= BEAT.path && e < BEAT.isolate ? 26 * (1 - smooth(span(e, BEAT.orbit + 2.6, BEAT.isolate))) : 0);
+export const tagLiftAt = (e: number) => (e >= BEAT.path && e < BEAT.isolate ? 26 * (1 - smooth(span(e, inOrbit(0.52), BEAT.isolate))) : 0);
 
 /** Whether the path's own readout (length so far) is on screen. */
 export const pathReadout = (e: number) => e >= PATH.draw[0] - 0.1 && e < BEAT.orbit;
@@ -274,9 +308,9 @@ export const pathReadout = (e: number) => e >= PATH.draw[0] - 0.1 && e < BEAT.or
 export type DemoLookName = "footage" | "xray" | "tracking" | "texture";
 export const FREEZE_LOOKS: { name: DemoLookName; at: number; label: string }[] = [
   { name: "footage", at: BEAT.freeze, label: "REAL FOOTAGE" },
-  { name: "xray", at: BEAT.freeze + 0.75, label: "X-RAY" },
-  { name: "tracking", at: BEAT.freeze + 1.6, label: "TRACKING" },
-  { name: "texture", at: BEAT.freeze + 2.35, label: "FULL 3D" },
+  { name: "xray", at: BEAT.freeze + 0.66, label: "X-RAY" },
+  { name: "tracking", at: BEAT.freeze + 1.41, label: "TRACKING" },
+  { name: "texture", at: BEAT.freeze + 2.07, label: "FULL 3D" },
 ];
 
 export interface LookState {
@@ -318,7 +352,9 @@ export function lookStateAt(e: number): LookState {
     hideTrail: e >= BEAT.path && e < PATH.out[1],
     name: null,
   };
-  if (e < BEAT.reveal - 0.5) return { ...base, mode: "model" };
+  if (e < LOCK_LEGS[0].at - 0.1) return { ...base, mode: "model" };
+  // the pass through the cameras: between two recordings the subject is the reconstruction, tinted like the cut-outs
+  if (e < BEAT.reveal - 0.5) return { ...base, hologram: 1 };
   // the X-ray highlight carries over from the footage onto the reconstruction, then lets go
   if (e < BEAT.pivot) return { ...base, hologram: 1 - span(e, BEAT.reveal + 1.1, BEAT.reveal + 1.55) };
   // rewind, overview, top view and orbit: baked texture only (time runs backwards, then three times as fast)
@@ -338,9 +374,7 @@ export function lookStateAt(e: number): LookState {
 /** One recording filling the screen. */
 export interface WallView {
   cam: CameraId;
-  /** Slide of the picture in screen widths: 0 on screen, -1 gone to the left, 1 still to the right. */
-  x: number;
-  /** Closer in on the subject: 0 the whole picture, 1 the full punch-in (a little more as it creeps on). */
+  /** Closer in on the subject: 0 the whole picture (the pass keeps it there: the 3D view under it must match). */
   punch: number;
   /** Incident time whose cut-out frames the punch-in (it does not chase the subject from frame to frame). */
   focusTime: number;
@@ -358,49 +392,17 @@ export interface WallState {
   tint: number;
   /** "Real footage" slider: 1 = recording, 0 = reconstruction only. */
   footage: number;
-  /** The camera(s) on screen once the wall has zoomed in: one, or two during a whip (the first is leaving). */
-  views: WallView[];
-  /** 0..1: speed of the whip (motion blur). */
-  streak: number;
+  /** The camera on screen once the wall has zoomed in (the one the viewport is in, or nearest to). */
+  view: WallView;
 }
 
 /** The wall's tile 1 has grown into the whole screen by here. */
 const PUSHED = BEAT.lock + 0.5;
-/** How fast the punch-in creeps on while a view is held (per second). */
-const CREEP = 0.14;
-
-/** Stay number i of the pass (0: CAM 01 out of the wall, then one per cut). */
-function lockView(i: number, e: number): WallView {
-  if (i === 0) {
-    const out = LOCK_CUTS[0].at;
-    return { cam: "cam1", x: 0, punch: smooth(span(e, BEAT.lock + 0.3, out)) + CREEP * Math.max(0, e - out), focusTime: incidentTime(out) };
-  }
-  const cut = LOCK_CUTS[i - 1];
-  // the last stay is CAM 01 again: it comes back a little closer and settles on the whole picture,
-  // which the reconstruction underneath shows too
-  if (i === LOCK_CUTS.length) return { cam: cut.to, x: 0, punch: 0.3 * (1 - smooth(span(e, cut.at, cut.at + 0.4))), focusTime: incidentTime(cut.at + WHIP) };
-  return { cam: cut.to, x: 0, punch: 1 + CREEP * (e - cut.at - WHIP), focusTime: incidentTime(cut.at + WHIP + 0.15) };
-}
 
 export function wallAt(e: number): WallState {
-  const footage = 1 - easeInOut(span(e, BEAT.reveal + 0.25, BEAT.reveal + 1.35));
+  // "real footage" slider at the reveal, and the dissolves between the cameras of the pass before it
+  const footage = (1 - easeInOut(span(e, BEAT.reveal + 0.25, BEAT.reveal + 1.35))) * passFootage(e);
   const highlight = easeOut(span(e, 0.7, 1.1));
-  let views = [lockView(0, e)];
-  let streak = 0;
-  LOCK_CUTS.forEach((cut, i) => {
-    if (e < cut.at) return;
-    const u = span(e, cut.at, cut.at + WHIP);
-    if (u >= 1) {
-      views = [lockView(i + 1, e)];
-      return;
-    }
-    const w = easeInOut(u);
-    views = [
-      { ...lockView(i, e), x: -cut.dir * w },
-      { ...lockView(i + 1, e), x: cut.dir * (1 - w) },
-    ];
-    streak = Math.sin(Math.PI * u);
-  });
   return {
     visible: e < BEAT.reveal + 1.4 && footage > 0.002,
     zoom: easeInOut(span(e, BEAT.lock, PUSHED)),
@@ -409,8 +411,7 @@ export function wallAt(e: number): WallState {
     dim: highlight * (1 - smooth(span(e, LOCK_END - 0.05, BEAT.reveal + 0.2))),
     tint: smooth(span(e, 1.2, 1.6)),
     footage,
-    views,
-    streak,
+    view: { cam: lockStop(e), punch: 0, focusTime: incidentTime(e) },
   };
 }
 
@@ -508,15 +509,12 @@ const LEFT_CAM1 = BEAT.pivot + 0.25;
 
 /** The CCTV camera the viewport looks through, else null. */
 export function cctvAt(e: number): CameraId | null {
-  return e < LEFT_CAM1 ? "cam1" : null;
+  return e < LEFT_CAM1 ? lockStop(e) : null;
 }
 
 /** The camera whose picture is on screen from the lock until the viewport leaves CAM 01, else null. */
 export function lockCamAt(e: number): CameraId | null {
-  if (e < BEAT.lock || e >= LEFT_CAM1) return null;
-  let id: CameraId = "cam1";
-  for (const cut of LOCK_CUTS) if (e >= cut.at + WHIP / 2) id = cut.to;
-  return id;
+  return e < BEAT.lock || e >= LEFT_CAM1 ? null : lockStop(e);
 }
 
 /** 0..1: the CCTV look (scan lines) over the viewport while it is CAM 01. */
@@ -595,13 +593,59 @@ const TOP_AZ = 90;
 /** The camera is straight above the room by here; the path is drawn under it. */
 const TOP_AT = BEAT.path + 1.05;
 /** From here the orbit leaves the whole room for the subject. */
-const CLOSE_FROM = BEAT.orbit + 2.6;
+const CLOSE_FROM = inOrbit(0.52);
 /** Where the orbit hands over to the free camera: metres from the subject, and above the floor. */
 const CLOSE = { r: 3.6, h: 4.2 };
 
+/** Mid-leg the viewport drops this far (m) below the cameras' height, opens its view by FLY_WIDEN degrees and turns this share of the way to the subject. */
+const FLY_DIP = 0.25;
+const FLY_WIDEN = 8;
+const FLY_AIM = 0.75;
+const smoother = (t: number) => t * t * t * (t * (6 * t - 15) + 10);
+const norm = (v: Vec3): Vec3 => {
+  const l = Math.hypot(v[0], v[1], v[2]) || 1;
+  return [v[0] / l, v[1] / l, v[2] / l];
+};
+/** Angle in (-PI, PI]. */
+const wrapPi = (a: number) => a - 2 * Math.PI * Math.round(a / (2 * Math.PI));
+
+/**
+ * The viewport through the pass: in a camera, or flying from one to the next. Position, heading and FOV run
+ * from camera to camera at rest at both ends (so each recording dissolves in over its own view); on the way it
+ * dips, opens up a little and turns towards the subject. A half turn goes the way that looks into the room.
+ */
+function passCamera(e: number, ctx: DemoContext): DemoCam {
+  const at = lockLegAt(e);
+  if (!at) return throughCamera(lockStop(e), ctx);
+  const A = throughCamera(at.leg.from, ctx);
+  const B = throughCamera(at.leg.to, ctx);
+  const k = smoother(at.u);
+  const bump = Math.sin(Math.PI * k);
+  const p = lerp3(A.p, B.p, k);
+  p[1] -= FLY_DIP * bump;
+  const fa = norm(sub(A.t, A.p));
+  const fb = norm(sub(B.t, B.p));
+  const ya = Math.atan2(fa[0], fa[2]);
+  let yb = ya + wrapPi(Math.atan2(fb[0], fb[2]) - ya);
+  if (Math.abs(yb - ya) > (100 * Math.PI) / 180) {
+    const alt = yb - 2 * Math.PI * Math.sign(yb - ya);
+    const mid = lerp3(A.p, B.p, 0.5);
+    const c = ctx.bounds.center;
+    const faces = (y: number) => Math.sin(y) * (c[0] - mid[0]) + Math.cos(y) * (c[2] - mid[2]);
+    if (faces((ya + alt) / 2) > faces((ya + yb) / 2)) yb = alt;
+  }
+  const yaw = lerp(ya, yb, k);
+  const pitch = lerp(Math.asin(fa[1]), Math.asin(fb[1]), k);
+  const heading: Vec3 = [Math.cos(pitch) * Math.sin(yaw), Math.sin(pitch), Math.cos(pitch) * Math.cos(yaw)];
+  const feet = ctx.live ?? ctx.subject;
+  const aim = norm(sub([feet[0], feet[1] + 0.98, feet[2]], p));
+  const d = norm(lerp3(heading, aim, FLY_AIM * bump));
+  return { p, t: [p[0] + d[0] * 7, p[1] + d[1] * 7, p[2] + d[2] * 7], roll: lerp(A.roll, B.roll, k), fov: lerp(A.fov, B.fov, k) + FLY_WIDEN * bump };
+}
+
 export function cameraAt(e: number, ctx: DemoContext): DemoCam {
   const cam1 = throughCamera("cam1", ctx);
-  if (e < BEAT.pivot) return cam1;
+  if (e < BEAT.pivot) return passCamera(e, ctx);
 
   const home = homeAngles(ctx);
   if (e < BEAT.path) {

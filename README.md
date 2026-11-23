@@ -199,20 +199,20 @@ Click a camera marker in the 3D view to look through it (its feed highlights). C
 
 | At | What it shows |
 |---|---|
-| 0.0 s | the four CCTV recordings side by side, already playing; the subject picked out of each one (SAM 2.1 mask) |
-| 2.0 s | SUBJECT LOCKED: push into CAM 01, then a quick pass through CAM 02, 03, 04 and back to 01, closer in on the subject each time (X-ray tint, recordings in fast-forward) |
-| 4.7 s | REAL FOOTAGE 100% → 0% on CAM 01: the 3D reconstruction under the same camera, same instant |
-| 6.3 s | the room melts to its wireframe; the camera swings out while time rewinds |
-| 8.55 s | the bare floor grid and the four cameras' coverage; the room is rebuilt from the scan |
-| 10.4 s | straight above the room: the subject's whole path across the floor, drawn in red (entry, longest stop, exit, metres walked) |
-| 12.7 s | incident replay in fast-forward while the camera orbits the whole room and comes down to the subject (the scanned frames of the window wall dissolve, so the room stays open to the camera as it passes outside) |
-| 17.7 s | wireframe room, the subject alone with the tracking readout |
-| 20.0 s | freeze; a free camera circles the subject: real footage / X-ray / tracking / full 3D |
-| 23.4 s | end card (stays 5 s, then the demo closes itself) |
+| 0.0 s | the four CCTV recordings side by side, already playing; the subject picked out in each one (SAM 2.1 mask) |
+| 2.0 s | SUBJECT LOCKED: push into CAM 01, then the 3D view flies through the room to CAM 02, 03, 04 and back to 01, the way the camera buttons move it; each camera's recording dissolves out as it leaves and back in on arrival (X-ray tint, recordings at 2×) |
+| 6.0 s | REAL FOOTAGE 100% → 0% on CAM 01: the 3D reconstruction under the same camera, same instant |
+| 7.6 s | the room melts to its wireframe; the camera swings out while time rewinds |
+| 9.85 s | the bare floor grid and the four cameras' coverage; the room is rebuilt from the scan |
+| 11.7 s | straight above the room: the subject's whole path across the floor, drawn in red (entry, longest stop, exit, metres walked) |
+| 14.0 s | incident replay in fast-forward while the camera orbits the whole room and comes down to the subject (the scanned frames of the window wall dissolve, so the room stays open to the camera as it passes outside) |
+| 18.4 s | wireframe room, the subject alone with the tracking readout |
+| 20.7 s | freeze; a free camera circles the subject: real footage / X-ray / tracking / full 3D |
+| 23.7 s | end card (stays 5 s, then the demo closes itself) |
 
 **Esc** leaves at any time (on a touch screen: tap, then EXIT DEMO). For a clean screen recording put the browser in full screen first. The walkthrough is built for a landscape window; an upright phone gets a simplified stacked layout.
 
-The whole walkthrough is data: `src/features/demo/demoScript.ts` holds pure functions of the demo clock (camera path, incident time, room build, looks, captions), `DemoDirector.tsx` (inside the canvas) applies them every frame, `DemoWall.tsx` draws the four-feed wall and the pass through the cameras on a 2D canvas, `DemoPath.tsx` is the red path on the floor (the fused track, baked into a distance field), `DemoOverlay.tsx` is the HUD, `labelFit.ts` keeps the scene's floating labels clear of the frame's edge, the captions and each other while the camera flies. Because nothing depends on anything but the clock, the walkthrough can also be stepped frame by frame: in a dev build `window.__sentryDemo.step(seconds)` shows any moment of it.
+The whole walkthrough is data: `src/features/demo/demoScript.ts` holds pure functions of the demo clock (camera path, incident time, room build, looks, captions), `DemoDirector.tsx` (inside the canvas) applies them every frame, `DemoWall.tsx` draws the four-feed wall and each camera's recording during the pass on a 2D canvas, `DemoPath.tsx` is the red path on the floor (the fused track, baked into a distance field), `DemoOverlay.tsx` is the HUD, `labelFit.ts` keeps the scene's floating labels clear of the frame's edge, the captions and each other while the camera flies. Because nothing depends on anything but the clock, the walkthrough can also be stepped frame by frame: in a dev build `window.__sentryDemo.step(seconds)` shows any moment of it.
 
 ## Architecture
 

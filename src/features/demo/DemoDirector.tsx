@@ -63,7 +63,7 @@ const point = new THREE.Vector3();
 const subjectMeta = subjects.find((s) => s.id === DEMO_SUBJECT);
 
 /** Demo times drawn once behind the loading card: every look, and the path, has its shaders compiled by then. */
-const WARM_UP = [5.6, 6.8, 7.9, 9.6, 11.9, 13.5, 15.6, 17.9, 19.0, 20.9, 21.7, 22.6, 23.0];
+const WARM_UP = [3.7, 6.9, 8.1, 9.2, 10.9, 13.2, 14.7, 16.5, 18.6, 19.7, 21.5, 22.2, 23.0, 23.4];
 
 const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
 const frames = async (n: number) => {
