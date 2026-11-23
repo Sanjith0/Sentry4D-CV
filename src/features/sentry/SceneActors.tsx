@@ -145,9 +145,11 @@ const SubjectActor = memo(function SubjectActor({ track, xray }: { track: Subjec
     const observed = ev?.status === "observed";
     const g = root.current;
     if (!g) return;
-    g.visible = st.visible;
+    // the demo walkthrough can take the subject out (its rewind): everything of his goes, not just the body
+    const shown = st.visible && !(demoLook.active && demoLook.hideSubject);
+    g.visible = shown;
     // drei <Html> ignores parent visibility: hide the tag explicitly when absent.
-    if (tagRef.current) tagRef.current.style.display = st.visible && !(demoLook.active && demoLook.hideTags) ? "" : "none";
+    if (tagRef.current) tagRef.current.style.display = shown && !(demoLook.active && demoLook.hideTags) ? "" : "none";
     tagLiftRef.current = demoLook.active ? demoLook.tagLift : 0;
     if (tagRef.current) tagRef.current.style.transform = tagLiftRef.current > 0 ? `translateY(${(-tagLiftRef.current).toFixed(1)}px)` : "";
     if (st.visible) {
@@ -201,14 +203,14 @@ const SubjectActor = memo(function SubjectActor({ track, xray }: { track: Subjec
       }
       trail.geom.attributes.position.needsUpdate = true;
       trail.geom.attributes.color.needsUpdate = true;
-      trail.geom.setDrawRange(0, st.visible && !(demoLook.active && demoLook.hideTrail) ? n : 0);
+      trail.geom.setDrawRange(0, shown && !(demoLook.active && demoLook.hideTrail) ? n : 0);
     }
 
     // Sight lines: observing camera → subject chest. Drawn through walls only in X-ray.
     {
       const arr = sight.geom.attributes.position.array as Float32Array;
       let k = 0;
-      if (st.visible && observed) {
+      if (shown && observed) {
         const poses = useReplayStore.getState().cameraPoses;
         for (const c of ev!.observers) {
           arr.set(poses[c].position, k * 6);

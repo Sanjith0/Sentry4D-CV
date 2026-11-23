@@ -756,6 +756,7 @@ function SubjectAvatar({ subjectId }: { subjectId: string }) {
     if (load === "idle" || load === "loading") return hide("loading reconstruction");
     if (!motions?.length) return hide("no reconstructed body on this machine");
     if (!subjectSample(subjectId, t)) return hide("subject not present");
+    if (demoLook.active && demoLook.hideSubject) return hide("left out by the demo walkthrough");
     const motion = motionAt(motions, t);
     let at = floorAt(motions, t);
     if (!motion || !at) return hide("no reconstructed body at this time");

@@ -203,7 +203,7 @@ Click a camera marker in the 3D view to look through it (its feed highlights). C
 | 2.0 s | SUBJECT LOCKED: push into CAM 01, then the 3D view flies through the room to CAM 02, 03, 04 and back to 01, the way the camera buttons move it; each camera's recording is up for a beat (dissolving out as it leaves, back in on arrival) and the flights keep moving; the 3D view carries the recordings' exposure for the whole pass (so the dissolves don't brighten) plus their grain (X-ray tint, recordings at 2×) |
 | 6.0 s | REAL FOOTAGE 100% → 0% on CAM 01: the 3D reconstruction under the same camera, same instant |
 | 7.6 s | LIDAR DIGITAL TWIN: the room melts to its wireframe (1.4 s) |
-| 9.0 s | the camera swings out while time rewinds |
+| 9.0 s | the subject fades out as a hologram; the camera swings out while time rewinds and the wireframe room thins away under a descending scan grid |
 | 10.45 s | the bare floor grid and the four cameras' coverage; the room is rebuilt from the scan |
 | 12.3 s | straight above the room: the subject's whole path across the floor, drawn in red (entry, longest stop, exit, metres walked) |
 | 13.8 s | incident replay in fast-forward while the camera orbits the whole room and comes down to the subject (the scanned frames of the window wall dissolve, so the room stays open to the camera as it passes outside) |

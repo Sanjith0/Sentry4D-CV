@@ -250,6 +250,7 @@ export function DemoDirector() {
     buildUniforms.uBuildMinY.value = build.minY;
     buildUniforms.uBuildWireGain.value = build.gain;
     buildUniforms.uBuildGridGain.value = build.grid;
+    buildUniforms.uBuildLead.value = build.lead;
     if (buildWire.object) buildWire.object.visible = build.texY < 1e5; // fully textured: no wire passes its shader
     const cutY = bounds.max[1] - roomConfig.ceilingCutOffset;
     setCeilingCut(ceilingShown(e, cutY, build.wireY), cutY);
@@ -272,6 +273,7 @@ export function DemoDirector() {
     demoLook.holoBand = bounds.min[1] + look.holoBand;
     demoLook.hideTags = look.hideTags;
     demoLook.hideTrail = look.hideTrail;
+    demoLook.hideSubject = look.hideSubject;
     demoLook.tagLift = tagLiftAt(e);
     const path = pathAt(e);
     demoLook.path.draw = path.draw;
@@ -415,6 +417,7 @@ export function DemoDirector() {
     demoLook.coverage = 1;
     demoLook.hideTags = false;
     demoLook.hideTrail = false;
+    demoLook.hideSubject = false;
     demoLook.tagLift = 0;
     demoLook.path.draw = 0;
     demoLook.path.alpha = 0;

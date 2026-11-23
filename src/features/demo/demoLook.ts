@@ -19,6 +19,8 @@ export const demoLook = {
   tagLift: 0,
   /** The scene's own trail of the subject's last seconds is left out (the whole path is on the floor instead). */
   hideTrail: false,
+  /** The subject (body, footage, ring, tag, trail, carried chair) and the cameras' status on him are left out. */
+  hideSubject: false,
   /** The subject's whole path on the floor: share of its length drawn, strength, and its labels (all 0..1). */
   path: { draw: 0, alpha: 0, labels: 0 },
   /** What the path component found, for the overlay: metres drawn so far and in all, first and last observation (s). */

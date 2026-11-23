@@ -21,6 +21,11 @@ export const buildUniforms = {
   uBuildWireGain: { value: 1 },
   /** Strength of the floor grid that rides the wireframe front (1 = as built). */
   uBuildGridGain: { value: 1 },
+  /**
+   * 1: the wireframe's leading edge glows white-hot and sparkles (the build). 0: no glow; the lines fade out
+   * softly towards the front instead (a script draining the room: no white islands where the front cuts it).
+   */
+  uBuildLead: { value: 1 },
 };
 
 /**
@@ -68,6 +73,7 @@ export function setBuildScripted(on: boolean) {
     buildUniforms.uBuildMinY.value = -1e6;
     buildUniforms.uBuildWireGain.value = 1;
     buildUniforms.uBuildGridGain.value = 1;
+    buildUniforms.uBuildLead.value = 1;
     if (buildWire.object) buildWire.object.visible = true;
     settle();
   }
@@ -139,7 +145,7 @@ export function finishBuild() {
 const BUILD_PARS = /* glsl */ `
 varying vec3 vBuildWorld;
 uniform float uBuildTexY; uniform float uBuildWireY; uniform vec3 uBuildGlow; uniform float uWireMode; uniform float uBuildTime;
-uniform float uBuildMinY; uniform float uBuildWireGain;
+uniform float uBuildMinY; uniform float uBuildWireGain; uniform float uBuildLead;
 float bHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }`;
 
 function chainKey(material: THREE.Material, tag: string) {
@@ -217,7 +223,9 @@ if (vBuildWorld.y > uBuildWireY || vBuildWorld.y < uBuildTexY - 0.04 || vBuildWo
       .replace(
         "#include <opaque_fragment>",
         `#include <opaque_fragment>
-{ float lead = exp(-(uBuildWireY - vBuildWorld.y) * 6.0);
+{ float lead = exp(-(uBuildWireY - vBuildWorld.y) * 6.0) * uBuildLead;
+  // without the glow the lines thin out over the last 0.6 m under the front rather than end in a hard cut
+  float soft = mix(smoothstep(0.0, 0.6, uBuildWireY - vBuildWorld.y), 1.0, uBuildLead);
   float trail = smoothstep(uBuildTexY - 0.04, uBuildTexY + 0.25, vBuildWorld.y);
   float building = uBuildWireY < 1e5 ? 1.0 : 0.0;
   // Height gradient: deep blue at the floor -> cyan -> white-hot at the leading edge.
@@ -226,15 +234,16 @@ if (vBuildWorld.y > uBuildWireY || vBuildWorld.y < uBuildTexY - 0.04 || vBuildWo
   vec3 col = mix(deep, cyan, smoothstep(0.0, 2.5, vBuildWorld.y));
   col = mix(col, vec3(1.0), lead * 0.8);
   // Energy pulses climbing the mesh + hologram flicker.
-  float pulse = pow(0.5 + 0.5 * sin(vBuildWorld.y * 14.0 - uBuildTime * 9.0), 8.0) * building;
+  float pulse = pow(0.5 + 0.5 * sin(vBuildWorld.y * 14.0 - uBuildTime * 9.0), 8.0) * building * uBuildLead;
   float flick = 0.85 + 0.15 * sin(uBuildTime * 61.0 + vBuildWorld.x * 3.0) * building;
-  float sparkle = step(0.985, bHash(floor(vBuildWorld * 9.0) + floor(uBuildTime * 8.0))) * building * 2.0;
+  float sparkle = step(0.985, bHash(floor(vBuildWorld * 9.0) + floor(uBuildTime * 8.0))) * building * 2.0 * uBuildLead;
   float wireModeGain = uWireMode * (1.0 - building);
   gl_FragColor.rgb = col * (0.35 + 2.8 * lead + 1.6 * pulse + sparkle + 0.35 * wireModeGain) * flick * trail * 0.9;
-  gl_FragColor.a *= trail * uBuildWireGain; }`,
+  gl_FragColor.rgb *= soft;
+  gl_FragColor.a *= trail * soft * uBuildWireGain; }`,
       );
   };
-  m.customProgramCacheKey = () => `sentry3d-build-wire-v3${dimmable ? "" : "-fixed"}`;
+  m.customProgramCacheKey = () => `sentry3d-build-wire-v4${dimmable ? "" : "-fixed"}`;
   return m;
 }
 

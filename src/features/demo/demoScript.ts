@@ -14,7 +14,8 @@ import { homePose } from "../../scene/cameraPoses";
  *        viewer's camera buttons do), each camera's recording dissolving in on arrival: the subject in every view
  *   6.0  real footage 100% → 0% on CAM 01: the 3D reconstruction is underneath, same framing
  *   7.6  LIDAR DIGITAL TWIN: the room melts to its wireframe (held 1.4 s)
- *   9.0  the camera swings out to the overview while time rewinds and the room drains to the floor grid
+ *   9.0  the subject fades out as a hologram; the camera swings out to the overview while time rewinds and the
+ *        wireframe thins away evenly under a descending scan grid (no glowing front, no labels hopping)
  *  10.45 the empty grid and the four cameras' coverage; the room is rebuilt from the scan
  *  12.3  straight above the room: the subject's whole path across the floor, drawn in red
  *  13.8  incident replay while the camera orbits the room and comes down to the subject
@@ -218,6 +219,8 @@ export interface BuildState {
   gain: number;
   /** Strength of the floor grid that rides the wireframe front. */
   grid: number;
+  /** 1: the wireframe's front glows white-hot (building up); 0: it fades out softly (draining). */
+  lead: number;
 }
 
 const ALL = 1e6;
@@ -242,13 +245,23 @@ export function buildAt(e: number, floorY: number, topY: number): BuildState {
   const y1 = topY + 0.3;
   const minY = floorY - 0.12; // above the drained front: nothing of the scan is left on the empty grid
   // the bare grid is the whole picture for a moment: brighter then, as built once the wireframe rises through it
-  const grid = 1 + 0.9 * Math.min(span(e, BEAT.pivot + 0.9, BEAT.pivot + 1.4), 1 - span(e, RISE + 0.1, RISE + 0.6));
-  const at = (texY: number, wireY: number, wireMode: number, gain = 1): BuildState => ({ texY, wireY, wireMode, minY, gain, grid });
+  // (it comes in once the camera has pulled out above the room: at the ceiling it would be a sheet across the view)
+  const gridIn = e >= BEAT.pivot && e < BEAT.rebuild ? smooth(span(e, BEAT.pivot + 0.3, BEAT.pivot + 0.8)) : 1;
+  const grid = gridIn * (1 + 0.9 * Math.min(span(e, BEAT.pivot + 0.9, BEAT.pivot + 1.4), 1 - span(e, RISE + 0.1, RISE + 0.6)));
+  // The rise glows at its front, but only once it is clear of the floor: the scan's uneven floor and the bits
+  // of it outside the room would otherwise flare up as scattered white patches over the empty grid.
+  const lead = e < RISE ? 0 : span(e, RISE + 0.25, RISE + 0.6);
+  const at = (texY: number, wireY: number, wireMode: number, gain = 1): BuildState => ({ texY, wireY, wireMode, minY, gain, grid, lead });
   if (e < BEAT.melt) return at(ALL, ALL, 0);
   // texture dissolves from the ceiling down, leaving the wireframe
   if (e < BEAT.pivot) return at(lerp(y1, y0, easeInOut(span(e, BEAT.melt, BEAT.pivot))), ALL, 1, WIRE_DIM);
-  // the wireframe drains down to the floor grid
-  if (e < BEAT.rebuild) return at(NONE, lerp(y1, y0 + 0.02, easeInOut(span(e, BEAT.pivot, BEAT.rebuild))), 0, lerp(WIRE_DIM, 1, span(e, BEAT.pivot, BEAT.pivot + 0.7)));
+  // The wireframe drains down to the floor grid: the grid plane sweeps down through it and the lines fade out
+  // softly above it (no glowing front), while the whole wireframe dims, so the room thins away evenly instead
+  // of breaking up into bright islands; it is gone a little before the front reaches the floor.
+  if (e < BEAT.rebuild) {
+    const u = span(e, BEAT.pivot, BEAT.rebuild);
+    return at(NONE, lerp(y1, y0 + 0.02, easeInOut(u)), 1, WIRE_DIM * (1 - smooth(span(u, 0.3, 0.85))));
+  }
   if (e < RISE) return at(NONE, y0 + 0.02, 0);
   // rebuild: wireframe rises from the floor, texture rises behind it
   if (e < BEAT.path) return at(e < RISE + 0.5 ? NONE : lerp(y0, y1, easeInOut(span(e, RISE + 0.5, BEAT.path))), lerp(y0 + 0.02, y1, easeInOut(span(e, RISE, RISE + 1.3))), 0);
@@ -336,6 +349,8 @@ export interface LookState {
   hideTags: boolean;
   /** The scene's own trail of the last seconds is left out (the whole path is on the floor instead). */
   hideTrail: boolean;
+  /** The subject (body, footage, ring, tag, trail, carried chair) and the cameras' status on him are left out. */
+  hideSubject: boolean;
   /** Which look chip is lit during the freeze orbit. */
   name: DemoLookName | null;
 }
@@ -343,6 +358,8 @@ export interface LookState {
 const look = (name: DemoLookName) => FREEZE_LOOKS.find((l) => l.name === name)!.at;
 /** The scene's own tag on the subject appears once the footage (which carries its own tag) is gone. */
 const TAGS_FROM = BEAT.reveal + 1.3;
+/** The subject fades to the hologram and is gone over this span at the start of the rewind. */
+const SUBJECT_OUT = [BEAT.pivot, BEAT.pivot + 0.3] as const;
 
 export function lookStateAt(e: number): LookState {
   const base: LookState = {
@@ -355,6 +372,7 @@ export function lookStateAt(e: number): LookState {
     bracket: 0,
     hideTags: e < TAGS_FROM || e >= BEAT.isolate,
     hideTrail: e >= BEAT.path && e < PATH.out[1],
+    hideSubject: e >= SUBJECT_OUT[1] && e < BEAT.rebuild,
     name: null,
   };
   if (e < LOCK_LEGS[0].at - 0.1) return { ...base, mode: "model" };
@@ -362,6 +380,10 @@ export function lookStateAt(e: number): LookState {
   if (e < BEAT.reveal - 0.5) return { ...base, hologram: 1 };
   // the X-ray highlight carries over from the footage onto the reconstruction, then lets go
   if (e < BEAT.pivot) return { ...base, hologram: 1 - span(e, BEAT.reveal + 1.1, BEAT.reveal + 1.55) };
+  // Rewind: rather than run backwards across the room at speed (with the chair), the subject turns to the
+  // cyan hologram as the camera pulls out and is gone; the rewind runs on the emptying room.
+  if (e < SUBJECT_OUT[1]) return { ...base, mode: "model", hideTags: true, hologram: smooth(span(e, SUBJECT_OUT[0], SUBJECT_OUT[1])), hideBody: e > SUBJECT_OUT[1] - 0.06, holoStyle: 1 };
+  if (e < BEAT.rebuild) return { ...base, mode: "model", hideTags: true };
   // rewind, overview, top view and orbit: baked texture only (time runs backwards, then three times as fast)
   if (e < WIRE.in[0]) return { ...base, mode: "model" };
   // isolated in the wireframe room: the fused track's values ride along

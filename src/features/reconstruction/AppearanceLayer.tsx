@@ -28,6 +28,7 @@ import { useViewStore } from "../../store/useViewStore";
 import { buildCctvCamera } from "../../lib/videoProjection";
 import type { CameraId } from "../../types/security";
 import { subjectSample } from "../sentry/SceneActors";
+import { demoLook } from "../demo/demoLook";
 import { clipsAt, frameAt, getTexture, prefetchAround, useAppearanceStore } from "./useAppearanceStore";
 import type { AppearanceClipManifest, AppearanceFrame, EvidenceClass } from "./ReconstructionTypes";
 
@@ -240,6 +241,7 @@ function SubjectAppearance({ subjectId, heightM }: { subjectId: string; heightM:
       setStatus({ subjectId, active: false, cameraId: null, offSourceDeg: null, evidence: null, clip: null, frameK: null, feetHeightM: null, positionEstimated: false, reason });
     };
     if (mode !== "footage") return hide(mode === "avatar" ? "debug avatar mode" : "3D model mode");
+    if (demoLook.active && demoLook.hideSubject) return hide("left out by the demo walkthrough");
     if (!P) return hide("subject not present");
     prefetchAround(subjectId, t, 0.8);
 
