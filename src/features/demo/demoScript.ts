@@ -475,6 +475,11 @@ export interface DemoContext {
   subject: Vec3;
   /** Feet of the subject at the shown time (null while absent). */
   live: Vec3 | null;
+  /**
+   * Per CCTV camera, 0..1: how much of the recording around the shown time has his cut-out (time-smoothed).
+   * The free camera lingers where it looks along these cameras' lines of sight. All 1 when not given.
+   */
+  sources?: Partial<Record<CameraId, number>>;
 }
 
 const DEG = Math.PI / 180;
@@ -679,6 +684,58 @@ function orbitAz(e: number, ctx: DemoContext) {
   return pchip([BEAT.orbit, BEAT.isolate, BEAT.freeze, BEAT.end, DEMO_DURATION], [TOP_AZ + 2, az4 - 18, az4 + 52, azEnd, azEnd + 15], e);
 }
 
+/**
+ * Close orbit (isolate and free camera) lingering on the recorded views. Seen from along a CCTV camera's line
+ * of sight the subject is that camera's own footage (the viewer's observed view); away from those lines he is
+ * filled in by the mesh, which looks rougher the further round the camera goes. So the camera's progress round
+ * him is re-paced: per degree it spends (1 + LINGER × closeness to a recording camera's bearing) as long, with
+ * closeness a Gaussian of width LINGER_SIGMA degrees. Start and end bearings and the overall timing stay; it
+ * hovers near the cameras and hurries across the stretches between them.
+ */
+const LINGER = 3;
+const LINGER_SIGMA = 14;
+const LINGER_STEP = 0.5;
+
+function lingerAz(az0: number, a0: number, a1: number, centre: Vec3, ctx: DemoContext): number {
+  if (a1 - a0 < 1 || az0 <= a0 || az0 >= a1) return az0;
+  const bearings: { az: number; w: number }[] = [];
+  for (const id of CAMERA_ORDER) {
+    const w = ctx.sources ? (ctx.sources[id] ?? 0) : 1;
+    if (w <= 0.001) continue;
+    const p = ctx.poses[id].position;
+    bearings.push({ az: Math.atan2(p[0] - centre[0], p[2] - centre[2]) / DEG, w });
+  }
+  if (!bearings.length) return az0;
+  const g = (a: number) => {
+    let k = 1;
+    for (const b of bearings) {
+      const d = unwrap(b.az, a) - a;
+      k += LINGER * b.w * Math.exp(-0.5 * (d / LINGER_SIGMA) ** 2);
+    }
+    return k;
+  };
+  // cumulative time-per-degree from a0, on a LINGER_STEP grid
+  const n = Math.ceil((a1 - a0) / LINGER_STEP);
+  const step = (a1 - a0) / n;
+  const G = new Float64Array(n + 1);
+  let prev = g(a0);
+  for (let i = 1; i <= n; i++) {
+    const cur = g(a0 + i * step);
+    G[i] = G[i - 1] + 0.5 * (prev + cur) * step;
+    prev = cur;
+  }
+  const want = (G[n] * (az0 - a0)) / (a1 - a0);
+  let lo = 0;
+  let hi = n;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (G[mid] <= want) lo = mid;
+    else hi = mid;
+  }
+  const f = G[hi] > G[lo] ? (want - G[lo]) / (G[hi] - G[lo]) : 0;
+  return a0 + (lo + f) * step;
+}
+
 /** Where the orbit hands over to the free camera: metres from the subject, and above the floor. */
 const CLOSE = { r: 3.6, h: 4.2 };
 
@@ -764,7 +821,10 @@ export function cameraAt(e: number, ctx: DemoContext): DemoCam {
   const feet = ctx.live ?? S;
   const C = lerp3(S, feet, smooth(span(e, CLOSE_FROM, BEAT.isolate)));
   const xs = [BEAT.isolate, BEAT.freeze, BEAT.end, DEMO_DURATION];
-  const az = orbitAz(e, ctx) * DEG;
+  const az0 = orbitAz(e, ctx);
+  const lingered = lingerAz(az0, orbitAz(BEAT.isolate, ctx), orbitAz(DEMO_DURATION, ctx), feet, ctx);
+  // eased in once the camera is down with him (until then it was following the room orbit's pace)
+  const az = lerp(az0, lingered, smooth(span(e, BEAT.isolate, BEAT.isolate + 0.8))) * DEG;
   const r = pchip(xs, [CLOSE.r, 2.3, 2.35, 3.1], e);
   const h = pchip(xs, [CLOSE.h, S[1] + 1.5, S[1] + 1.5, S[1] + 1.8], e);
   const chest: Vec3 = [feet[0], feet[1] + 0.98, feet[2]];
