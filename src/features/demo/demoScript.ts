@@ -23,7 +23,7 @@ import { homePose } from "../../scene/cameraPoses";
  *        while he stands at the table)
  *  19.1  wireframe room: the subject alone, lifting the chair
  *  21.8  slow motion; free camera round the subject as he walks: footage / X-ray / full texture, coming to
- *        rest in front of him on CAM 01's side as he walks towards it with the chair
+ *        rest on CAM 01's line of sight (his own recorded pixels) as he walks towards it with the chair
  *  23.8  end card over that view (a slow push in)
  */
 export const DEMO_DURATION = 25.0;
@@ -764,10 +764,12 @@ function wideView(e: number, ctx: DemoContext): DemoCam & { up: Vec3 } {
 /**
  * Degrees round the subject from the orbit on: round the room, in to him, round him as he walks, ending in
  * front of him just inside CAM 01's line of sight (HERO_OFF degrees off it, away from the window wall): he
- * walks towards the camera carrying the chair, seen from where CAM 01 filmed him. It comes to rest there by
- * the end card and holds (the circle walks with him, so the camera backs away as he comes on).
+ * walks towards the camera carrying the chair, seen from where CAM 01 filmed him. The last of the way the
+ * camera is drawn onto CAM 01's own line of sight to him (heroCam), where the body is CAM 01's cut-out pixel
+ * for pixel: a few degrees off it the cut-out is blended with the projected mesh, and his face (a few dozen
+ * pixels in the recording) came out smeared and doubled, close up under the end card.
  */
-const HERO_OFF = -8;
+const HERO_OFF = 0;
 function orbitAz(e: number, ctx: DemoContext) {
   const cam1 = throughCamera("cam1", ctx);
   const cam4 = throughCamera("cam4", ctx);
@@ -829,6 +831,9 @@ function lingerAz(az0: number, a0: number, a1: number, centre: Vec3, ctx: DemoCo
   return a0 + (lo + f) * step;
 }
 
+/** The free camera is drawn onto CAM 01's line of sight over this span; metres from him along it (then, end card, last frame). */
+const HERO_IN = [BEAT.end - 1.0, BEAT.end - 0.15] as const;
+const HERO_R = [3.0, 2.95, 2.7] as const;
 /** Where the orbit hands over to the free camera: metres from the subject, and above the floor. */
 const CLOSE = { r: 3.6, h: 4.2 };
 
@@ -923,7 +928,15 @@ export function cameraAt(e: number, ctx: DemoContext): DemoCam {
   const r = pchip(xs, [CLOSE.r, 2.3, 2.35, 2.15], e);
   const h = pchip(xs, [CLOSE.h, S[1] + 1.5, S[1] + 1.5, S[1] + 1.45], e);
   const chest: Vec3 = [feet[0], feet[1] + 0.98, feet[2]];
-  const close: DemoCam = { p: [C[0] + r * Math.sin(az), h, C[2] + r * Math.cos(az)], t: chest, roll: 0, fov: pchip(xs, [home.fov, 58, 55, 54], e) };
+  const close: DemoCam = { p: [C[0] + r * Math.sin(az), h, C[2] + r * Math.cos(az)], t: chest, roll: 0, fov: pchip(xs, [home.fov, 58, 55, 52], e) };
+  if (e >= HERO_IN[0]) {
+    // onto CAM 01's line of sight to him, and on it under the end card (a slow push in along it)
+    const body: Vec3 = [feet[0], feet[1] + 0.96, feet[2]];
+    const ray = norm(sub(ctx.poses.cam1.position, body));
+    const d = pchip([HERO_IN[1], BEAT.end, DEMO_DURATION], [HERO_R[0], HERO_R[1], HERO_R[2]], e);
+    const hero: Vec3 = [body[0] + ray[0] * d, body[1] + ray[1] * d, body[2] + ray[2] * d];
+    return { ...close, p: lerp3(close.p, hero, smooth(span(e, HERO_IN[0], HERO_IN[1]))) };
+  }
   if (e >= BEAT.isolate) return close;
 
   // Orbit: the whole room in the frame, from straight above down to a three-quarter view, then in to the subject.

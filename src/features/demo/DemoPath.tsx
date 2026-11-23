@@ -15,6 +15,8 @@ const CORE = 0.1;
 const GLOW = 0.56;
 /** Above the scanned floor (m). */
 const LIFT = 0.035;
+/** Each pass of the path (way in, way back) is moved this far to its own right (m), so they run as two lanes. */
+const LANE = 0.14;
 /** Spacing of the path's points (m). */
 const STEP = 0.05;
 const SAMPLE = 1 / 15;
@@ -103,6 +105,27 @@ function build(trajectory: Trajectory): Built | null {
   // 3. the longest stop: where the most time passes within one step of the path
   let stop = 1;
   for (let i = 1; i < n; i++) if (times[i] - times[i - 1] > times[stop] - times[stop - 1]) stop = i;
+  // 3b. the way in and the way back largely share one corridor (in from the door, back out to it): each is
+  //     moved LANE to its own right, so the two run as lanes side by side instead of lying on top of each
+  //     other and crossing back and forth; the offset fades out at the stop and at both ends, where they meet
+  const lane = (k: number) => {
+    const sAt = k * STEP;
+    const ramp = (x: number, a: number, b: number) => {
+      const u = clamp01((x - a) / (b - a));
+      return u * u * (3 - 2 * u);
+    };
+    return LANE * ramp(Math.abs(k - stop) * STEP, 0.3, 1.0) * ramp(sAt, 0.25, 0.9) * ramp(length - sAt, 0.25, 0.9);
+  };
+  const shifted = line.map((p, k) => {
+    const a = line[Math.max(k - 8, 0)];
+    const b = line[Math.min(k + 8, n - 1)];
+    const dx = b[0] - a[0];
+    const dz = b[2] - a[2];
+    const l = Math.hypot(dx, dz) || 1;
+    const o = lane(k);
+    return [p[0] - (dz / l) * o, p[1], p[2] + (dx / l) * o] as Vec3;
+  });
+  for (let k = 0; k < n; k++) line[k] = shifted[k];
   const at = line[stop];
   const near = raw.filter((p) => Math.hypot(p[0] - at[0], p[2] - at[2]) < 0.4).length * SAMPLE;
   const marks = [
@@ -220,11 +243,12 @@ const fragmentShader = /* glsl */ `
   uniform sampler2D uField;
   uniform float uHead;   // metres of the path drawn
   uniform float uWalked; // metres of it the subject has walked at the shown time (< 0: none shown)
+  uniform float uOnBack; // 1 once he is on the way back (that pass is then drawn on top), else 0
   uniform float uAlpha;
   uniform float uTip;    // 0..1: the bright tip that draws the path
   uniform vec2 uTipAt;   // (world x, z)
-  uniform float uNow;    // 0..1: the marker where the subject is at the shown incident time
-  uniform vec2 uNowAt;
+  uniform float uFeet;   // 0..1: the path is cleared under the subject's feet (at uFeetAt)
+  uniform vec2 uFeetAt;
   uniform vec2 uEntry;
   uniform vec3 uStop;    // x, z, strength
   uniform vec3 uExit;
@@ -250,35 +274,49 @@ const fragmentShader = /* glsl */ `
     return pow(1.0 - t, 2.0);
   }
 
+  // One pass of the path (way in or way back) on its own: colour and coverage. Behind him (s up to uWalked)
+  // cyan, ahead of him red.
+  vec4 pass(vec2 f, float d) {
+    float soft = max(fwidth(d), 0.002);
+    float core = 1.0 - smoothstep(CORE - soft, CORE + soft, d);
+    float walked = uWalked < 0.0 ? 0.0 : 1.0 - smoothstep(uWalked - 0.08, uWalked + 0.08, f.y);
+    vec3 color = mix(mix(uGlow, uCore, core), mix(uWalkGlow, uWalkCore, core), walked);
+    // a lighter thread down the middle, and light running along it the way the subject walked
+    float thread = 1.0 - smoothstep(CORE * 0.08, CORE * 0.5, d);
+    float run = pow(0.5 + 0.5 * sin((f.y - uTime * 2.6) * 3.6), 6.0);
+    color = mix(color, mix(uHot, uWalkHot, walked), thread * (0.2 + 0.7 * run));
+    float glow = 0.8 * halo(d);
+    return vec4(color, min(1.0, max(core * 0.97, glow)));
+  }
+
   void main() {
     vec4 f = texture2D(uField, vUv);
     float dIn = drawn(f.rg);
     float dBack = drawn(f.ba);
     float d = min(dIn, dBack);
     if (d >= GLOW || uHead <= 0.0) discard;
-    float s = dIn <= dBack ? f.g : f.a;
 
-    float soft = max(fwidth(d), 0.002);
-    float core = 1.0 - smoothstep(CORE - soft, CORE + soft, d);
-    // where the way in and the way back run side by side, the floor between them is redder
-    float glow = 1.0 - (1.0 - 0.8 * halo(dIn)) * (1.0 - 0.8 * halo(dBack));
-    // already walked (behind him): cyan; still ahead of him: red
-    float walked = uWalked < 0.0 ? 0.0 : 1.0 - smoothstep(uWalked - 0.08, uWalked + 0.08, s);
-    vec3 color = mix(mix(uGlow, uCore, core), mix(uWalkGlow, uWalkCore, core), walked);
-    // a lighter thread down the middle, and light running along it the way the subject walked
-    float thread = 1.0 - smoothstep(CORE * 0.08, CORE * 0.5, d);
-    float run = pow(0.5 + 0.5 * sin((s - uTime * 2.6) * 3.6), 6.0);
-    color = mix(color, mix(uHot, uWalkHot, walked), thread * (0.2 + 0.7 * run));
-    float alpha = max(core * 0.97, glow);
+    // each pass is coloured by itself and one is laid over the other: a line over the other's glow, so the
+    // two lanes both show side by side; where the lines themselves cross, the one he is on (always the
+    // same one, so the colours do not flip back and forth along a shared stretch)
+    vec4 pIn = dIn < GLOW ? pass(f.rg, dIn) : vec4(0.0);
+    vec4 pBack = dBack < GLOW ? pass(f.ba, dBack) : vec4(0.0);
+    float lineIn = 1.0 - smoothstep(CORE * 0.8, CORE * 1.3, dIn);
+    float lineBack = 1.0 - smoothstep(CORE * 0.8, CORE * 1.3, dBack);
+    bool onBack = uWalked < 0.0 ? dBack < dIn : uOnBack > 0.5;
+    bool backOnTop = abs(lineIn - lineBack) > 0.02 ? lineBack > lineIn : onBack;
+    vec4 top = backOnTop ? pBack : pIn;
+    vec4 below = backOnTop ? pIn : pBack;
+    float alpha = top.a + below.a * (1.0 - top.a);
+    vec3 color = alpha > 0.0 ? (top.rgb * top.a + below.rgb * below.a * (1.0 - top.a)) / alpha : top.rgb;
 
     // the tip that draws it
     float tip = uTip * exp(-pow(distance(vAt, uTipAt) / 0.24, 2.0));
     color = mix(color, vec3(1.0), tip * 0.9);
     alpha = max(alpha, tip);
-    // where the subject is on it right now
-    float here = uNow * exp(-pow(distance(vAt, uNowAt) / 0.3, 2.0));
-    color = mix(color, uHot, here * 0.55);
-    alpha = max(alpha, here * 0.8);
+    // a clear disc under the subject, inside his ring: the walked and the remaining path both stop short of
+    // his feet instead of piling up there (and where he stands, the way in and the way back meet)
+    alpha *= mix(1.0, smoothstep(0.24, 0.42, distance(vAt, uFeetAt)), uFeet);
     // entry: a ring; longest stop: a wider, thinner ring; exit: a dot
     float ring = 1.0 - smoothstep(0.0, 0.022, abs(distance(vAt, uEntry) - 0.21));
     float halt = uStop.z * (1.0 - smoothstep(0.0, 0.016, abs(distance(vAt, uStop.xy) - 0.3)));
@@ -299,11 +337,12 @@ const uniforms = {
   uField: { value: null as THREE.Texture | null },
   uHead: { value: 0 },
   uWalked: { value: -1 },
+  uOnBack: { value: 0 },
   uAlpha: { value: 0 },
   uTip: { value: 0 },
   uTipAt: { value: new THREE.Vector2() },
-  uNow: { value: 0 },
-  uNowAt: { value: new THREE.Vector2() },
+  uFeet: { value: 0 },
+  uFeetAt: { value: new THREE.Vector2() },
   uEntry: { value: new THREE.Vector2() },
   uStop: { value: new THREE.Vector3() },
   uExit: { value: new THREE.Vector3() },
@@ -363,11 +402,14 @@ function Path() {
     uniforms.uField.value = built.field;
     uniforms.uHead.value = head;
     uniforms.uWalked.value = path.follow ? walked : -1;
+    uniforms.uOnBack.value = walked >= stop.s ? 1 : 0;
     uniforms.uAlpha.value = path.alpha;
     uniforms.uTip.value = path.draw < 1 ? Math.min(1, path.draw * 12) : 0;
     pointAt(built, head, uniforms.uTipAt.value);
-    uniforms.uNow.value = path.draw >= 1 && t > built.trajectory.start && t < built.trajectory.end ? 1 : 0;
-    pointAt(built, walked, uniforms.uNowAt.value);
+    // (where the scene draws his ring: his fused position at the shown time)
+    const at = t > built.trajectory.start && t < built.trajectory.end ? built.trajectory.sample(t) : null;
+    uniforms.uFeet.value = at?.visible && !demoLook.hideSubject ? 1 : 0;
+    if (at?.visible) uniforms.uFeetAt.value.set(at.position[0], at.position[2]);
     uniforms.uEntry.value.set(entry.p[0], entry.p[2]);
     // (the stop's ring belongs to its label: it goes with it)
     uniforms.uStop.value.set(stop.p[0], stop.p[2], head >= stop.s ? path.labels : 0);
@@ -396,8 +438,8 @@ function Path() {
 /**
  * Demo walkthrough: the subject's whole path across the floor as a glowing line, from the same fused track
  * that moves the body. It is drawn on from the entry (demoLook.path.draw); when it follows the subject the
- * part he has walked by the shown time is cyan and the part still ahead of him red, with a marker where he
- * is. It publishes its length and its labelled points for the overlay.
+ * part he has walked by the shown time is cyan and the part still ahead of him red, and it is cleared
+ * under his feet (inside the scene's ring on him). It publishes its length and its labelled points for the overlay.
  *
  * The line is not a strip of triangles along the path (that folds over itself where the subject turns round
  * or stands): the distance to the path is baked once into a texture over the floor, and the line, its glow
