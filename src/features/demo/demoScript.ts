@@ -19,7 +19,7 @@ import { homePose } from "../../scene/cameraPoses";
  *  11.7  straight above the room: the subject's whole path across the floor, drawn in red
  *  13.2  incident replay while the camera orbits the room and comes down to the subject
  *  17.9  wireframe room: the subject alone, lifting the chair
- *  20.2  slow motion; free camera around the subject as he walks: footage / X-ray / tracking / full texture
+ *  20.2  slow motion; free camera around the subject as he walks: footage / X-ray / full texture
  *  23.2  end card
  */
 export const DEMO_DURATION = 24.4;
@@ -224,7 +224,7 @@ const NONE = -1e6;
 /** Wireframe room behind the subject: its lines at this strength, so the subject stays the brightest thing. */
 const WIRE_DIM = 0.5;
 /** The subject alone in the wireframe room: the texture is gone by WIRE.in[1] and back from WIRE.out[0]. */
-const WIRE = { in: [BEAT.isolate - 0.2, BEAT.isolate + 0.5], out: [BEAT.freeze + 2.2, BEAT.freeze + 2.9] } as const;
+const WIRE = { in: [BEAT.isolate - 0.2, BEAT.isolate + 0.5], out: [BEAT.freeze + 1.6, BEAT.freeze + 2.25] } as const;
 /** Demo time at share `f` of the orbit (its moments are set as shares, so they follow when it is retimed). */
 const inOrbit = (f: number) => BEAT.orbit + f * (BEAT.isolate - BEAT.orbit);
 
@@ -310,12 +310,11 @@ export const pathReadout = (e: number) => e >= PATH.draw[0] - 0.1 && e < BEAT.or
 
 // ---------------------------------------------------------------- subject look
 
-export type DemoLookName = "footage" | "xray" | "tracking" | "texture";
+export type DemoLookName = "footage" | "xray" | "texture";
 export const FREEZE_LOOKS: { name: DemoLookName; at: number; label: string }[] = [
   { name: "footage", at: BEAT.freeze, label: "REAL FOOTAGE" },
-  { name: "xray", at: BEAT.freeze + 0.66, label: "X-RAY" },
-  { name: "tracking", at: BEAT.freeze + 1.41, label: "TRACKING" },
-  { name: "texture", at: BEAT.freeze + 2.07, label: "FULL 3D" },
+  { name: "xray", at: BEAT.freeze + 0.7, label: "X-RAY" },
+  { name: "texture", at: BEAT.freeze + 1.6, label: "FULL 3D" },
 ];
 
 export interface LookState {
@@ -368,8 +367,7 @@ export function lookStateAt(e: number): LookState {
   if (e < BEAT.freeze) return { ...base, bracket: easeOut(span(e, BEAT.isolate + 0.65, BEAT.isolate + 1.0)) };
   if (e < look("xray")) return { ...base, name: "footage" };
   // (the viewer's own X-ray switch goes on here too: the debug figure of the next look then has its see-through pass ready)
-  if (e < look("tracking")) return { ...base, xray: true, hologram: 1, hideBody: true, holoStyle: 1, holoBand: lerp(-0.25, 2.1, span(e, look("xray"), look("tracking") - 0.1)), name: "xray" };
-  if (e < look("texture")) return { ...base, mode: "avatar", xray: true, bracket: easeOut(span(e, look("tracking"), look("tracking") + 0.25)), name: "tracking" };
+  if (e < look("texture")) return { ...base, xray: true, hologram: 1, hideBody: true, holoStyle: 1, holoBand: lerp(-0.25, 2.1, span(e, look("xray"), look("texture") - 0.1)), name: "xray" };
   if (e < BEAT.end) return { ...base, name: "texture" };
   return base;
 }
