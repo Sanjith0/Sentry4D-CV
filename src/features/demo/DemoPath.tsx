@@ -219,6 +219,7 @@ const vertexShader = /* glsl */ `
 const fragmentShader = /* glsl */ `
   uniform sampler2D uField;
   uniform float uHead;   // metres of the path drawn
+  uniform float uWalked; // metres of it the subject has walked at the shown time (< 0: none shown)
   uniform float uAlpha;
   uniform float uTip;    // 0..1: the bright tip that draws the path
   uniform vec2 uTipAt;   // (world x, z)
@@ -231,6 +232,9 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uCore;
   uniform vec3 uGlow;
   uniform vec3 uHot;
+  uniform vec3 uWalkCore;
+  uniform vec3 uWalkGlow;
+  uniform vec3 uWalkHot;
   varying vec2 vUv;
   varying vec2 vAt;
   const float CORE = ${CORE.toFixed(3)};
@@ -258,11 +262,13 @@ const fragmentShader = /* glsl */ `
     float core = 1.0 - smoothstep(CORE - soft, CORE + soft, d);
     // where the way in and the way back run side by side, the floor between them is redder
     float glow = 1.0 - (1.0 - 0.8 * halo(dIn)) * (1.0 - 0.8 * halo(dBack));
-    vec3 color = mix(uGlow, uCore, core);
+    // already walked (behind him): cyan; still ahead of him: red
+    float walked = uWalked < 0.0 ? 0.0 : 1.0 - smoothstep(uWalked - 0.08, uWalked + 0.08, s);
+    vec3 color = mix(mix(uGlow, uCore, core), mix(uWalkGlow, uWalkCore, core), walked);
     // a lighter thread down the middle, and light running along it the way the subject walked
     float thread = 1.0 - smoothstep(CORE * 0.08, CORE * 0.5, d);
     float run = pow(0.5 + 0.5 * sin((s - uTime * 2.6) * 3.6), 6.0);
-    color = mix(color, uHot, thread * (0.2 + 0.7 * run));
+    color = mix(color, mix(uHot, uWalkHot, walked), thread * (0.2 + 0.7 * run));
     float alpha = max(core * 0.97, glow);
 
     // the tip that draws it
@@ -292,6 +298,7 @@ const point = new THREE.Vector3();
 const uniforms = {
   uField: { value: null as THREE.Texture | null },
   uHead: { value: 0 },
+  uWalked: { value: -1 },
   uAlpha: { value: 0 },
   uTip: { value: 0 },
   uTipAt: { value: new THREE.Vector2() },
@@ -304,6 +311,9 @@ const uniforms = {
   uCore: { value: new THREE.Color("#ff1022") },
   uGlow: { value: new THREE.Color("#ff1428") },
   uHot: { value: new THREE.Color("#ffe1d6") },
+  uWalkCore: { value: new THREE.Color("#18d6ff") },
+  uWalkGlow: { value: new THREE.Color("#0a9cff") },
+  uWalkHot: { value: new THREE.Color("#e0fbff") },
 };
 
 function Path() {
@@ -346,24 +356,26 @@ function Path() {
       return;
     }
     const t = useReplayStore.getState().currentTime;
-    // following the subject, the drawn part ends at his feet: the path is laid down as he walks
-    const head = path.follow ? alongAt(built, t) : path.draw * built.length;
-    const walking = path.follow && t > built.trajectory.start && t < built.trajectory.end;
+    // the whole path is drawn on; following the subject, the part behind him is in the walked colour
+    const head = path.draw * built.length;
+    const walked = Math.min(alongAt(built, t), head);
     const [entry, stop, exit] = built.marks;
     uniforms.uField.value = built.field;
     uniforms.uHead.value = head;
+    uniforms.uWalked.value = path.follow ? walked : -1;
     uniforms.uAlpha.value = path.alpha;
-    uniforms.uTip.value = path.follow ? (walking ? 1 : 0) : path.draw < 1 ? Math.min(1, path.draw * 12) : 0;
+    uniforms.uTip.value = path.draw < 1 ? Math.min(1, path.draw * 12) : 0;
     pointAt(built, head, uniforms.uTipAt.value);
-    uniforms.uNow.value = !path.follow && path.draw >= 1 && t > built.trajectory.start && t < built.trajectory.end ? 1 : 0;
-    pointAt(built, alongAt(built, t), uniforms.uNowAt.value);
+    uniforms.uNow.value = path.draw >= 1 && t > built.trajectory.start && t < built.trajectory.end ? 1 : 0;
+    pointAt(built, walked, uniforms.uNowAt.value);
     uniforms.uEntry.value.set(entry.p[0], entry.p[2]);
     // (the stop's ring belongs to its label: it goes with it)
     uniforms.uStop.value.set(stop.p[0], stop.p[2], head >= stop.s ? path.labels : 0);
     uniforms.uExit.value.set(exit.p[0], exit.p[2], head >= exit.s - 1e-3 ? 1 : 0);
     uniforms.uTime.value = demoLook.applied;
 
-    pathInfo.drawn = head;
+    // (the readout counts the metres walked when following him, else the metres drawn)
+    pathInfo.drawn = path.follow ? walked : head;
     pathInfo.length = built.length;
     pathInfo.start = built.trajectory.start;
     pathInfo.end = built.trajectory.end;
@@ -382,9 +394,10 @@ function Path() {
 }
 
 /**
- * Demo walkthrough: the subject's whole path across the floor as a glowing red line, from the same fused
- * track that moves the body. It is drawn on from the entry (demoLook.path.draw), keeps a marker where the
- * subject is at the shown time, and publishes its length and its labelled points for the overlay.
+ * Demo walkthrough: the subject's whole path across the floor as a glowing line, from the same fused track
+ * that moves the body. It is drawn on from the entry (demoLook.path.draw); when it follows the subject the
+ * part he has walked by the shown time is cyan and the part still ahead of him red, with a marker where he
+ * is. It publishes its length and its labelled points for the overlay.
  *
  * The line is not a strip of triangles along the path (that folds over itself where the subject turns round
  * or stands): the distance to the path is baked once into a texture over the floor, and the line, its glow

@@ -13,11 +13,12 @@ import { homePose } from "../../scene/cameraPoses";
  *   2.0  push into CAM 01, then the viewport flies through the room to CAM 02, 03, 04 and back to 01 (as the
  *        viewer's camera buttons do), each camera's recording dissolving in on arrival: the subject in every view
  *   6.0  real footage 100% → 0% on CAM 01: the 3D reconstruction is underneath, same framing
- *   7.6  LIDAR DIGITAL TWIN: the room melts to its wireframe (held 1.4 s)
- *   9.0  the subject fades out as a hologram; the camera swings out to the overview while time rewinds and the
+ *   7.6  LIDAR DIGITAL TWIN: the room melts to its wireframe (held 1.4 s); he keeps walking (into 0.55x)
+ *   9.0  the subject fades out mid-stride as a hologram; the camera swings out to the overview while time rewinds and the
  *        wireframe thins away evenly under a descending scan grid (no glowing front, no labels hopping)
  *  10.45 the empty grid and the four cameras' coverage; the room is rebuilt from the scan
- *  12.3  straight above the room: the replay starts; he walks in (2x) and his path is drawn in red behind him
+ *  11.3  the replay starts (1.6x): he walks in as his whole path is drawn on (walked part cyan, rest red)
+ *  12.3  straight above the room as he walks
  *  13.8  the replay carries on while the camera orbits the room and comes down to the subject (faster only
  *        while he stands at the table)
  *  18.5  wireframe room: the subject alone, lifting the chair
@@ -101,8 +102,8 @@ const lerp3 = (a: Vec3, b: Vec3, t: number): Vec3 => [lerp(a[0], b[0], t), lerp(
 
 // ---------------------------------------------------------------- incident time
 
-/** Rewind ends here: before any camera has seen the subject, so the rebuilt room is empty. */
-const REWOUND_TIME = 3.6;
+/** Rewind ends here: just before any camera has seen the subject (4.2 s), so the rebuilt room is empty. */
+const REWOUND_TIME = 4.0;
 /** The wireframe starts to rise from the bare grid. */
 const RISE = BEAT.rebuild + 0.25;
 
@@ -137,18 +138,34 @@ const LOCK_TIME = DEMO_START_TIME + BEAT.lock;
  */
 const REVEAL_TIME = 20.6;
 const LOCK_RATE = (REVEAL_TIME - LOCK_TIME) / (LOCK_END - BEAT.lock);
-/** Where the incident clock stops once the footage is gone (it coasts on for 0.4 s of incident time). */
-const HELD_TIME = REVEAL_TIME + (BEAT.melt - LOCK_END) + 0.4;
+/**
+ * Once the footage is gone he keeps walking: through the LIDAR DIGITAL TWIN beat the clock eases down to
+ * TWIN_RATE (slow motion, so he is still in CAM 01's view) and runs on until he has faded out at the start
+ * of the rewind (REWIND_FROM); the rewind starts from where he is then (HELD_TIME).
+ */
+const TWIN_RATE = 0.55;
+const TWIN_EASE = 0.6;
+const REWIND_FROM = BEAT.pivot + 0.3;
+const MELT_TIME = REVEAL_TIME + (BEAT.melt - LOCK_END);
+/** Incident time from the melt on (rate 1 eased down to TWIN_RATE over TWIN_EASE seconds: its integral). */
+function twinTime(e: number): number {
+  const x = Math.max(e - BEAT.melt, 0);
+  const u = Math.min(x / TWIN_EASE, 1);
+  return MELT_TIME + x - (1 - TWIN_RATE) * (TWIN_EASE * (u * u * u - (u * u * u * u) / 2) + Math.max(x - TWIN_EASE, 0));
+}
+const twinRate = (e: number) => 1 - (1 - TWIN_RATE) * smooth(span(e, BEAT.melt, BEAT.melt + TWIN_EASE));
+const HELD_TIME = twinTime(REWIND_FROM);
 /** The replay under the top view and the orbit: from the empty room (REWOUND_TIME) to the subject at the table (ISOLATE_TIME). */
 const ISOLATE_TIME = 18.6;
 /**
- * The replay starts as the camera rises to the top view, so the subject walks in and the red path is drawn
- * behind him step by step. He walks at WALK_RATE (2x: still a walk) until he has slowed at the table
+ * The replay starts while the room is still being rebuilt, so the subject walks in as it completes and the
+ * red path is drawn behind him step by step, from the overview, through the top view and on under the orbit
+ * (walking and drawing the path are one beat). He walks at WALK_RATE until he has slowed at the table
  * (WALK_END_TIME); only the time he stands there is run through faster, eased in and out, to reach
  * ISOLATE_TIME on the isolate beat.
  */
-const WALK_FROM = BEAT.path - 0.2;
-const WALK_RATE = 2.0;
+const WALK_FROM = BEAT.path - 1.0;
+const WALK_RATE = 1.6;
 const WALK_END_TIME = 11.8;
 const WALK_END = WALK_FROM + (WALK_END_TIME - REWOUND_TIME) / WALK_RATE;
 
@@ -197,12 +214,8 @@ export function incidentTime(e: number): number {
   if (e < BEAT.lock) return DEMO_START_TIME + Math.max(e, 0);
   if (e < LOCK_END) return LOCK_TIME + LOCK_RATE * (e - BEAT.lock);
   if (e < BEAT.melt) return REVEAL_TIME + (e - LOCK_END);
-  if (e < BEAT.pivot) {
-    // coasts to a stop as the footage is gone
-    const u = span(e, BEAT.melt, BEAT.pivot);
-    return HELD_TIME - 0.4 * (1 - u) * (1 - u);
-  }
-  if (e < BEAT.rebuild) return lerp(HELD_TIME, REWOUND_TIME, easeInOut(span(e, BEAT.pivot, BEAT.rebuild)));
+  if (e < REWIND_FROM) return twinTime(e);
+  if (e < BEAT.rebuild) return lerp(HELD_TIME, REWOUND_TIME, easeInOut(span(e, REWIND_FROM, BEAT.rebuild)));
   if (e < WALK_FROM) return REWOUND_TIME;
   if (e < BEAT.isolate) return replayAt(e).t;
   if (e < BEAT.freeze) return lerp(ISOLATE_TIME, FREEZE_TIME, span(e, BEAT.isolate, BEAT.freeze));
@@ -221,7 +234,7 @@ export function rateLabel(e: number): string {
   if (e < BEAT.lock) return "\u25B6 1.0\u00D7";
   if (e < LOCK_END) return `\u25B6\u25B6 ${LOCK_RATE.toFixed(1)}\u00D7`;
   if (e < BEAT.melt) return "\u25B6 1.0\u00D7";
-  if (e < BEAT.pivot) return "\u275A\u275A HOLD";
+  if (e < REWIND_FROM) return `\u25B6 ${twinRate(e).toFixed(1)}\u00D7${twinRate(e) < 0.95 ? " SLOW-MO" : ""}`;
   if (e < BEAT.rebuild) return "\u25C0\u25C0 REWIND";
   if (e < WALK_FROM) return "\u275A\u275A PAUSED";
   if (e < BEAT.isolate) return `\u25B6\u25B6 ${replayAt(e).rate.toFixed(1)}\u00D7`;
@@ -321,18 +334,25 @@ export interface PathState {
   alpha: number;
   /** 0..1: the labels on it (entry, stop, exit). */
   labels: number;
-  /** The drawn part ends where the subject is at the shown time (it is drawn behind him as he walks). */
+  /** The part he has already walked (up to where he is at the shown time) is drawn in the walked colour. */
   follow: boolean;
 }
 
-/** The path is on from PATH.in, stays under the orbit and is gone as the room turns to wire. */
-const PATH = { in: [BEAT.path, BEAT.path + 0.3], out: [BEAT.isolate - 0.35, BEAT.isolate + 0.25] } as const;
+/**
+ * The path is drawn on from end to end as the replay starts (PATH.in to PATH.drawn), stays under the orbit
+ * and is gone as the room turns to wire.
+ */
+const PATH = { in: [WALK_FROM, WALK_FROM + 0.3], drawn: WALK_FROM + 1.4, out: [BEAT.isolate - 0.35, BEAT.isolate + 0.25] } as const;
 
-/** The subject's path on the floor, in red: drawn behind him as he walks, from above and on under the orbit. */
+/**
+ * The subject's whole path on the floor, drawn on as the replay starts: the part he has already walked in
+ * cyan, the part still ahead of him in red, from above and on under the orbit.
+ */
 export function pathAt(e: number): PathState {
   if (e < PATH.in[0] || e >= PATH.out[1]) return { draw: 0, alpha: 0, labels: 0, follow: false };
+  const u = span(e, PATH.in[0], PATH.drawn);
   return {
-    draw: 1,
+    draw: 1 - (1 - u) * (1 - u) * (1 - u),
     follow: true,
     alpha: smooth(span(e, PATH.in[0], PATH.in[1])) * (1 - smooth(span(e, PATH.out[0], PATH.out[1]))),
     // they belong to the view from above: gone as the orbit leaves it, before the subject walks in under them
@@ -347,7 +367,7 @@ export function pathAt(e: number): PathState {
 export const tagLiftAt = (e: number) => (e >= BEAT.path && e < BEAT.isolate ? 26 * (1 - smooth(span(e, inOrbit(0.52), BEAT.isolate))) : 0);
 
 /** Whether the path's own readout (length so far) is on screen. */
-export const pathReadout = (e: number) => e >= PATH.in[0] + 0.1 && e < BEAT.orbit;
+export const pathReadout = (e: number) => e >= BEAT.path && e < BEAT.orbit;
 
 // ---------------------------------------------------------------- subject look
 
@@ -386,7 +406,7 @@ const look = (name: DemoLookName) => FREEZE_LOOKS.find((l) => l.name === name)!.
 /** The scene's own tag on the subject appears once the footage (which carries its own tag) is gone. */
 const TAGS_FROM = BEAT.reveal + 1.3;
 /** The subject fades to the hologram and is gone over this span at the start of the rewind. */
-const SUBJECT_OUT = [BEAT.pivot, BEAT.pivot + 0.3] as const;
+const SUBJECT_OUT = [BEAT.pivot, REWIND_FROM] as const;
 
 export function lookStateAt(e: number): LookState {
   const base: LookState = {
@@ -398,7 +418,7 @@ export function lookStateAt(e: number): LookState {
     holoBand: -10,
     bracket: 0,
     // (from above, the path's own ENTRY label names him while it is drawn; his tag would sit on top of it)
-    hideTags: e < TAGS_FROM || e >= BEAT.isolate || (e >= BEAT.path && e < BEAT.orbit + 0.2),
+    hideTags: e < TAGS_FROM || e >= BEAT.isolate || (e >= WALK_FROM && e < BEAT.orbit + 0.2),
     hideTrail: e >= BEAT.path && e < PATH.out[1],
     hideSubject: e >= SUBJECT_OUT[1] && e < BEAT.rebuild,
     name: null,

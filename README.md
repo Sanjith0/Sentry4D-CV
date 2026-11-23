@@ -202,11 +202,11 @@ Click a camera marker in the 3D view to look through it (its feed highlights). C
 | 0.0 s | the four CCTV recordings side by side, already playing; the subject picked out in each one (SAM 2.1 mask) |
 | 2.0 s | SUBJECT LOCKED: push into CAM 01, then the 3D view flies through the room to CAM 02, 03, 04 and back to 01, the way the camera buttons move it; each camera's recording is up for a beat (dissolving out as it leaves, back in on arrival) and the flights keep moving; the 3D view carries the recordings' exposure for the whole pass (so the dissolves don't brighten) plus their grain (X-ray tint, recordings at 2×) |
 | 6.0 s | REAL FOOTAGE 100% → 0% on CAM 01: the 3D reconstruction under the same camera, same instant |
-| 7.6 s | LIDAR DIGITAL TWIN: the room melts to its wireframe (1.4 s) |
-| 9.0 s | the subject fades out as a hologram; the camera swings out while time rewinds and the wireframe room thins away under a descending scan grid |
-| 10.45 s | the bare floor grid and the four cameras' coverage; the room is rebuilt from the scan |
-| 12.3 s | straight above the room: the replay starts and the subject walks in at 2x while his path is drawn in red behind him, step by step (entry label, metres walked so far) |
-| 13.8 s | the replay carries on (2x while he walks, up to 3.4x only while he stands at the table) while the camera orbits the whole room and comes down to the subject (the scanned frames of the window wall dissolve, so the room stays open to the camera as it passes outside) |
+| 7.6 s | LIDAR DIGITAL TWIN: the room melts to its wireframe (1.4 s) while the subject keeps walking (easing into 0.55x slow motion) |
+| 9.0 s | the subject fades out as a hologram mid-stride; the camera swings out while time rewinds and the wireframe room thins away under a descending scan grid |
+| 10.45 s | the bare floor grid and the four cameras' coverage; the room is rebuilt from the scan, and at 11.3 s the replay starts (1.6x): the subject walks in while his whole path is drawn on the floor, the part he has walked in cyan and the part still ahead of him in red |
+| 12.3 s | straight above the room as he walks (entry, dwell and exit labels, metres walked so far) |
+| 13.8 s | the replay carries on (1.6x while he walks, up to 3.6x only while he stands at the table) while the camera orbits the whole room and comes down to the subject (the scanned frames of the window wall dissolve, so the room stays open to the camera as it passes outside) |
 | 18.5 s | wireframe room, the subject alone with the tracking readout; the camera closes in and holds near the CCTV cameras' lines of sight (where he is shown from real footage), hurrying across the angles between them |
 | 20.8 s | slow motion (0.4×): a free camera circles the subject and walks with him as he carries the chair on: real footage / X-ray / full 3D, with the room re-textured under the full 3D; the orbit lingers on the recorded views and moves faster between them |
 | 23.8 s | end card (stays 5 s, then the demo closes itself) |
