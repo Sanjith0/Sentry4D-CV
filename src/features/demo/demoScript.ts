@@ -17,8 +17,9 @@ import { homePose } from "../../scene/cameraPoses";
  *   9.0  the subject fades out as a hologram; the camera swings out to the overview while time rewinds and the
  *        wireframe thins away evenly under a descending scan grid (no glowing front, no labels hopping)
  *  10.45 the empty grid and the four cameras' coverage; the room is rebuilt from the scan
- *  12.3  straight above the room: the subject's whole path across the floor, drawn in red
- *  13.8  incident replay while the camera orbits the room and comes down to the subject
+ *  12.3  straight above the room: the replay starts; he walks in (2x) and his path is drawn in red behind him
+ *  13.8  the replay carries on while the camera orbits the room and comes down to the subject (faster only
+ *        while he stands at the table)
  *  18.5  wireframe room: the subject alone, lifting the chair
  *  20.8  slow motion; free camera around the subject as he walks: footage / X-ray / full texture
  *  23.8  end card
@@ -138,9 +139,32 @@ const REVEAL_TIME = 20.6;
 const LOCK_RATE = (REVEAL_TIME - LOCK_TIME) / (LOCK_END - BEAT.lock);
 /** Where the incident clock stops once the footage is gone (it coasts on for 0.4 s of incident time). */
 const HELD_TIME = REVEAL_TIME + (BEAT.melt - LOCK_END) + 0.4;
-/** The replay under the orbit: from the empty room (REWOUND_TIME) to the subject at the table (ISOLATE_TIME). */
+/** The replay under the top view and the orbit: from the empty room (REWOUND_TIME) to the subject at the table (ISOLATE_TIME). */
 const ISOLATE_TIME = 18.6;
-const ORBIT_RATE = (ISOLATE_TIME - REWOUND_TIME) / (BEAT.isolate - BEAT.orbit);
+/**
+ * The replay starts as the camera rises to the top view, so the subject walks in and the red path is drawn
+ * behind him step by step. He walks at WALK_RATE (2x: still a walk) until he has slowed at the table
+ * (WALK_END_TIME); only the time he stands there is run through faster, eased in and out, to reach
+ * ISOLATE_TIME on the isolate beat.
+ */
+const WALK_FROM = BEAT.path - 0.2;
+const WALK_RATE = 2.0;
+const WALK_END_TIME = 11.8;
+const WALK_END = WALK_FROM + (WALK_END_TIME - REWOUND_TIME) / WALK_RATE;
+
+/** Incident time through the replay (WALK_FROM .. isolate) and its rate. */
+function replayAt(e: number): { t: number; rate: number } {
+  if (e < WALK_END) return { t: REWOUND_TIME + WALK_RATE * (e - WALK_FROM), rate: WALK_RATE };
+  // cubic Hermite from (WALK_END, WALK_END_TIME) to (isolate, ISOLATE_TIME), WALK_RATE at both ends
+  const L = BEAT.isolate - WALK_END;
+  const u = clamp01((e - WALK_END) / L);
+  const u2 = u * u;
+  const u3 = u2 * u;
+  const dp = ISOLATE_TIME - WALK_END_TIME;
+  const t = WALK_END_TIME + (u3 - 2 * u2 + u) * L * WALK_RATE + (-2 * u3 + 3 * u2) * dp + (u3 - u2) * L * WALK_RATE;
+  const rate = (3 * u2 - 4 * u + 1) * WALK_RATE + ((-6 * u2 + 6 * u) * dp) / L + (3 * u2 - 2 * u) * WALK_RATE;
+  return { t, rate };
+}
 
 /** The leg under way at e and its progress 0..1, or null while the viewport rests in a camera. */
 function lockLegAt(e: number): { leg: LockLeg; u: number } | null {
@@ -179,8 +203,8 @@ export function incidentTime(e: number): number {
     return HELD_TIME - 0.4 * (1 - u) * (1 - u);
   }
   if (e < BEAT.rebuild) return lerp(HELD_TIME, REWOUND_TIME, easeInOut(span(e, BEAT.pivot, BEAT.rebuild)));
-  if (e < BEAT.orbit) return REWOUND_TIME;
-  if (e < BEAT.isolate) return REWOUND_TIME + ORBIT_RATE * (e - BEAT.orbit);
+  if (e < WALK_FROM) return REWOUND_TIME;
+  if (e < BEAT.isolate) return replayAt(e).t;
   if (e < BEAT.freeze) return lerp(ISOLATE_TIME, FREEZE_TIME, span(e, BEAT.isolate, BEAT.freeze));
   // slow motion under the free camera: the pace eases down from the isolate beat's (no jump in his motion)
   const x = e - BEAT.freeze;
@@ -199,8 +223,8 @@ export function rateLabel(e: number): string {
   if (e < BEAT.melt) return "\u25B6 1.0\u00D7";
   if (e < BEAT.pivot) return "\u275A\u275A HOLD";
   if (e < BEAT.rebuild) return "\u25C0\u25C0 REWIND";
-  if (e < BEAT.orbit) return "\u275A\u275A PAUSED";
-  if (e < BEAT.isolate) return `\u25B6\u25B6 ${ORBIT_RATE.toFixed(1)}\u00D7`;
+  if (e < WALK_FROM) return "\u275A\u275A PAUSED";
+  if (e < BEAT.isolate) return `\u25B6\u25B6 ${replayAt(e).rate.toFixed(1)}\u00D7`;
   if (e < BEAT.freeze) return "\u25B6 REPLAY";
   return `\u25B6 ${SLOW_RATE.toFixed(1)}\u00D7 SLOW-MO`;
 }
@@ -297,17 +321,20 @@ export interface PathState {
   alpha: number;
   /** 0..1: the labels on it (entry, stop, exit). */
   labels: number;
+  /** The drawn part ends where the subject is at the shown time (it is drawn behind him as he walks). */
+  follow: boolean;
 }
 
-/** The path is drawn from PATH.draw[0] to PATH.draw[1], stays under the orbit and is gone as the room turns to wire. */
-const PATH = { draw: [BEAT.path + 0.45, BEAT.path + 1.2], out: [BEAT.isolate - 0.35, BEAT.isolate + 0.25] } as const;
+/** The path is on from PATH.in, stays under the orbit and is gone as the room turns to wire. */
+const PATH = { in: [BEAT.path, BEAT.path + 0.3], out: [BEAT.isolate - 0.35, BEAT.isolate + 0.25] } as const;
 
-/** The subject's whole path on the floor, in red: drawn from above, then walked along under the orbit. */
+/** The subject's path on the floor, in red: drawn behind him as he walks, from above and on under the orbit. */
 export function pathAt(e: number): PathState {
-  if (e < PATH.draw[0] || e >= PATH.out[1]) return { draw: 0, alpha: 0, labels: 0 };
+  if (e < PATH.in[0] || e >= PATH.out[1]) return { draw: 0, alpha: 0, labels: 0, follow: false };
   return {
-    draw: easeInOut(span(e, PATH.draw[0], PATH.draw[1])),
-    alpha: 1 - smooth(span(e, PATH.out[0], PATH.out[1])),
+    draw: 1,
+    follow: true,
+    alpha: smooth(span(e, PATH.in[0], PATH.in[1])) * (1 - smooth(span(e, PATH.out[0], PATH.out[1]))),
     // they belong to the view from above: gone as the orbit leaves it, before the subject walks in under them
     labels: 1 - span(e, BEAT.orbit - 0.05, BEAT.orbit + 0.2),
   };
@@ -320,7 +347,7 @@ export function pathAt(e: number): PathState {
 export const tagLiftAt = (e: number) => (e >= BEAT.path && e < BEAT.isolate ? 26 * (1 - smooth(span(e, inOrbit(0.52), BEAT.isolate))) : 0);
 
 /** Whether the path's own readout (length so far) is on screen. */
-export const pathReadout = (e: number) => e >= PATH.draw[0] - 0.1 && e < BEAT.orbit;
+export const pathReadout = (e: number) => e >= PATH.in[0] + 0.1 && e < BEAT.orbit;
 
 // ---------------------------------------------------------------- subject look
 
@@ -370,7 +397,8 @@ export function lookStateAt(e: number): LookState {
     holoStyle: 0,
     holoBand: -10,
     bracket: 0,
-    hideTags: e < TAGS_FROM || e >= BEAT.isolate,
+    // (from above, the path's own ENTRY label names him while it is drawn; his tag would sit on top of it)
+    hideTags: e < TAGS_FROM || e >= BEAT.isolate || (e >= BEAT.path && e < BEAT.orbit + 0.2),
     hideTrail: e >= BEAT.path && e < PATH.out[1],
     hideSubject: e >= SUBJECT_OUT[1] && e < BEAT.rebuild,
     name: null,

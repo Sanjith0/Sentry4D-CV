@@ -205,8 +205,8 @@ Click a camera marker in the 3D view to look through it (its feed highlights). C
 | 7.6 s | LIDAR DIGITAL TWIN: the room melts to its wireframe (1.4 s) |
 | 9.0 s | the subject fades out as a hologram; the camera swings out while time rewinds and the wireframe room thins away under a descending scan grid |
 | 10.45 s | the bare floor grid and the four cameras' coverage; the room is rebuilt from the scan |
-| 12.3 s | straight above the room: the subject's whole path across the floor, drawn in red (entry, longest stop, exit, metres walked) |
-| 13.8 s | incident replay in fast-forward while the camera orbits the whole room and comes down to the subject (the scanned frames of the window wall dissolve, so the room stays open to the camera as it passes outside) |
+| 12.3 s | straight above the room: the replay starts and the subject walks in at 2x while his path is drawn in red behind him, step by step (entry label, metres walked so far) |
+| 13.8 s | the replay carries on (2x while he walks, up to 3.4x only while he stands at the table) while the camera orbits the whole room and comes down to the subject (the scanned frames of the window wall dissolve, so the room stays open to the camera as it passes outside) |
 | 18.5 s | wireframe room, the subject alone with the tracking readout; the camera closes in and holds near the CCTV cameras' lines of sight (where he is shown from real footage), hurrying across the angles between them |
 | 20.8 s | slow motion (0.4×): a free camera circles the subject and walks with him as he carries the chair on: real footage / X-ray / full 3D, with the room re-textured under the full 3D; the orbit lingers on the recorded views and moves faster between them |
 | 23.8 s | end card (stays 5 s, then the demo closes itself) |

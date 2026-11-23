@@ -345,15 +345,17 @@ function Path() {
       for (const mark of marks) mark.on = false;
       return;
     }
-    const head = path.draw * built.length;
     const t = useReplayStore.getState().currentTime;
+    // following the subject, the drawn part ends at his feet: the path is laid down as he walks
+    const head = path.follow ? alongAt(built, t) : path.draw * built.length;
+    const walking = path.follow && t > built.trajectory.start && t < built.trajectory.end;
     const [entry, stop, exit] = built.marks;
     uniforms.uField.value = built.field;
     uniforms.uHead.value = head;
     uniforms.uAlpha.value = path.alpha;
-    uniforms.uTip.value = path.draw < 1 ? Math.min(1, path.draw * 12) : 0;
+    uniforms.uTip.value = path.follow ? (walking ? 1 : 0) : path.draw < 1 ? Math.min(1, path.draw * 12) : 0;
     pointAt(built, head, uniforms.uTipAt.value);
-    uniforms.uNow.value = path.draw >= 1 && t > built.trajectory.start && t < built.trajectory.end ? 1 : 0;
+    uniforms.uNow.value = !path.follow && path.draw >= 1 && t > built.trajectory.start && t < built.trajectory.end ? 1 : 0;
     pointAt(built, alongAt(built, t), uniforms.uNowAt.value);
     uniforms.uEntry.value.set(entry.p[0], entry.p[2]);
     // (the stop's ring belongs to its label: it goes with it)

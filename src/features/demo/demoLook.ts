@@ -22,7 +22,7 @@ export const demoLook = {
   /** The subject (body, footage, ring, tag, trail, carried chair) and the cameras' status on him are left out. */
   hideSubject: false,
   /** The subject's whole path on the floor: share of its length drawn, strength, and its labels (all 0..1). */
-  path: { draw: 0, alpha: 0, labels: 0 },
+  path: { draw: 0, alpha: 0, labels: 0, follow: false },
   /** What the path component found, for the overlay: metres drawn so far and in all, first and last observation (s). */
   pathInfo: { drawn: 0, length: 0, start: 0, end: 0 },
   /** Labels on the path (entry, stop, exit), in viewport pixels (drawn by the overlay). */

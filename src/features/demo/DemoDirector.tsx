@@ -279,6 +279,7 @@ export function DemoDirector() {
     demoLook.path.draw = path.draw;
     demoLook.path.alpha = path.alpha;
     demoLook.path.labels = path.labels;
+    demoLook.path.follow = path.follow;
 
     // ---- tracking bracket: the fused track's own values, projected into the viewport
     const b = demoLook.bracket;
@@ -422,6 +423,7 @@ export function DemoDirector() {
     demoLook.path.draw = 0;
     demoLook.path.alpha = 0;
     demoLook.path.labels = 0;
+    demoLook.path.follow = false;
     demoLook.pathInfo.drawn = 0;
     for (const mark of demoLook.marks) mark.on = false;
     demoLook.holdVideos = false;
