@@ -7,6 +7,8 @@ import { useCameras } from "../store/useReplayStore";
 import { CAMERA_STATE_COLOR, CAMERA_STATE_LABEL, useEvidenceStore } from "../features/sentry/useEvidence";
 import { poseQuaternion } from "../lib/cameraMath";
 import { demoLook } from "../features/demo/demoLook";
+import { useLabelSlot } from "../features/demo/labelFit";
+import { useDemoStore } from "../features/demo/useDemoStore";
 
 // Marker geometry opens along +Z; cameras look down -Z.
 const FLIP = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
@@ -38,6 +40,10 @@ function CameraMarker({ cam, index }: { cam: SecurityCamera; index: number }) {
   const coverage = useRef<THREE.Group>(null);
   const coverageFill = useRef<THREE.MeshBasicMaterial>(null);
   const coverageEdge = useRef<THREE.LineBasicMaterial>(null);
+  // demo walkthrough: the label gives way to the subject's tag and to the cameras before it
+  const { anchorRef: labelAnchorRef, elRef: labelRef } = useLabelSlot(index + 1);
+  // ... and sits on a dark plate: the walkthrough flies it over the bright room, where the tinted one cannot be read
+  const demo = useDemoStore((s) => s.phase !== "idle");
   const selected = useReplayStore((s) => s.selectedCameraId === cam.id);
   const viewingThrough = useReplayStore((s) => s.cameraMode === "cctv" && s.selectedCameraId === cam.id);
   const viewThroughCamera = useReplayStore((s) => s.viewThroughCamera);
@@ -147,22 +153,25 @@ function CameraMarker({ cam, index }: { cam: SecurityCamera; index: number }) {
       )}
 
       {!viewingThrough && (
-        <Html position={[0, 0.28, 0]} center zIndexRange={[20, 0]} style={{ pointerEvents: "none" }}>
-          <div
-            className={`whitespace-nowrap rounded border px-1.5 py-0.5 font-mono text-[10px] tracking-wider backdrop-blur-sm transition-colors ${
-              active ? "border-cyan-400/80 bg-cyan-400/20 text-cyan-200" : "border-slate-600/60 bg-slate-900/70 text-slate-300"
-            }`}
-          >
-            CAM {String(index + 1).padStart(2, "0")}
-            {selected && <span className="ml-1 text-cyan-300">● LINKED</span>}
-            {evidence && evidence !== "no-evidence" && evidence !== "not-recording" && (
-              <span className="ml-1" style={{ color: CAMERA_STATE_COLOR[evidence] }}>
-                {tracking ? "◉ " : ""}
-                {CAMERA_STATE_LABEL[evidence]}
-              </span>
-            )}
-          </div>
-        </Html>
+        <group position={[0, 0.28, 0]} ref={labelAnchorRef}>
+          <Html center zIndexRange={[20, 0]} style={{ pointerEvents: "none" }}>
+            <div
+              ref={labelRef}
+              className={`whitespace-nowrap rounded border px-1.5 py-0.5 font-mono text-[10px] tracking-wider backdrop-blur-sm transition-colors ${
+                active ? `border-cyan-400/80 text-cyan-200 ${demo ? "bg-ink-950/85" : "bg-cyan-400/20"}` : "border-slate-600/60 bg-slate-900/70 text-slate-300"
+              }`}
+            >
+              CAM {String(index + 1).padStart(2, "0")}
+              {selected && <span className="ml-1 text-cyan-300">● LINKED</span>}
+              {evidence && evidence !== "no-evidence" && evidence !== "not-recording" && (
+                <span className="ml-1" style={{ color: CAMERA_STATE_COLOR[evidence] }}>
+                  {tracking ? "◉ " : ""}
+                  {CAMERA_STATE_LABEL[evidence]}
+                </span>
+              )}
+            </div>
+          </Html>
+        </group>
       )}
     </group>
   );

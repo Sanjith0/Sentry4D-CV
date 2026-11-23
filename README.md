@@ -195,23 +195,24 @@ Click a camera marker in the 3D view to look through it (its feed highlights). C
 
 ## Demo mode
 
-**DEMO MODE** in the header (or opening the app with `?demo` in the address, e.g. `/?demo`) plays a 20-second automatic walkthrough of the viewer and then puts everything back the way it was (time, play state, camera, view options):
+**DEMO MODE** in the header (or opening the app with `?demo` in the address, e.g. `/?demo`) plays a 25-second automatic walkthrough of the viewer and then puts everything back the way it was (time, play state, camera, view options):
 
 | At | What it shows |
 |---|---|
-| 0.0 s | the four CCTV recordings side by side, the subject picked out of each one (SAM 2.1 mask) |
-| 2.0 s | push into CAM 01, the subject in X-ray tint |
-| 2.9 s | REAL FOOTAGE 100% → 0%: the 3D reconstruction under the same camera, same instant |
-| 4.5 s | the room melts to its wireframe; the camera swings out while time rewinds |
-| 6.75 s | the bare floor grid and the four cameras' coverage; the room is rebuilt from the scan |
-| 8.6 s | incident replay, then through CAM 01 → 02 → 03 → 04 in fast-forward |
-| 12.9 s | wireframe room, the subject alone with the tracking readout |
-| 15.2 s | freeze; a free camera circles the subject: real footage / X-ray / tracking / full 3D |
-| 18.6 s | end card (stays 5 s, then the demo closes itself) |
+| 0.0 s | the four CCTV recordings side by side, already playing; the subject picked out of each one (SAM 2.1 mask) |
+| 2.0 s | SUBJECT LOCKED: push into CAM 01, then a quick pass through CAM 02, 03, 04 and back to 01, closer in on the subject each time (X-ray tint, recordings in fast-forward) |
+| 4.7 s | REAL FOOTAGE 100% → 0% on CAM 01: the 3D reconstruction under the same camera, same instant |
+| 6.3 s | the room melts to its wireframe; the camera swings out while time rewinds |
+| 8.55 s | the bare floor grid and the four cameras' coverage; the room is rebuilt from the scan |
+| 10.4 s | straight above the room: the subject's whole path across the floor, drawn in red (entry, longest stop, exit, metres walked) |
+| 12.7 s | incident replay in fast-forward while the camera orbits the whole room and comes down to the subject (the scanned frames of the window wall dissolve, so the room stays open to the camera as it passes outside) |
+| 17.7 s | wireframe room, the subject alone with the tracking readout |
+| 20.0 s | freeze; a free camera circles the subject: real footage / X-ray / tracking / full 3D |
+| 23.4 s | end card (stays 5 s, then the demo closes itself) |
 
 **Esc** leaves at any time (on a touch screen: tap, then EXIT DEMO). For a clean screen recording put the browser in full screen first. The walkthrough is built for a landscape window; an upright phone gets a simplified stacked layout.
 
-The whole walkthrough is data: `src/features/demo/demoScript.ts` holds pure functions of the demo clock (camera path, incident time, room build, looks, captions), `DemoDirector.tsx` (inside the canvas) applies them every frame, `DemoWall.tsx` draws the four-feed wall on a 2D canvas, `DemoOverlay.tsx` is the HUD. Because nothing depends on anything but the clock, the walkthrough can also be stepped frame by frame: in a dev build `window.__sentryDemo.step(seconds)` shows any moment of it.
+The whole walkthrough is data: `src/features/demo/demoScript.ts` holds pure functions of the demo clock (camera path, incident time, room build, looks, captions), `DemoDirector.tsx` (inside the canvas) applies them every frame, `DemoWall.tsx` draws the four-feed wall and the pass through the cameras on a 2D canvas, `DemoPath.tsx` is the red path on the floor (the fused track, baked into a distance field), `DemoOverlay.tsx` is the HUD, `labelFit.ts` keeps the scene's floating labels clear of the frame's edge, the captions and each other while the camera flies. Because nothing depends on anything but the clock, the walkthrough can also be stepped frame by frame: in a dev build `window.__sentryDemo.step(seconds)` shows any moment of it.
 
 ## Architecture
 
@@ -225,7 +226,7 @@ src/
                                FreeFlyControls, CameraMarkers, SupplementalGeometry
   dashboard/                   Header, ViewerToolbar/HUD, CCTVPanel/CCTVFeed, ReplayTimeline, IncidentPanel
   types/security.ts            shared contracts
-  features/demo/               demo mode: the scripted 20-second walkthrough (see Demo mode)
+  features/demo/               demo mode: the scripted 25-second walkthrough (see Demo mode)
   features/sentry/             owned by Jason
 ```
 

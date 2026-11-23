@@ -104,7 +104,7 @@ export function Header() {
             if (e.detail) e.currentTarget.blur(); // clicked with the pointer: leave the keyboard with the viewer
             useDemoStore.getState().start();
           }}
-          title="Demo mode: a 20-second automatic walkthrough, from the four recordings to the 3D reconstruction (Esc to exit)"
+          title="Demo mode: a 25-second automatic walkthrough, from the four recordings to the 3D reconstruction (Esc to exit)"
           className="!border-cyan-400/60 !bg-cyan-400/10 !text-cyan-100 shadow-[0_0_14px_-4px_rgba(34,211,238,0.8)] hover:!border-cyan-300 hover:!bg-cyan-400/20"
         >
           <Clapperboard className="h-3.5 w-3.5" /> DEMO MODE

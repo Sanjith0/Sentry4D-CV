@@ -12,6 +12,8 @@ W.mullionsZ.slice(0, MAX_MULLIONS).forEach((z, i) => (mz[i] = z));
 
 export const windowClipUniforms = {
   uWinEnabled: { value: 1 },
+  /** 1: the scanned frames are drawn; towards 0 they dissolve, leaving the wall open (demo walkthrough). */
+  uWinFrames: { value: 1 },
   /** Scanned window-wall slab: geometry here is kept only where it is a real frame. */
   uWinSlabX: { value: W.frameSlabX },
   uWinMullionZ: { value: mz },
@@ -25,6 +27,11 @@ export const windowClipUniforms = {
 
 export function setWindowClip(enabled: boolean) {
   windowClipUniforms.uWinEnabled.value = enabled ? 1 : 0;
+}
+
+/** How much of the scanned window frames is drawn, 0..1 (only while the clean window wall is on). */
+export function setWindowFrames(shown: number) {
+  windowClipUniforms.uWinFrames.value = shown;
 }
 
 /** Patch a material so fragments in the window-wall region are discarded when enabled. */
@@ -41,7 +48,7 @@ export function applyWindowClip(material: THREE.Material) {
         "#include <common>",
         `#include <common>
 varying vec3 vWinWorld;
-uniform float uWinEnabled; uniform float uWinCutX; uniform float uWinZ0; uniform float uWinZ1;
+uniform float uWinEnabled; uniform float uWinFrames; uniform float uWinCutX; uniform float uWinZ0; uniform float uWinZ1;
 uniform float uWinSlabX; uniform float uWinMullionZ[${MAX_MULLIONS}]; uniform float uWinMullionHalf;
 uniform float uWinSill; uniform float uWinHead;
 bool winIsFrame(vec3 p) {
@@ -49,13 +56,15 @@ bool winIsFrame(vec3 p) {
   if (p.y < uWinSill || p.y > uWinHead) return true;  // scanned sill / head rail
   for (int i = 0; i < ${MAX_MULLIONS}; i++) if (abs(p.z - uWinMullionZ[i]) < uWinMullionHalf) return true;
   return false;                                       // pane: reflection smear
-}`,
+}
+// one value per 6 cm cell: the frames dissolve cell by cell
+float winHash(vec3 p) { return fract(sin(dot(floor(p * 16.0), vec3(12.9898, 78.233, 37.719))) * 43758.5453); }`,
       )
       .replace(
         "#include <clipping_planes_fragment>",
-        "#include <clipping_planes_fragment>\nif (uWinEnabled > 0.5 && vWinWorld.x < uWinCutX && vWinWorld.z > uWinZ0 && vWinWorld.z < uWinZ1 && !winIsFrame(vWinWorld)) discard;",
+        "#include <clipping_planes_fragment>\nif (uWinEnabled > 0.5 && vWinWorld.x < uWinCutX && vWinWorld.z > uWinZ0 && vWinWorld.z < uWinZ1 && (!winIsFrame(vWinWorld) || winHash(vWinWorld) >= uWinFrames)) discard;",
       );
   };
-  material.customProgramCacheKey = () => "sentry3d-window-clip-v2";
+  material.customProgramCacheKey = () => "sentry3d-window-clip-v3";
   material.needsUpdate = true;
 }

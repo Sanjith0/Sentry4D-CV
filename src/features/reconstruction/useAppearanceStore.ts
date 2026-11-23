@@ -76,6 +76,11 @@ const cache = new Map<string, { tex: THREE.Texture | null; promise: Promise<THRE
 const loader = new THREE.TextureLoader();
 /** Keys kept regardless of the LRU limit (the demo walkthrough loads all the frames it shows up front). */
 const pinned = new Set<string>();
+/** Counts unpinAll() calls: a pin that is still loading (or waiting to try again) gives up when it changes. */
+let pinEpoch = 0;
+/** A pinned frame that fails to load is asked for this many more times, after a growing pause. */
+const PIN_RETRIES = 2;
+const PIN_RETRY_MS = 350;
 
 function trim() {
   if (cache.size - pinned.size <= MAX_TEXTURES) return;
@@ -88,14 +93,22 @@ function trim() {
 }
 
 /**
- * Load a frame and keep it until `unpinAll()`: resolves with its texture, or null if it cannot be loaded.
+ * Load a frame and keep it until `unpinAll()`: resolves with its texture, or null if it cannot be loaded
+ * (a failed request is repeated: out of several hundred at once, a browser short of resources drops some).
  * `texture.image` is the decoded picture (also usable on a 2D canvas).
  */
-export function pinTexture(clip: string, file: string): Promise<THREE.Texture | null> {
+export async function pinTexture(clip: string, file: string): Promise<THREE.Texture | null> {
   const key = `${clip}/${file}`;
-  pinned.add(key);
-  getTexture(clip, file);
-  return cache.get(key)?.promise.catch(() => null) ?? Promise.resolve(null);
+  const epoch = pinEpoch;
+  for (let attempt = 0; ; attempt++) {
+    pinned.add(key);
+    getTexture(clip, file);
+    const tex = (await cache.get(key)?.promise.catch(() => null)) ?? null;
+    // (unpinned meanwhile: the frame is the LRU cache's now, and is not asked for again)
+    if (tex || attempt >= PIN_RETRIES || epoch !== pinEpoch) return tex;
+    await new Promise((r) => setTimeout(r, PIN_RETRY_MS * (attempt + 1)));
+    if (epoch !== pinEpoch) return null;
+  }
 }
 
 /** A pinned (or otherwise resident) frame, without touching the LRU order; null if it is not loaded. */
@@ -104,6 +117,7 @@ export function peekTexture(clip: string, file: string): THREE.Texture | null {
 }
 
 export function unpinAll() {
+  pinEpoch++;
   pinned.clear();
   trim();
 }

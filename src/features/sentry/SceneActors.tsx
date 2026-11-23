@@ -24,6 +24,7 @@ import { appearanceActive } from "../reconstruction/AppearanceLayer";
 import { useAppearanceStore } from "../reconstruction/useAppearanceStore";
 import { avatarActive, useAvatarStore } from "../reconstruction/useAvatarStore";
 import { demoLook } from "../demo/demoLook";
+import { useLabelSlot } from "../demo/labelFit";
 import type { SubjectEvidence } from "./evidence";
 import { Humanoid, type HumanoidHandle } from "./Humanoid";
 import { useSubjectTracks, type SubjectTrack } from "./useSubjectTracks";
@@ -78,7 +79,8 @@ const SubjectActor = memo(function SubjectActor({ track, xray }: { track: Subjec
   const body = useRef<THREE.Group>(null);
   const ring = useRef<THREE.Mesh>(null);
   const statusEl = useRef<HTMLDivElement>(null);
-  const labelEl = useRef<HTMLDivElement>(null);
+  // The tag; in the demo walkthrough it comes first among the scene's floating labels.
+  const { anchorRef: tagAnchorRef, elRef: tagRef, liftRef: tagLiftRef } = useLabelSlot(0);
   const lastDetails = useRef("");
   const lastDetailsAt = useRef(0);
   const selected = useReplayStore((s) => s.selectedEntity?.id === subject.id);
@@ -145,7 +147,9 @@ const SubjectActor = memo(function SubjectActor({ track, xray }: { track: Subjec
     if (!g) return;
     g.visible = st.visible;
     // drei <Html> ignores parent visibility: hide the tag explicitly when absent.
-    if (labelEl.current) labelEl.current.style.display = st.visible && !(demoLook.active && demoLook.hideTags) ? "" : "none";
+    if (tagRef.current) tagRef.current.style.display = st.visible && !(demoLook.active && demoLook.hideTags) ? "" : "none";
+    tagLiftRef.current = demoLook.active ? demoLook.tagLift : 0;
+    if (tagRef.current) tagRef.current.style.transform = tagLiftRef.current > 0 ? `translateY(${(-tagLiftRef.current).toFixed(1)}px)` : "";
     if (st.visible) {
       // y is 0 for annotation-only tracks; with a reconstructed body it is the scanned floor under it
       // (a few centimetres off y = 0), so the ring lies on the floor the body stands on, not under it.
@@ -173,7 +177,7 @@ const SubjectActor = memo(function SubjectActor({ track, xray }: { track: Subjec
         const av = useAvatarStore.getState().status[subject.id];
         if (av?.active) statusEl.current.textContent += ` · 3D MODEL · FIT FROM ${av.cameras ?? 0} CAM`;
       }
-      if (labelEl.current) labelEl.current.style.borderColor = observed ? subject.color : "#f59e0b";
+      if (tagRef.current) tagRef.current.style.borderColor = observed ? subject.color : "#f59e0b";
       if (ring.current) {
         const pulse = 1 + 0.12 * Math.sin(clock.elapsedTime * 4);
         ring.current.scale.setScalar(selected ? pulse : 1);
@@ -197,7 +201,7 @@ const SubjectActor = memo(function SubjectActor({ track, xray }: { track: Subjec
       }
       trail.geom.attributes.position.needsUpdate = true;
       trail.geom.attributes.color.needsUpdate = true;
-      trail.geom.setDrawRange(0, st.visible ? n : 0);
+      trail.geom.setDrawRange(0, st.visible && !(demoLook.active && demoLook.hideTrail) ? n : 0);
     }
 
     // Sight lines: observing camera → subject chest. Drawn through walls only in X-ray.
@@ -263,16 +267,18 @@ const SubjectActor = memo(function SubjectActor({ track, xray }: { track: Subjec
           <ringGeometry args={[0.36, selected ? 0.46 : 0.41, 40]} />
           <meshBasicMaterial color={subject.color} transparent opacity={selected ? 0.9 : 0.5} toneMapped={false} side={THREE.DoubleSide} />
         </mesh>
-        <Html position={[0, subject.heightM + 0.32, 0]} center zIndexRange={[22, 0]} style={{ pointerEvents: "none" }}>
-          <div
-            ref={labelEl}
-            className="rounded border bg-ink-950/85 px-1.5 py-0.5 text-center font-mono text-[10px] leading-tight whitespace-nowrap backdrop-blur"
-            style={{ borderColor: subject.color }}
-          >
-            <div className="font-semibold tracking-wider text-slate-100">{subject.label}</div>
-            <div ref={statusEl} className="text-[9px]" />
-          </div>
-        </Html>
+        <group position={[0, subject.heightM + 0.32, 0]} ref={tagAnchorRef}>
+          <Html center zIndexRange={[22, 0]} style={{ pointerEvents: "none" }}>
+            <div
+              ref={tagRef}
+              className="rounded border bg-ink-950/85 px-1.5 py-0.5 text-center font-mono text-[10px] leading-tight whitespace-nowrap backdrop-blur"
+              style={{ borderColor: subject.color }}
+            >
+              <div className="font-semibold tracking-wider text-slate-100">{subject.label}</div>
+              <div ref={statusEl} className="text-[9px]" />
+            </div>
+          </Html>
+        </group>
       </group>
     </>
   );

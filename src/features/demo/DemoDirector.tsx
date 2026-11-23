@@ -6,10 +6,11 @@ import { subjects } from "../../config/subjects";
 import { videoRegistry } from "../../lib/videoRegistry";
 import { buildUniforms, buildWire, setBuildScripted } from "../../scene/buildIntro";
 import { setCeilingCut } from "../../scene/ceilingClip";
+import { setWindowFrames } from "../../scene/windowWallClip";
 import { useReplayStore } from "../../store/useReplayStore";
 import { useViewStore, type SubjectRenderMode } from "../../store/useViewStore";
 import type { CameraId, CameraMode, RoomBounds, Vec3 } from "../../types/security";
-import { pinTexture, unpinAll, useAppearanceStore } from "../reconstruction/useAppearanceStore";
+import { peekTexture, pinTexture, unpinAll, useAppearanceStore } from "../reconstruction/useAppearanceStore";
 import { useAvatarStore } from "../reconstruction/useAvatarStore";
 import { subjectSample } from "../sentry/SceneActors";
 import { evidenceAt } from "../sentry/useEvidence";
@@ -28,9 +29,13 @@ import {
   END_HOLD_SECONDS,
   frameWanted,
   FREEZE_TIME,
+  incidentTime,
   lookStateAt,
-  shownTime,
+  pathAt,
+  tagLiftAt,
+  videoRate,
   videosLive,
+  windowFramesAt,
 } from "./demoScript";
 import { useDemoStore } from "./useDemoStore";
 
@@ -57,6 +62,9 @@ const roll = new THREE.Quaternion();
 const point = new THREE.Vector3();
 const subjectMeta = subjects.find((s) => s.id === DEMO_SUBJECT);
 
+/** Demo times drawn once behind the loading card: every look, and the path, has its shaders compiled by then. */
+const WARM_UP = [5.6, 6.8, 7.9, 9.6, 11.9, 13.5, 15.6, 17.9, 19.0, 20.9, 21.7, 22.6, 23.0];
+
 const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
 const frames = async (n: number) => {
   for (let i = 0; i < n; i++) await nextFrame();
@@ -66,6 +74,21 @@ async function until(test: () => boolean, timeoutMs: number) {
   while (!test() && performance.now() - t0 < timeoutMs) await nextFrame();
   return test();
 }
+/** `job` over every item, at most `limit` of them under way at a time; results in the items' order. */
+async function pooled<T, R>(items: readonly T[], limit: number, job: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await job(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+/** Footage frames asked for at a time while the walkthrough loads (several hundred in all). */
+const FRAMES_AT_ONCE = 48;
 
 /** The recordings sit on the frame of the shown time (or cannot play in this browser at all). */
 function videosSettled(masterTime: number) {
@@ -122,15 +145,17 @@ export function DemoDirector() {
     const bounds = view.roomBounds ?? FALLBACK_BOUNDS;
 
     // ---- incident time
-    const T = shownTime(e);
+    const T = incidentTime(e);
     const live = videosLive(e);
     if (demoLook.holdVideos === live) {
       demoLook.holdVideos = !live;
       if (live) resync.current = true;
     }
     if (live && running && !manual) {
-      // The recordings are on screen: they play at their own rate and the clock only steers them.
-      if (!replay.isPlaying || replay.playbackSpeed !== 1) useReplayStore.setState({ isPlaying: true, playbackSpeed: 1 });
+      // The recordings are on screen: they play by themselves (faster through the pass of the cameras) and
+      // the clock only steers them.
+      const rate = videoRate(e);
+      if (!replay.isPlaying || replay.playbackSpeed !== rate) useReplayStore.setState({ isPlaying: true, playbackSpeed: rate });
       if (resync.current || Math.abs(replay.currentTime - T) > 0.25) replay.seek(T);
       else useReplayStore.setState({ currentTime: T });
       resync.current = false;
@@ -149,8 +174,10 @@ export function DemoDirector() {
     const subject: Vec3 = frozen ? frozen.position : [-0.05, bounds.min[1], 0.42];
     const cam = cameraAt(e, { poses: replay.cameraPoses, bounds, aspect: size.width / Math.max(size.height, 1), subject, live: here ? here.position : null });
     camera.position.set(cam.p[0], cam.p[1], cam.p[2]);
-    camera.up.set(0, 1, 0);
+    if (cam.up) camera.up.set(cam.up[0], cam.up[1], cam.up[2]);
+    else camera.up.set(0, 1, 0);
     camera.lookAt(cam.t[0], cam.t[1], cam.t[2]);
+    camera.up.set(0, 1, 0);
     if (cam.roll) camera.quaternion.multiply(roll.setFromAxisAngle(AXIS_Z, cam.roll * DEG));
     if (Math.abs(camera.fov - cam.fov) > 1e-4) {
       camera.fov = cam.fov;
@@ -170,6 +197,7 @@ export function DemoDirector() {
     if (buildWire.object) buildWire.object.visible = build.texY < 1e5; // fully textured: no wire passes its shader
     const cutY = bounds.max[1] - roomConfig.ceilingCutOffset;
     setCeilingCut(ceilingShown(e, cutY, build.wireY), cutY);
+    setWindowFrames(windowFramesAt(e));
 
     // ---- viewer state (only written when it changes)
     const cctv = cctvAt(e);
@@ -187,6 +215,12 @@ export function DemoDirector() {
     demoLook.holoStyle = look.holoStyle;
     demoLook.holoBand = bounds.min[1] + look.holoBand;
     demoLook.hideTags = look.hideTags;
+    demoLook.hideTrail = look.hideTrail;
+    demoLook.tagLift = tagLiftAt(e);
+    const path = pathAt(e);
+    demoLook.path.draw = path.draw;
+    demoLook.path.alpha = path.alpha;
+    demoLook.path.labels = path.labels;
 
     // ---- tracking bracket: the fused track's own values, projected into the viewport
     const b = demoLook.bracket;
@@ -250,24 +284,22 @@ export function DemoDirector() {
       // 2. every footage frame the walkthrough draws, loaded and kept before the clock starts
       const clip = useAppearanceStore.getState().clips[DEMO_CLIP];
       const files: string[] = [];
-      if (clip) for (const id of CAMERA_ORDER) for (const f of clip.cameras[id]?.frames ?? []) if (f.file && frameWanted(f.masterTime, f.k)) files.push(f.file);
+      if (clip) for (const id of CAMERA_ORDER) for (const f of clip.cameras[id]?.frames ?? []) if (f.file && frameWanted(f.masterTime)) files.push(f.file);
+      // (A stepped recording waits for every frame anyway: it waits for all of these, and skips the two warm-up steps below.)
+      const stepped = useDemoStore.getState().manual;
       let done = 0;
       const textures = await Promise.race([
-        Promise.all(
-          files.map((file) =>
-            pinTexture(DEMO_CLIP, file).then((t) => {
-              done++;
-              if (done % 12 === 0) progress(0.1 + 0.7 * (done / files.length));
-              return t;
-            }),
-          ),
-        ),
-        new Promise<null>((res) => setTimeout(() => res(null), 30_000)), // slow link: start anyway, frames arrive as they load
+        pooled(files, FRAMES_AT_ONCE, async (file) => {
+          if (cancelled) return null;
+          const t = await pinTexture(DEMO_CLIP, file);
+          done++;
+          if (done % 12 === 0) progress(0.1 + 0.7 * (done / files.length));
+          return t;
+        }),
+        new Promise<null>((res) => setTimeout(() => res(null), stepped ? 180_000 : 30_000)), // slow link: start anyway, frames arrive as they load
       ]);
       if (!alive()) return;
       progress(0.8);
-      // (A stepped recording waits for every frame anyway: it skips the two warm-up steps below.)
-      const stepped = useDemoStore.getState().manual;
       if (textures && !stepped) {
         // upload now, a few per frame, so no frame of the walkthrough waits for it
         let n = 0;
@@ -283,7 +315,7 @@ export function DemoDirector() {
       progress(0.88);
 
       // 3. draw each look once behind the loading card: shaders compile now, not mid-walkthrough
-      for (const e of stepped ? [] : [3.6, 5.0, 6.2, 7.8, 9.6, 11.4, 13.1, 14.6, 16.3, 17.1, 18.1]) {
+      for (const e of stepped ? [] : WARM_UP) {
         warm.current = e;
         await frames(2);
         if (!alive()) return;
@@ -325,10 +357,18 @@ export function DemoDirector() {
     demoLook.holoStyle = 0;
     demoLook.coverage = 1;
     demoLook.hideTags = false;
+    demoLook.hideTrail = false;
+    demoLook.tagLift = 0;
+    demoLook.path.draw = 0;
+    demoLook.path.alpha = 0;
+    demoLook.path.labels = 0;
+    demoLook.pathInfo.drawn = 0;
+    for (const mark of demoLook.marks) mark.on = false;
     demoLook.holdVideos = false;
     demoLook.bracket.on = false;
     demoLook.applied = -1;
     setBuildScripted(false);
+    setWindowFrames(1);
     unpinAll();
     const bounds = useViewStore.getState().roomBounds ?? FALLBACK_BOUNDS;
     setCeilingCut(snap.showCeiling || snap.mode === "cctv", bounds.max[1] - roomConfig.ceilingCutOffset);
@@ -377,13 +417,17 @@ export function DemoDirector() {
       step: (e: number) => useDemoStore.setState({ elapsed: Math.min(Math.max(e, 0), DEMO_DURATION) }),
       state: () => {
         const s = useDemoStore.getState();
-        return { phase: s.phase, elapsed: s.elapsed, progress: s.progress, duration: DEMO_DURATION };
+        // footage frames of the walkthrough that are not loaded (a recording checks this is 0 before its first frame)
+        const clip = useAppearanceStore.getState().clips[DEMO_CLIP];
+        let framesMissing = 0;
+        if (clip) for (const id of CAMERA_ORDER) for (const f of clip.cameras[id]?.frames ?? []) if (f.file && frameWanted(f.masterTime) && !peekTexture(DEMO_CLIP, f.file)) framesMissing++;
+        return { phase: s.phase, elapsed: s.elapsed, progress: s.progress, duration: DEMO_DURATION, framesMissing };
       },
       ready: () => {
         const s = useDemoStore.getState();
         if (s.phase !== "running" && s.phase !== "ended") return false;
         if (Math.abs(demoLook.applied - s.elapsed) > 1e-6) return false;
-        return demoLook.holdVideos || videosSettled(shownTime(s.elapsed));
+        return demoLook.holdVideos || videosSettled(incidentTime(s.elapsed));
       },
     };
     (window as unknown as Record<string, unknown>).__sentryDemo = handle;

@@ -3,13 +3,43 @@ import { addAfterEffect } from "@react-three/fiber";
 import { X } from "lucide-react";
 import { securityCameras } from "../../config/cameras";
 import { formatClock } from "../../lib/format";
+import { evidenceAt } from "../sentry/useEvidence";
 import { demoLook } from "./demoLook";
-import { BEAT, cctvAt, chapterAt, CHAPTERS, clamp01, easeOut, flashAt, FREEZE_LOOKS, lookStateAt, rateLabel, scanLinesAt, shownTime, span, wallAt } from "./demoScript";
+import { useLabelObstacle } from "./labelFit";
+import {
+  BEAT,
+  chapterAt,
+  CHAPTERS,
+  clamp01,
+  DEMO_SUBJECT,
+  easeOut,
+  flashAt,
+  FREEZE_LOOKS,
+  incidentTime,
+  lockCamAt,
+  lookStateAt,
+  pathReadout,
+  rateLabel,
+  scanLinesAt,
+  span,
+  wallAt,
+} from "./demoScript";
 import { useDemoStore } from "./useDemoStore";
 
-type Widget = "footage" | "cameras" | "looks" | null;
-const widgetAt = (e: number): Widget =>
-  e >= BEAT.reveal && e < BEAT.melt + 0.15 ? "footage" : e >= BEAT.cameras && e < BEAT.isolate ? "cameras" : e >= BEAT.freeze && e < BEAT.end ? "looks" : null;
+type Widget = "cameras" | "footage" | "path" | "tracking" | "looks" | null;
+/** The little control that moves by itself at the bottom right. */
+const widgetAt = (e: number): Widget => {
+  if (e >= BEAT.lock + 0.3 && e < BEAT.reveal) return "cameras";
+  if (e >= BEAT.reveal && e < BEAT.melt + 0.15) return "footage";
+  if (pathReadout(e)) return "path";
+  if (e >= BEAT.orbit && e < BEAT.isolate) return "tracking";
+  if (e >= BEAT.freeze && e < BEAT.end) return "looks";
+  return null;
+};
+/** The camera named in the top bar: the one whose picture is on screen (once the wall's own labels are gone). */
+const namedCamAt = (e: number) => (e >= BEAT.lock + 0.3 ? lockCamAt(e) : null);
+/** The cameras that see the subject at demo time e, as one string ("cam1 cam3"): the replay's SEEN BY chips. */
+const observersAt = (e: number) => (e >= BEAT.orbit && e < BEAT.isolate ? (evidenceAt(DEMO_SUBJECT, incidentTime(e))?.observers ?? []).join(" ") : "");
 
 const chip = (on: boolean) =>
   `rounded border px-[0.9em] py-[0.45em] tracking-[0.14em] whitespace-nowrap ${
@@ -27,7 +57,8 @@ export function DemoOverlay() {
   const stop = useDemoStore((s) => s.stop);
   const chapter = useDemoStore((s) => chapterAt(s.elapsed));
   const widget = useDemoStore((s) => widgetAt(s.elapsed));
-  const cctv = useDemoStore((s) => (s.elapsed >= BEAT.reveal ? cctvAt(s.elapsed) : null));
+  const cctv = useDemoStore((s) => namedCamAt(s.elapsed));
+  const observers = useDemoStore((s) => observersAt(s.elapsed));
   const look = useDemoStore((s) => lookStateAt(s.elapsed).name);
   const percent = useDemoStore((s) => Math.round(s.progress * 100));
   const [hint, setHint] = useState(false);
@@ -43,6 +74,10 @@ export function DemoOverlay() {
   const footFill = useRef<HTMLDivElement>(null);
   const footKnob = useRef<HTMLDivElement>(null);
   const footText = useRef<HTMLSpanElement>(null);
+  const pathFill = useRef<HTMLDivElement>(null);
+  const pathText = useRef<HTMLSpanElement>(null);
+  const pathSub = useRef<HTMLDivElement>(null);
+  const marks = useRef<(HTMLDivElement | null)[]>([]);
   const flash = useRef<HTMLDivElement>(null);
   const lines = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
@@ -53,6 +88,8 @@ export function DemoOverlay() {
   const readout = useRef<HTMLDivElement>(null);
   const readoutText = useRef<HTMLDivElement>(null);
   const readoutSub = useRef<HTMLDivElement>(null);
+  useLabelObstacle(bracket);
+  useLabelObstacle(side);
   /** Writes the demo clock's state to the elements above. */
   const sync = useRef<() => void>(() => {});
 
@@ -67,7 +104,7 @@ export function DemoOverlay() {
       const ch = chapterAt(e);
       const out = 1 - span(e, BEAT.end, BEAT.end + 0.3); // the chrome leaves for the end card
 
-      text(time.current, formatClock(shownTime(e)));
+      text(time.current, formatClock(incidentTime(e)));
       text(rate.current, rateLabel(e));
       if (top.current) top.current.style.opacity = String(out);
       if (bottom.current) bottom.current.style.opacity = String(out);
@@ -89,6 +126,22 @@ export function DemoOverlay() {
       if (footFill.current) footFill.current.style.width = `${(footage * 100).toFixed(1)}%`;
       if (footKnob.current) footKnob.current.style.left = `${(footage * 100).toFixed(1)}%`;
       text(footText.current, `${Math.round(footage * 100)}%`);
+
+      // the tracked path: metres so far, and its labels riding on the points they name
+      const info = demoLook.pathInfo;
+      if (pathFill.current) pathFill.current.style.width = `${(info.length > 0 ? clamp01(info.drawn / info.length) * 100 : 0).toFixed(1)}%`;
+      text(pathText.current, `${info.drawn.toFixed(1)} m`);
+      text(pathSub.current, info.length > 0 ? `${formatClock(info.start)} \u2192 ${formatClock(info.end)} \u00B7 ${(info.end - info.start).toFixed(1)} S ON SCENE` : "");
+      marks.current.forEach((el, i) => {
+        const mark = demoLook.marks[i];
+        if (!el || !mark) return;
+        el.style.display = mark.on ? "block" : "none";
+        if (!mark.on) return;
+        text(el, mark.text);
+        el.style.opacity = demoLook.path.labels.toFixed(3);
+        // the entry's label above its point, the others under theirs (entry and exit are half a metre apart)
+        el.style.transform = `translate3d(${mark.x.toFixed(1)}px, ${mark.y.toFixed(1)}px, 0) translate(-50%, ${i === 0 ? "calc(-100% - 1.5em)" : "1.5em"})`;
+      });
 
       if (flash.current) flash.current.style.opacity = flashAt(e).toFixed(3);
       // CCTV look (scan lines) while the viewport is one of the cameras
@@ -172,7 +225,18 @@ export function DemoOverlay() {
             </div>
           </div>
 
-          {/* top bar */}
+          {/* labels on the tracked path */}
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              ref={(el) => {
+                marks.current[i] = el;
+              }}
+              className="absolute top-0 left-0 border-l-2 border-red-400 bg-ink-950/85 px-[0.7em] py-[0.35em] tracking-[0.12em] whitespace-nowrap text-red-50"
+              style={{ ...small, display: "none" }}
+            />
+          ))}
+
           {/* top bar (portrait: brand and clock on the first row, the camera's name on a row of its own) */}
           <div ref={top} className="absolute inset-x-0 top-0 flex items-center justify-between px-[2.2vw] pt-[2vh] portrait:flex-wrap portrait:gap-x-[0.9em] portrait:gap-y-[0.6em]" style={small}>
             <div className="flex items-center gap-[0.9em] portrait:contents">
@@ -235,6 +299,30 @@ export function DemoOverlay() {
                     ))}
                   </div>
                 )}
+                {widget === "path" && (
+                  <div className="w-[clamp(190px,26vw,380px)] portrait:w-full">
+                    <div className="flex items-baseline justify-between">
+                      <span className="tracking-[0.2em] text-slate-300">TRACKED PATH</span>
+                      <span ref={pathText} className="text-[1.5em] font-semibold text-red-50 tabular-nums">
+                        0.0 m
+                      </span>
+                    </div>
+                    <div className="mt-[0.7em] h-[0.45em] overflow-hidden rounded-full bg-ink-600">
+                      <div ref={pathFill} className="h-full rounded-full bg-red-500 shadow-[0_0_12px_rgba(248,60,70,0.9)]" style={{ width: "0%" }} />
+                    </div>
+                    <div ref={pathSub} className="mt-[0.7em] tracking-[0.12em] whitespace-nowrap text-slate-400" />
+                  </div>
+                )}
+                {widget === "tracking" && (
+                  <div className="flex items-center gap-[0.6em] portrait:flex-wrap">
+                    <span className="mr-[0.3em] tracking-[0.2em] text-slate-400">SEEN BY</span>
+                    {securityCameras.slice(0, 4).map((c, i) => (
+                      <span key={c.id} className={chip(observers.split(" ").includes(c.id))}>
+                        CAM 0{i + 1}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {widget === "looks" && (
                   <div className="flex gap-[0.6em] portrait:flex-wrap">
                     {FREEZE_LOOKS.map((l) => (
@@ -280,7 +368,7 @@ export function DemoOverlay() {
             <div className="mt-[2.4vh] pl-[0.3em] text-center tracking-[0.3em] text-slate-100" style={{ fontSize: "clamp(10px, min(2.1vh, 1.9vw), 26px)" }}>
               CCTV {"\u2192"} 4D FORENSIC RECONSTRUCTION
             </div>
-            <div className="mt-[1.4vh] pl-[0.2em] text-center tracking-[0.2em] text-slate-400" style={{ fontSize: "clamp(8px, min(1.5vh, 1.35vw), 17px)" }}>
+            <div className="mt-[1.4vh] pl-[0.2em] text-center tracking-[0.2em] text-slate-300" style={{ fontSize: "clamp(8px, min(1.5vh, 1.35vw), 17px)" }}>
               4 CAMERAS {"\u00B7"} LIDAR TWIN {"\u00B7"} SAM 2.1 {"\u00B7"} MULTI-CAMERA FUSION
             </div>
           </div>

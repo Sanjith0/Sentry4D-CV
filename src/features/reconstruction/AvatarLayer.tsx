@@ -62,6 +62,8 @@ const HOLD_FRAMES = 3;
 const POSE_GRID = 32;
 /** Wireframe view: strength of an object's lines (the room's are 0.3, in many layers). */
 const PROP_WIRE_OPACITY = 0.75;
+/** Height (m) above an object's origin (its feet) at which the room's wireframe front is taken to have reached it. */
+const PROP_WIRE_AT = 0.4;
 
 type Look = "model" | "hybrid";
 
@@ -849,19 +851,26 @@ function SubjectAvatar({ subjectId }: { subjectId: string }) {
     // Wireframe view (once the room is shown as one: after the page-load reveal): the handled objects are drawn
     // as wireframes like the room. The cameras whose cut-out of the shown frame contains such an object then keep
     // its pixels off the person.
-    const wire = buildUniforms.uWireMode.value > 0.5;
+    // Where the room turns to wireframe gradually (the walkthrough's dissolve, from the ceiling down), an object
+    // stays solid until the front of that dissolve reaches it: above the front there is wireframe, below it none yet.
+    const wireRoom = buildUniforms.uWireMode.value > 0.5;
+    let wired = false;
     let open = 0;
     motion.props?.forEach((data, i) => {
       const prop = model.props[i];
+      let wire = wireRoom;
       if (prop) {
         poseProp(prop, data, frame, shownK, projector?.slots ?? null);
+        wire = wireRoom && buildUniforms.uBuildTexY.value < prop.root.position.y + PROP_WIRE_AT;
         prop.setWire(wire);
       }
-      if (wire) projector?.slots.forEach((id, s) => {
+      if (!wire) return;
+      wired = true;
+      projector?.slots.forEach((id, s) => {
         if (id && (data.frames.cut?.[id]?.[shownK] || data.frames.inMatte?.[id]?.[shownK])) open |= 1 << s;
       });
     });
-    projector?.setSeeThrough(open, wire && !!motion.props?.length);
+    projector?.setSeeThrough(open, wired);
     if (projector) {
       // the cameras' depth maps of this pose, before the frame is drawn
       model.root.updateMatrixWorld(true);
