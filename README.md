@@ -207,7 +207,7 @@ Click a camera marker in the 3D view to look through it (its feed highlights). C
 | 11.7 s | straight above the room: the subject's whole path across the floor, drawn in red (entry, longest stop, exit, metres walked) |
 | 13.2 s | incident replay in fast-forward while the camera orbits the whole room and comes down to the subject (the scanned frames of the window wall dissolve, so the room stays open to the camera as it passes outside) |
 | 17.9 s | wireframe room, the subject alone with the tracking readout |
-| 20.2 s | freeze; a free camera circles the subject: real footage / X-ray / tracking / full 3D |
+| 20.2 s | slow motion (0.4×): a free camera circles the subject and walks with him as he carries the chair on: real footage / X-ray / tracking / full 3D |
 | 23.2 s | end card (stays 5 s, then the demo closes itself) |
 
 **Esc** leaves at any time (on a touch screen: tap, then EXIT DEMO). For a clean screen recording put the browser in full screen first. The walkthrough is built for a landscape window; an upright phone gets a simplified stacked layout.

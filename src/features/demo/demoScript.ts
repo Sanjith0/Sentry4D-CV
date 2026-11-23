@@ -19,7 +19,7 @@ import { homePose } from "../../scene/cameraPoses";
  *  11.7  straight above the room: the subject's whole path across the floor, drawn in red
  *  13.2  incident replay while the camera orbits the room and comes down to the subject
  *  17.9  wireframe room: the subject alone, lifting the chair
- *  20.2  freeze; free camera around the subject: footage / X-ray / tracking / full texture
+ *  20.2  slow motion; free camera around the subject as he walks: footage / X-ray / tracking / full texture
  *  23.2  end card
  */
 export const DEMO_DURATION = 24.4;
@@ -29,8 +29,12 @@ export const DEMO_SUBJECT = "subject-01";
 export const DEMO_CLIP = "clip02";
 /** Incident time shown at e = 0: the subject is walking up the room, in sight of all four cameras. */
 export const DEMO_START_TIME = 10.8;
-/** Incident time of the freeze frame (the subject mid-stride, carrying the chair). */
+/** Incident time at the start of the free camera (the subject mid-stride, carrying the chair). */
 export const FREEZE_TIME = 20.5;
+/** Under the free camera the incident keeps playing, in slow motion at this rate. */
+export const SLOW_RATE = 0.4;
+/** Seconds over which the replay eases from the isolate beat's pace down to SLOW_RATE. */
+const SLOW_EASE = 0.3;
 
 export const BEAT = {
   wall: 0,
@@ -176,8 +180,10 @@ export function incidentTime(e: number): number {
   if (e < BEAT.orbit) return REWOUND_TIME;
   if (e < BEAT.isolate) return REWOUND_TIME + ORBIT_RATE * (e - BEAT.orbit);
   if (e < BEAT.freeze) return lerp(ISOLATE_TIME, FREEZE_TIME, span(e, BEAT.isolate, BEAT.freeze));
-  if (e < BEAT.end) return FREEZE_TIME;
-  return FREEZE_TIME + 0.3 * span(e, BEAT.end, DEMO_DURATION);
+  // slow motion under the free camera: the pace eases down from the isolate beat's (no jump in his motion)
+  const x = e - BEAT.freeze;
+  const r0 = (FREEZE_TIME - ISOLATE_TIME) / (BEAT.freeze - BEAT.isolate);
+  return FREEZE_TIME + SLOW_RATE * x + (r0 - SLOW_RATE) * SLOW_EASE * (1 - Math.exp(-x / SLOW_EASE));
 }
 
 /** Footage frames the walkthrough draws (loaded and kept before the clock starts). */
@@ -194,8 +200,7 @@ export function rateLabel(e: number): string {
   if (e < BEAT.orbit) return "\u275A\u275A PAUSED";
   if (e < BEAT.isolate) return `\u25B6\u25B6 ${ORBIT_RATE.toFixed(1)}\u00D7`;
   if (e < BEAT.freeze) return "\u25B6 REPLAY";
-  if (e < BEAT.end) return "\u275A\u275A FREEZE";
-  return "\u25B6 0.25\u00D7";
+  return `\u25B6 ${SLOW_RATE.toFixed(1)}\u00D7 SLOW-MO`;
 }
 
 // ---------------------------------------------------------------- room build
@@ -433,7 +438,7 @@ export const CHAPTERS: Chapter[] = [
   { at: BEAT.path, rail: "PATH", title: "EVERY STEP. TRACKED.", sub: "His route across the floor, fused from four cameras" },
   { at: BEAT.orbit, rail: "REPLAY", title: "INCIDENT REPLAY", sub: "Four recordings fused on one clock" },
   { at: BEAT.isolate, rail: "ISOLATE", title: "SUBJECT ISOLATED", sub: "Tracked in 3D, lifted out of the video" },
-  { at: BEAT.freeze, rail: "FREE CAM", title: "FREE CAMERA. INFINITE ANGLES.", sub: "Freeze any moment and walk around it" },
+  { at: BEAT.freeze, rail: "FREE CAM", title: "FREE CAMERA. INFINITE ANGLES.", sub: "Slow motion: walk around him while it plays" },
 ];
 
 /** Index into CHAPTERS, or -1 during the end card. */
@@ -468,7 +473,7 @@ export interface DemoContext {
   poses: Record<CameraId, CameraPoseConfig>;
   bounds: RoomBounds;
   aspect: number;
-  /** Feet of the subject at FREEZE_TIME: centre of the free-camera orbit. */
+  /** Feet of the subject at FREEZE_TIME (the free camera's centre when his live position is unknown). */
   subject: Vec3;
   /** Feet of the subject at the shown time (null while absent). */
   live: Vec3 | null;
@@ -754,15 +759,18 @@ export function cameraAt(e: number, ctx: DemoContext): DemoCam {
   if (e < BEAT.orbit) return wideView(e, ctx);
 
   // From here on the camera keeps turning the same way: round the room and down (orbit), in to the subject
-  // (isolate), round the frozen moment (free camera), ending on CAM 01's side of the subject (filmed sharpest).
+  // (isolate), round him as he walks on in slow motion (free camera), ending on CAM 01's side of him (filmed sharpest).
+  // The circle is centred on him (his time-smoothed position), so it walks with him; during the orbit's
+  // descent its centre slides over from where he will be at the free camera's start.
   const S = ctx.subject;
+  const feet = ctx.live ?? S;
+  const C = lerp3(S, feet, smooth(span(e, CLOSE_FROM, BEAT.isolate)));
   const xs = [BEAT.isolate, BEAT.freeze, BEAT.end, DEMO_DURATION];
   const az = orbitAz(e, ctx) * DEG;
   const r = pchip(xs, [CLOSE.r, 2.3, 2.35, 3.1], e);
   const h = pchip(xs, [CLOSE.h, S[1] + 1.5, S[1] + 1.5, S[1] + 1.8], e);
-  const feet = ctx.live ?? S;
   const chest: Vec3 = [feet[0], feet[1] + 0.98, feet[2]];
-  const close: DemoCam = { p: [S[0] + r * Math.sin(az), h, S[2] + r * Math.cos(az)], t: chest, roll: 0, fov: pchip(xs, [home.fov, 58, 55, 55], e) };
+  const close: DemoCam = { p: [C[0] + r * Math.sin(az), h, C[2] + r * Math.cos(az)], t: chest, roll: 0, fov: pchip(xs, [home.fov, 58, 55, 55], e) };
   if (e >= BEAT.isolate) return close;
 
   // Orbit: the whole room in the frame, from straight above down to a three-quarter view, then in to the subject.
