@@ -15,9 +15,6 @@ const CORE = 0.1;
 const GLOW = 0.56;
 /** Above the scanned floor (m). */
 const LIFT = 0.035;
-/** Where the way back comes within MERGE[1] m of the way in it is pulled onto it (fully within MERGE[0]), so the
- *  shared corridor is one line. */
-const MERGE = [0.5, 0.9] as const;
 /** Spacing of the path's points (m). */
 const STEP = 0.05;
 const SAMPLE = 1 / 15;
@@ -106,54 +103,6 @@ function build(trajectory: Trajectory): Built | null {
   // 3. the longest stop: where the most time passes within one step of the path
   let stop = 1;
   for (let i = 1; i < n; i++) if (times[i] - times[i - 1] > times[stop] - times[stop - 1]) stop = i;
-  // 3b. the way in and the way back largely share one corridor (in from the door, back out to it), a few
-  //     centimetres to a few decimetres apart: drawn as two lines, they lie on top of each other and cross back
-  //     and forth. Where the way back runs near the way in it is pulled onto it, so that stretch is one line
-  //     (walked over twice) and only where his way back really leaves the way in is there a second line
-  const ramp = (x: number, lo: number, hi: number) => {
-    const u = clamp01((x - lo) / (hi - lo));
-    return u * u * (3 - 2 * u);
-  };
-  const onto: Vec3[] = [];
-  const pull: number[] = [];
-  for (let k = 0; k < n; k++) {
-    let best = Infinity;
-    let q = line[k];
-    if (k > stop)
-      for (let j = 0; j < stop; j++) {
-        const dd = (line[j][0] - line[k][0]) ** 2 + (line[j][2] - line[k][2]) ** 2;
-        if (dd < best) {
-          best = dd;
-          q = line[j];
-        }
-      }
-    onto.push(q);
-    // (none at the stop itself, where the two meet anyway, nor at the very ends)
-    pull.push(k > stop ? (1 - ramp(Math.sqrt(best), MERGE[0], MERGE[1])) * ramp((k - stop) * STEP, 0.15, 0.6) : 0);
-  }
-  // (the pull eased along the line, then the moved line smoothed, so it joins and leaves the way in without a kink)
-  const eased = pull.map((_, k) => {
-    let sum = 0;
-    let cnt = 0;
-    for (let j = Math.max(k - 10, stop + 1); j <= Math.min(k + 10, n - 1); j++) {
-      sum += pull[j];
-      cnt++;
-    }
-    return k > stop && cnt ? sum / cnt : 0;
-  });
-  const moved = line.map((p, k) => {
-    const u = eased[k];
-    return [p[0] + (onto[k][0] - p[0]) * u, p[1], p[2] + (onto[k][2] - p[2]) * u] as Vec3;
-  });
-  for (let k = stop + 1; k < n - 1; k++) {
-    const sum = [0, 0, 0];
-    let cnt = 0;
-    for (let j = Math.max(k - 4, stop); j <= Math.min(k + 4, n - 1); j++) {
-      for (let c = 0; c < 3; c++) sum[c] += moved[j][c];
-      cnt++;
-    }
-    line[k] = sum.map((v) => v / cnt) as Vec3;
-  }
   const at = line[stop];
   const near = raw.filter((p) => Math.hypot(p[0] - at[0], p[2] - at[2]) < 0.4).length * SAMPLE;
   const marks = [
@@ -163,7 +112,7 @@ function build(trajectory: Trajectory): Built | null {
   ];
 
   // 4. distance field on a grid over the floor, one layer for the way in (up to the stop) and one for the
-  //    way back (each is drawn on, and coloured, by how far along it the subject is)
+  //    way back: the two are two lines where the tracker put them, and each is drawn on, and glows, by itself
   const reach = GLOW + 2 * TEXEL;
   let x0 = Infinity;
   let x1 = -Infinity;
@@ -271,6 +220,7 @@ const fragmentShader = /* glsl */ `
   uniform sampler2D uField;
   uniform float uHead;   // metres of the path drawn
   uniform float uWalked; // metres of it the subject has walked at the shown time (< 0: none shown)
+  uniform float uOnBack; // 1 once he is on the way back (that pass is then drawn on top), else 0
   uniform float uAlpha;
   uniform float uTip;    // 0..1: the bright tip that draws the path
   uniform vec2 uTipAt;   // (world x, z)
@@ -301,9 +251,19 @@ const fragmentShader = /* glsl */ `
     return pow(1.0 - t, 2.0);
   }
 
-  // how far one pass has been walked over at this pixel: 1 behind him, 0 ahead
-  float walkedOver(float along) {
-    return uWalked < 0.0 ? 0.0 : 1.0 - smoothstep(uWalked - 0.08, uWalked + 0.08, along);
+  // One pass of the path (way in or way back) on its own: colour and coverage. Behind him (s up to uWalked)
+  // cyan, ahead of him red.
+  vec4 pass(vec2 f, float d) {
+    float soft = max(fwidth(d), 0.002);
+    float core = 1.0 - smoothstep(CORE - soft, CORE + soft, d);
+    float walked = uWalked < 0.0 ? 0.0 : 1.0 - smoothstep(uWalked - 0.08, uWalked + 0.08, f.y);
+    vec3 color = mix(mix(uGlow, uCore, core), mix(uWalkGlow, uWalkCore, core), walked);
+    // a lighter thread down the middle, and light running along it the way the subject walked
+    float thread = 1.0 - smoothstep(CORE * 0.08, CORE * 0.5, d);
+    float run = pow(0.5 + 0.5 * sin((f.y - uTime * 2.6) * 3.6), 6.0);
+    color = mix(color, mix(uHot, uWalkHot, walked), thread * (0.2 + 0.7 * run));
+    float glow = 0.8 * halo(d);
+    return vec4(color, min(1.0, max(core * 0.97, glow)));
   }
 
   void main() {
@@ -313,22 +273,19 @@ const fragmentShader = /* glsl */ `
     float d = min(dIn, dBack);
     if (d >= GLOW || uHead <= 0.0) discard;
 
-    // One line, red until he has walked over it and cyan from then on. Where the way back lies on the way
-    // in (they are merged there) it is the same line: already cyan when he comes back along it. A pass
-    // counts at this pixel when it is (about) the nearest one.
-    float hasIn = 1.0 - smoothstep(0.02, 0.1, dIn - d);
-    float hasBack = 1.0 - smoothstep(0.02, 0.1, dBack - d);
-    float walked = max(hasIn * walkedOver(f.g), hasBack * walkedOver(f.a));
-    float along = hasIn > 0.5 ? f.g : f.a;
-
-    float soft = max(fwidth(d), 0.002);
-    float core = 1.0 - smoothstep(CORE - soft, CORE + soft, d);
-    vec3 color = mix(mix(uGlow, uCore, core), mix(uWalkGlow, uWalkCore, core), walked);
-    // a lighter thread down the middle, and light running along it the way the subject walked
-    float thread = 1.0 - smoothstep(CORE * 0.08, CORE * 0.5, d);
-    float run = pow(0.5 + 0.5 * sin((along - uTime * 2.6) * 3.6), 6.0);
-    color = mix(color, mix(uHot, uWalkHot, walked), thread * (0.2 + 0.7 * run));
-    float alpha = min(1.0, max(core * 0.97, 0.8 * halo(d)));
+    // each pass is coloured by itself and one is laid over the other: a line over the other's glow, so the
+    // two lanes both show side by side; where the lines themselves cross, the one he is on (always the
+    // same one, so the colours do not flip back and forth along a shared stretch)
+    vec4 pIn = dIn < GLOW ? pass(f.rg, dIn) : vec4(0.0);
+    vec4 pBack = dBack < GLOW ? pass(f.ba, dBack) : vec4(0.0);
+    float lineIn = 1.0 - smoothstep(CORE * 0.8, CORE * 1.3, dIn);
+    float lineBack = 1.0 - smoothstep(CORE * 0.8, CORE * 1.3, dBack);
+    bool onBack = uWalked < 0.0 ? dBack < dIn : uOnBack > 0.5;
+    bool backOnTop = abs(lineIn - lineBack) > 0.02 ? lineBack > lineIn : onBack;
+    vec4 top = backOnTop ? pBack : pIn;
+    vec4 below = backOnTop ? pIn : pBack;
+    float alpha = top.a + below.a * (1.0 - top.a);
+    vec3 color = alpha > 0.0 ? (top.rgb * top.a + below.rgb * below.a * (1.0 - top.a)) / alpha : top.rgb;
 
     // the tip that draws it
     float tip = uTip * exp(-pow(distance(vAt, uTipAt) / 0.24, 2.0));
@@ -357,6 +314,7 @@ const uniforms = {
   uField: { value: null as THREE.Texture | null },
   uHead: { value: 0 },
   uWalked: { value: -1 },
+  uOnBack: { value: 0 },
   uAlpha: { value: 0 },
   uTip: { value: 0 },
   uTipAt: { value: new THREE.Vector2() },
@@ -421,6 +379,7 @@ function Path() {
     uniforms.uField.value = built.field;
     uniforms.uHead.value = head;
     uniforms.uWalked.value = path.follow ? walked : -1;
+    uniforms.uOnBack.value = walked >= stop.s ? 1 : 0;
     uniforms.uAlpha.value = path.alpha;
     uniforms.uTip.value = path.draw < 1 ? Math.min(1, path.draw * 12) : 0;
     pointAt(built, head, uniforms.uTipAt.value);
@@ -456,8 +415,7 @@ function Path() {
 /**
  * Demo walkthrough: the subject's whole path across the floor as a glowing line, from the same fused track
  * that moves the body. It is drawn on from the entry (demoLook.path.draw); when it follows the subject the
- * part he has walked over by the shown time is cyan and the rest red (where his way back runs along his way
- * in, the two are one line, already cyan when he comes back over it), and it is cleared
+ * part he has walked by the shown time is cyan and the part still ahead of him red, and it is cleared
  * under his feet (inside the scene's ring on him). It publishes its length and its labelled points for the overlay.
  *
  * The line is not a strip of triangles along the path (that folds over itself where the subject turns round
