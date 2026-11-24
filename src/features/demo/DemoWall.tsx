@@ -8,7 +8,7 @@ import type { CameraId, SecurityCamera } from "../../types/security";
 import type { AppearanceClipManifest } from "../reconstruction/ReconstructionTypes";
 import { peekTexture, useAppearanceStore } from "../reconstruction/useAppearanceStore";
 import { CCTV_ASPECT } from "../../config/cctv";
-import { clamp01, DEMO_CLIP, DEMO_SUBJECT, footageBand, lerp, wallAt } from "./demoScript";
+import { clamp01, DEMO_CLIP, DEMO_SUBJECT, footageBand, lerp, LOCK_FIRST, wallAt } from "./demoScript";
 import { useDemoStore } from "./useDemoStore";
 
 const INK = "#04070c";
@@ -260,7 +260,7 @@ function drawFeed(ctx: CanvasRenderingContext2D, env: Env, cam: SecurityCamera, 
 
 /**
  * The opening of the demo walkthrough, drawn from the same <video> elements the feed panel plays: the four
- * recordings as a CCTV wall with the subject's SAM 2.1 cut-out lit in each, a push into CAM 01 until it
+ * recordings as a CCTV wall with the subject's SAM 2.1 cut-out lit in each, a push into the first camera of the pass (CAM 02) until it
  * fills the screen, each camera's recording in turn as the viewport underneath flies from camera to camera
  * (dissolving out as it leaves one and back in as it arrives at the next), and the fade ("real footage"
  * 100% → 0%) onto the 3D viewport underneath, which shows the same view.
@@ -301,9 +301,9 @@ export function DemoWall() {
       ctx.fillStyle = INK;
       ctx.fillRect(0, 0, W, H);
 
-      // 2x2 tiles with the viewport's own aspect, so tile 1 can grow into the full screen without a jump.
-      // (Room is left above for the demo's top bar and below for its caption.)
-      // Portrait window: the four 16:9 pictures in one column; tile 1 grows into the band the recording
+      // 2x2 tiles with the viewport's own aspect, so the tile of the pass's first camera can grow into the full
+      // screen without a jump. (Room is left above for the demo's top bar and below for its caption.)
+      // Portrait window: the four 16:9 pictures in one column; that tile grows into the band the recording
       // takes in the opened-up viewport (footageBand), changing its shape on the way.
       const replay = useReplayStore.getState();
       const aspect = W / H;
@@ -315,13 +315,17 @@ export function DemoWall() {
       const tw = th * (portrait ? CCTV_ASPECT : aspect);
       const left = (W - cols * tw - (cols - 1) * gap) / 2;
       const z = wall.zoom;
-      // everything grows by k about tile 1, which ends as the screen (portrait: as the band)
+      // everything grows by k about the tile the pass starts in, which ends as the screen (portrait: as the band)
+      const focus = Math.max(0, securityCameras.slice(0, 4).findIndex((c) => c.id === LOCK_FIRST));
+      const fc = focus % cols;
+      const fr = Math.floor(focus / cols);
       const k = lerp(tw, W, z) / tw;
-      const endH = portrait ? H * Math.min(1, footageBand(replay.cameraPoses[securityCameras[0].id].fov, aspect)) : H;
+      const endH = portrait ? H * Math.min(1, footageBand(replay.cameraPoses[securityCameras[focus].id].fov, aspect)) : H;
       const endY = (H - endH) / 2;
       const tileH = portrait ? lerp(th, endH, z) : th * k;
-      const x0 = lerp(left, 0, z);
-      const y0 = lerp(top0, endY, z);
+      // (the wall's own corner, such that the focus tile runs from its place in the wall to the screen's)
+      const x0 = lerp(left + fc * (tw + gap), 0, z) - fc * (tw + gap) * k;
+      const y0 = lerp(top0 + fr * (th + gap), endY, z) - fr * (tileH + gap * k);
 
       const env: Env = { clip: useAppearanceStore.getState().clips[DEMO_CLIP], offsets: replay.cameraOffsets, dpr, e };
       const font = portrait ? Math.max(8, tw * 0.036) : Math.max(9, H * 0.0165);
@@ -349,11 +353,11 @@ export function DemoWall() {
         const first = wall.view;
         securityCameras.slice(0, 4).forEach((cam, i) => {
           const r: Rect = { x: x0 + (i % cols) * (tw + gap) * k, y: y0 + Math.floor(i / cols) * (tileH + gap * k), w: tw * k, h: tileH };
-          if (r.x >= W || r.y >= H) return;
-          // (the other feeds' brackets leave with their names while CAM 01 takes the screen)
-          drawFeed(ctx, env, cam, r, style(r, i > 0 ? chrome : 1, chrome, i === 0 ? first.punch : 0, first.focusTime));
-          // portrait: the other feeds stay on screen under CAM 01's band, so they go dark as it grows
-          if (portrait && i > 0 && z > 0) {
+          if (r.x >= W || r.y >= H || r.x + r.w <= 0 || r.y + r.h <= 0) return;
+          // (the other feeds' brackets leave with their names while the focus tile takes the screen)
+          drawFeed(ctx, env, cam, r, style(r, i !== focus ? chrome : 1, chrome, i === focus ? first.punch : 0, first.focusTime));
+          // portrait: the other feeds stay on screen round the focus tile's band, so they go dark as it grows
+          if (portrait && i !== focus && z > 0) {
             ctx.globalAlpha = Math.min(1, z * 1.6);
             ctx.fillStyle = INK;
             ctx.fillRect(r.x - 1, r.y - 1, r.w + 2, r.h + 2);

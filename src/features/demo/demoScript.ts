@@ -10,16 +10,17 @@ import { homePose } from "../../scene/cameraPoses";
  * frame by frame (recording) with the same result.
  *
  *   0.0  wall of the four CCTV feeds, already playing; the subject picked out in each
- *   2.0  push into CAM 01, then the viewport flies through the room to CAM 02, 03, 04 and back to 01 (as the
- *        viewer's camera buttons do), each camera's recording dissolving in on arrival: the subject in every view
- *   6.0  real footage 100% → 0% on CAM 01: the 3D reconstruction is underneath, same framing
- *   7.6  LIDAR DIGITAL TWIN: the room melts to its wireframe (held 1.4 s); he keeps walking (into 0.55x)
- *   9.0  the subject fades out mid-stride as a hologram; the camera swings out to the overview while time rewinds and the
+ *   2.0  push into CAM 02, then the viewport flies through the room to CAM 03, 04 and 01 (as the viewer's
+ *        camera buttons do), each camera's recording dissolving in on arrival: the subject in every view
+ *        (the pass starts in CAM 02, not CAM 01: one flight fewer, and that time goes to the replay)
+ *   5.32 real footage 100% → 0% on CAM 01: the 3D reconstruction is underneath, same framing
+ *   6.92 LIDAR DIGITAL TWIN: the room melts to its wireframe (held 1.4 s); he keeps walking (into 0.55x)
+ *   8.32 the subject fades out mid-stride as a hologram; the camera swings out to the overview while time rewinds and the
  *        wireframe thins away evenly under a descending scan grid (no glowing front, no labels hopping)
- *  10.45 the empty grid and the four cameras' coverage; the room is rebuilt from the scan
- *  11.3  the replay starts (1.6x): he walks in as his whole path is drawn on (walked part cyan, rest red)
- *  12.3  straight above the room as he walks
- *  13.8  the replay carries on while the camera orbits the room and comes down to the subject (faster only
+ *   9.77 the empty grid and the four cameras' coverage; the room is rebuilt from the scan
+ *  10.62 the replay starts (1.5x): he walks in as his whole path is drawn on (walked part cyan, rest red)
+ *  11.62 straight above the room as he walks
+ *  13.12 the replay carries on while the camera orbits the room and comes down to the subject (faster only
  *        while he stands at the table)
  *  19.1  wireframe room: the subject alone, lifting the chair
  *  21.8  slow motion; free camera round the subject as he walks: footage / X-ray / full texture, coming to
@@ -43,12 +44,12 @@ const SLOW_EASE = 0.3;
 export const BEAT = {
   wall: 0,
   lock: 2.0,
-  reveal: 6.0,
-  melt: 7.6,
-  pivot: 9.0,
-  rebuild: 10.45,
-  path: 12.3,
-  orbit: 13.8,
+  reveal: 5.32,
+  melt: 6.92,
+  pivot: 8.32,
+  rebuild: 9.77,
+  path: 11.62,
+  orbit: 13.12,
   isolate: 19.1,
   freeze: 21.8,
   end: 23.8,
@@ -112,7 +113,8 @@ const RISE = BEAT.rebuild + 0.25;
  * The pass through the cameras at the lock. Leg by leg the viewport flies from one CCTV camera to the next
  * (as the viewer's own camera buttons move it), turned towards the subject on the way; the recording of the
  * camera it leaves dissolves out over the first LEAVE seconds of a leg, the next one's in over the last ARRIVE.
- * The long legs cross the whole room (CAM 02 → 03, CAM 04 → 01).
+ * The long legs cross the whole room (CAM 02 → 03, CAM 04 → 01). The pass starts in CAM 02 (the wall pushes
+ * into its tile) and ends in CAM 01, where the reveal and the twin play: every camera once, three flights.
  */
 interface LockLeg {
   from: CameraId;
@@ -121,11 +123,12 @@ interface LockLeg {
   len: number;
 }
 const LOCK_LEGS: LockLeg[] = [
-  { from: "cam1", to: "cam2", at: 2.55, len: 0.6 },
-  { from: "cam2", to: "cam3", at: 3.23, len: 0.9 },
-  { from: "cam3", to: "cam4", at: 4.21, len: 0.6 },
-  { from: "cam4", to: "cam1", at: 4.89, len: 0.9 },
+  { from: "cam2", to: "cam3", at: 2.55, len: 0.9 },
+  { from: "cam3", to: "cam4", at: 3.53, len: 0.6 },
+  { from: "cam4", to: "cam1", at: 4.21, len: 0.9 },
 ];
+/** The camera the wall pushes into: the pass starts there. */
+export const LOCK_FIRST: CameraId = LOCK_LEGS[0].from;
 /** Each recording is up on its own for only this long between two legs: the pass keeps moving. */
 const LEAVE = 0.1;
 const ARRIVE = 0.1;
@@ -166,7 +169,7 @@ const ISOLATE_TIME = 18.6;
  * ISOLATE_TIME on the isolate beat.
  */
 const WALK_FROM = BEAT.path - 1.0;
-const WALK_RATE = 1.6;
+const WALK_RATE = 1.5;
 const WALK_END_TIME = 11.8;
 const WALK_END = WALK_FROM + (WALK_END_TIME - REWOUND_TIME) / WALK_RATE;
 
@@ -190,9 +193,9 @@ function lockLegAt(e: number): { leg: LockLeg; u: number } | null {
   return null;
 }
 
-/** The camera the viewport is in, or (mid-leg) the nearer one; CAM 01 outside the pass. */
+/** The camera the viewport is in, or (mid-leg) the nearer one: the pass's first camera before it, CAM 01 after. */
 function lockStop(e: number): CameraId {
-  let id: CameraId = "cam1";
+  let id: CameraId = LOCK_FIRST;
   for (const leg of LOCK_LEGS) if (e >= leg.at + leg.len / 2) id = leg.to;
   return id;
 }
@@ -471,7 +474,7 @@ export interface WallState {
   view: WallView;
 }
 
-/** The wall's tile 1 has grown into the whole screen by here. */
+/** The wall's tile of the pass's first camera has grown into the whole screen by here. */
 const PUSHED = BEAT.lock + 0.5;
 
 export function wallAt(e: number): WallState {
