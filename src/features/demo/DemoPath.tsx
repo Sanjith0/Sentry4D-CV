@@ -324,10 +324,10 @@ const fragmentShader = /* glsl */ `
     float soft = max(fwidth(d), 0.002);
     float core = 1.0 - smoothstep(CORE - soft, CORE + soft, d);
     vec3 color = mix(mix(uGlow, uCore, core), mix(uWalkGlow, uWalkCore, core), walked);
-    // one solid stroke (no lighter stripe down the middle, which read as two thin lines), with a soft pulse
-    // of light running along it the way the subject walked
+    // a lighter thread down the middle, and light running along it the way the subject walked
+    float thread = 1.0 - smoothstep(CORE * 0.08, CORE * 0.5, d);
     float run = pow(0.5 + 0.5 * sin((along - uTime * 2.6) * 3.6), 6.0);
-    color = mix(color, mix(uHot, uWalkHot, walked), core * 0.18 * run);
+    color = mix(color, mix(uHot, uWalkHot, walked), thread * (0.2 + 0.7 * run));
     float alpha = min(1.0, max(core * 0.97, 0.8 * halo(d)));
 
     // the tip that draws it
