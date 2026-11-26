@@ -2,7 +2,7 @@ import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 import { roomConfig } from "../config/roomConfig";
 import { useViewStore } from "../store/useViewStore";
-import { setWindowClip } from "./windowWallClip";
+import { setWindowClip, windowGlass } from "./windowWallClip";
 import { applyBuildClip, buildUniforms } from "./buildIntro";
 
 /**
@@ -14,7 +14,7 @@ import { applyBuildClip, buildUniforms } from "./buildIntro";
 /** Fresnel glass: almost invisible face-on, a soft cool sheen at grazing angles. */
 function makeGlassMaterial(opacity = 0.07) {
   return new THREE.ShaderMaterial({
-    uniforms: { uTint: { value: new THREE.Color("#cfe9f5") }, uBase: { value: opacity }, uBuildTexY: buildUniforms.uBuildTexY },
+    uniforms: { uTint: { value: new THREE.Color("#cfe9f5") }, uBase: { value: opacity }, uShown: windowGlass, uBuildTexY: buildUniforms.uBuildTexY },
     vertexShader: /* glsl */ `
       varying vec3 vN; varying vec3 vV; varying float vY;
       #include <common>
@@ -28,7 +28,7 @@ function makeGlassMaterial(opacity = 0.07) {
         #include <logdepthbuf_vertex>
       }`,
     fragmentShader: /* glsl */ `
-      uniform vec3 uTint; uniform float uBase; uniform float uBuildTexY;
+      uniform vec3 uTint; uniform float uBase; uniform float uShown; uniform float uBuildTexY;
       varying vec3 vN; varying vec3 vV; varying float vY;
       #include <common>
       #include <logdepthbuf_pars_fragment>
@@ -38,7 +38,7 @@ function makeGlassMaterial(opacity = 0.07) {
         float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 3.0);
         // faint vertical gradient: a touch brighter toward the top, like sky reflection
         float g = 0.85 + 0.15 * smoothstep(0.0, 3.0, vY);
-        gl_FragColor = vec4(uTint * g, uBase + 0.32 * f);
+        gl_FragColor = vec4(uTint * g, (uBase + 0.32 * f) * uShown);
         #include <colorspace_fragment>
       }`,
     transparent: true,

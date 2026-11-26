@@ -8,7 +8,8 @@ import type { CameraId, SecurityCamera } from "../../types/security";
 import type { AppearanceClipManifest } from "../reconstruction/ReconstructionTypes";
 import { peekTexture, useAppearanceStore } from "../reconstruction/useAppearanceStore";
 import { CCTV_ASPECT } from "../../config/cctv";
-import { clamp01, DEMO_CLIP, DEMO_SUBJECT, footageBand, lerp, LOCK_FIRST, wallAt } from "./demoScript";
+import { clamp01, DEMO_CLIP, DEMO_SUBJECT, footageBand, lerp } from "./demoScript";
+import { activeScript } from "./scripts";
 import { useDemoStore } from "./useDemoStore";
 
 const INK = "#04070c";
@@ -53,6 +54,10 @@ interface FeedStyle {
   /** Bracket and tag stay between these heights (px): clear of the demo's top bar and caption. */
   safeTop: number;
   safeBottom: number;
+  /** 0..1: a search sweep crossing the picture (absent: none). */
+  scan?: number;
+  /** The tag on the bracket. */
+  tag: string;
 }
 
 interface Env {
@@ -195,7 +200,7 @@ function drawFeed(ctx: CanvasRenderingContext2D, env: Env, cam: SecurityCamera, 
         }
         ctx.stroke();
         const tf = st.tagFont;
-        const tag = `${subjectLabel} \u00B7 SAM 2.1`;
+        const tag = st.tag;
         ctx.font = `600 ${tf}px ${MONO}`;
         ctx.textBaseline = "bottom";
         const tagW = ctx.measureText(tag).width + tf * 1.0;
@@ -221,6 +226,22 @@ function drawFeed(ctx: CanvasRenderingContext2D, env: Env, cam: SecurityCamera, 
     ctx.textAlign = "center";
     ctx.fillText("NO SIGNAL", r.x + r.w / 2, r.y + r.h / 2);
     ctx.textAlign = "left";
+  }
+
+  // search sweep: a bright line crossing the picture, a fading wake behind it
+  if (ready && st.scan !== undefined && st.scan > 0 && st.scan < 1) {
+    const x = r.x + r.w * st.scan;
+    const wake = r.w * 0.22;
+    const g = ctx.createLinearGradient(x - wake, 0, x, 0);
+    g.addColorStop(0, "rgba(34,211,238,0)");
+    g.addColorStop(1, "rgba(34,211,238,0.28)");
+    ctx.fillStyle = g;
+    ctx.fillRect(x - wake, r.y, wake, r.h);
+    ctx.fillStyle = "rgba(207,250,254,0.95)";
+    ctx.shadowColor = "rgba(34,211,238,1)";
+    ctx.shadowBlur = 14 * env.dpr;
+    ctx.fillRect(x - st.line, r.y, st.line * 2, r.h);
+    ctx.shadowBlur = 0;
   }
 
   // the tile's own labels: name, video clock, frame (gone once a camera is the whole screen)
@@ -279,13 +300,17 @@ export function DemoWall() {
       raf = requestAnimationFrame(draw);
       const s = useDemoStore.getState();
       const e = s.elapsed;
-      const wall = wallAt(e);
+      const script = activeScript();
+      const wall = script.wallAt(e);
       // Already there (dark, behind the loading card) while the demo prepares: the frame in which the card
       // goes must not show the bare viewport underneath.
       const show = s.phase !== "idle" && wall.visible;
       el.style.display = show ? "block" : "none";
       if (!show) return;
       el.style.opacity = String(wall.footage);
+      // a wipe: the recording is cut away from the left, the 3D viewport underneath shows there
+      const clipPath = wall.wipe ? `inset(0 0 0 ${(wall.wipe * 100).toFixed(2)}%)` : "";
+      if (el.style.clipPath !== clipPath) el.style.clipPath = clipPath;
 
       const W = el.clientWidth;
       const H = el.clientHeight;
@@ -310,13 +335,14 @@ export function DemoWall() {
       const portrait = aspect < 1;
       const cols = portrait ? 1 : 2;
       const top0 = 0.08 * H;
+      const below = (wall.reserve ?? 0.165) * H;
       const gap = 0.02 * H;
-      const th = portrait ? Math.min((H - top0 - 0.165 * H - 3 * gap) / 4, (0.95 * W) / CCTV_ASPECT) : (H - top0 - 0.165 * H - gap) / 2;
+      const th = portrait ? Math.min((H - top0 - below - 3 * gap) / 4, (0.95 * W) / CCTV_ASPECT) : (H - top0 - below - gap) / 2;
       const tw = th * (portrait ? CCTV_ASPECT : aspect);
       const left = (W - cols * tw - (cols - 1) * gap) / 2;
       const z = wall.zoom;
       // everything grows by k about the tile the pass starts in, which ends as the screen (portrait: as the band)
-      const focus = Math.max(0, securityCameras.slice(0, 4).findIndex((c) => c.id === LOCK_FIRST));
+      const focus = Math.max(0, securityCameras.slice(0, 4).findIndex((c) => c.id === script.LOCK_FIRST));
       const fc = focus % cols;
       const fr = Math.floor(focus / cols);
       const k = lerp(tw, W, z) / tw;
@@ -329,9 +355,12 @@ export function DemoWall() {
 
       const env: Env = { clip: useAppearanceStore.getState().clips[DEMO_CLIP], offsets: replay.cameraOffsets, dpr, e };
       const font = portrait ? Math.max(8, tw * 0.036) : Math.max(9, H * 0.0165);
-      const style = (r: Rect, mark: number, chrome: number, punch: number, focusTime: number): FeedStyle => ({
-        highlight: wall.highlight,
-        dim: wall.dim,
+      const tag = wall.tag ?? `${subjectLabel} \u00B7 SAM 2.1`;
+      const style = (r: Rect, mark: number, chrome: number, punch: number, focusTime: number, index = -1): FeedStyle => ({
+        highlight: wall.highlights?.[index] ?? wall.highlight,
+        scan: wall.scan,
+        tag,
+        dim: wall.highlights?.[index] ?? wall.dim,
         tint: wall.tint,
         mark,
         punch,
@@ -355,7 +384,7 @@ export function DemoWall() {
           const r: Rect = { x: x0 + (i % cols) * (tw + gap) * k, y: y0 + Math.floor(i / cols) * (tileH + gap * k), w: tw * k, h: tileH };
           if (r.x >= W || r.y >= H || r.x + r.w <= 0 || r.y + r.h <= 0) return;
           // (the other feeds' brackets leave with their names while the focus tile takes the screen)
-          drawFeed(ctx, env, cam, r, style(r, i !== focus ? chrome : 1, chrome, i === focus ? first.punch : 0, first.focusTime));
+          drawFeed(ctx, env, cam, r, style(r, i !== focus ? chrome : 1, chrome, i === focus ? first.punch : 0, first.focusTime, i));
           // portrait: the other feeds stay on screen round the focus tile's band, so they go dark as it grows
           if (portrait && i !== focus && z > 0) {
             ctx.globalAlpha = Math.min(1, z * 1.6);
@@ -373,7 +402,7 @@ export function DemoWall() {
       if (!cam) return;
       const bandH = portrait ? H * Math.min(1, footageBand(replay.cameraPoses[cam.id].fov, aspect)) : H;
       const r: Rect = { x: 0, y: (H - bandH) / 2, w: W, h: bandH };
-      drawFeed(ctx, env, cam, r, style(r, 1, 0, view.punch, view.focusTime));
+      drawFeed(ctx, env, cam, r, style(r, 1, 0, view.punch, view.focusTime, focus));
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);

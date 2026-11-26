@@ -26,7 +26,19 @@ export const buildUniforms = {
    * softly towards the front instead (a script draining the room: no white islands where the front cuts it).
    */
   uBuildLead: { value: 1 },
+  /**
+   * The scan is drawn only inside this box on the floor plan (min x, min z, max x, max z, world metres). Wide
+   * open by default; a script looking at the room from outside closes it round the room, so that what the scan
+   * caught beyond the walls does not stand in the view.
+   */
+  uBuildBox: { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) },
 };
+
+/** Limit the scan to the floor-plan box [minX, minZ, maxX, maxZ]; null: all of it. */
+export function setBuildBox(box: readonly [number, number, number, number] | null) {
+  if (box) buildUniforms.uBuildBox.value.set(box[0], box[1], box[2], box[3]);
+  else buildUniforms.uBuildBox.value.set(-1e6, -1e6, 1e6, 1e6);
+}
 
 /**
  * The room's wireframe twin while it is mounted. Nothing of it passes its shader while the textured front
@@ -145,7 +157,8 @@ export function finishBuild() {
 const BUILD_PARS = /* glsl */ `
 varying vec3 vBuildWorld;
 uniform float uBuildTexY; uniform float uBuildWireY; uniform vec3 uBuildGlow; uniform float uWireMode; uniform float uBuildTime;
-uniform float uBuildMinY; uniform float uBuildWireGain; uniform float uBuildLead;
+uniform float uBuildMinY; uniform float uBuildWireGain; uniform float uBuildLead; uniform vec4 uBuildBox;
+bool bOutside(vec3 p) { return p.x < uBuildBox.x || p.z < uBuildBox.y || p.x > uBuildBox.z || p.z > uBuildBox.w; }
 float bHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }`;
 
 function chainKey(material: THREE.Material, tag: string) {
@@ -171,6 +184,7 @@ export function applyBuildClip(material: THREE.Material) {
       .replace(
         "#include <clipping_planes_fragment>",
         `#include <clipping_planes_fragment>
+if (bOutside(vBuildWorld)) discard;
 if (uBuildTexY < 1e5) {
   // Digital dissolve: a noisy band just under the front materializes cell by cell.
   float n = bHash(floor(vBuildWorld * 28.0) + floor(uBuildTime * 12.0));
@@ -189,7 +203,7 @@ if (uBuildTexY < 1e5) {
 }`,
       );
   };
-  chainKey(material, "build-v2");
+  chainKey(material, "build-v3");
   material.needsUpdate = true;
 }
 
@@ -218,6 +232,7 @@ export function makeBuildWireMaterial(clippingPlanes: THREE.Plane[], opacity = 0
       .replace(
         "#include <clipping_planes_fragment>",
         `#include <clipping_planes_fragment>
+if (bOutside(vBuildWorld)) discard;
 if (vBuildWorld.y > uBuildWireY || vBuildWorld.y < uBuildTexY - 0.04 || vBuildWorld.y < uBuildMinY) discard;`,
       )
       .replace(
@@ -243,7 +258,7 @@ if (vBuildWorld.y > uBuildWireY || vBuildWorld.y < uBuildTexY - 0.04 || vBuildWo
   gl_FragColor.a *= trail * soft * uBuildWireGain; }`,
       );
   };
-  m.customProgramCacheKey = () => `sentry3d-build-wire-v4${dimmable ? "" : "-fixed"}`;
+  m.customProgramCacheKey = () => `sentry3d-build-wire-v5${dimmable ? "" : "-fixed"}`;
   return m;
 }
 

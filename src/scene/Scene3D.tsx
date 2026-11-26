@@ -20,6 +20,7 @@ import { AppearanceLayer } from "../features/reconstruction/AppearanceLayer";
 import { AvatarLayer } from "../features/reconstruction/AvatarLayer";
 import { DemoDirector } from "../features/demo/DemoDirector";
 import { DemoPath } from "../features/demo/DemoPath";
+import { Demo2Scene } from "../features/demo/Demo2Scene";
 import { DemoLabels } from "../features/demo/DemoLabels";
 
 export function SceneLighting() {
@@ -96,6 +97,7 @@ export function Scene3D() {
       <ViewportCameraProbe />
       <DemoDirector />
       <DemoPath />
+      <Demo2Scene />
       <DemoLabels />
       <PostFX />
     </Canvas>

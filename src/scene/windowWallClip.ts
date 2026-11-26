@@ -34,6 +34,12 @@ export function setWindowFrames(shown: number) {
   windowClipUniforms.uWinFrames.value = shown;
 }
 
+/** How much of the procedural glass is drawn, 0..1: seen from outside, a pane with no frames around it is a haze over the room. */
+export const windowGlass = { value: 1 };
+export function setWindowGlass(shown: number) {
+  windowGlass.value = shown;
+}
+
 /** Patch a material so fragments in the window-wall region are discarded when enabled. */
 export function applyWindowClip(material: THREE.Material) {
   const prev = material.onBeforeCompile;

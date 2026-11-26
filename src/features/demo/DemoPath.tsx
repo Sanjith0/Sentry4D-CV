@@ -13,6 +13,8 @@ import { useDemoStore } from "./useDemoStore";
 /** Half-width of the line itself, and how far its glow reaches from the centre line (m). */
 const CORE = 0.1;
 const GLOW = 0.56;
+/** The trail behind him (the second demo), as a share of that width. */
+const TRAIL_THIN = 0.5;
 /** Above the scanned floor (m). */
 const LIFT = 0.035;
 /** Spacing of the path's points (m). */
@@ -35,6 +37,8 @@ interface Built {
   times: number[];
   /** Labelled points: entry, longest stop, exit (world position, metres along the path, text). */
   marks: { p: Vec3; s: number; text: string }[];
+  /** The longest stop: seconds spent within 0.4 m of it, and the incident time he first is. */
+  dwell: { seconds: number; from: number };
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -105,6 +109,9 @@ function build(trajectory: Trajectory): Built | null {
   for (let i = 1; i < n; i++) if (times[i] - times[i - 1] > times[stop] - times[stop - 1]) stop = i;
   const at = line[stop];
   const near = raw.filter((p) => Math.hypot(p[0] - at[0], p[2] - at[2]) < 0.4).length * SAMPLE;
+  // (the first moment he is that near it: the stop's own clock starts there)
+  const firstNear = raw.findIndex((p) => Math.hypot(p[0] - at[0], p[2] - at[2]) < 0.4);
+  const dwell = { seconds: near, from: trajectory.start + Math.max(firstNear, 0) * SAMPLE };
   const marks = [
     { p: line[0], s: 0, text: `ENTRY ${formatClock(trajectory.start)}` },
     { p: at, s: stop * STEP, text: `DWELL ${near.toFixed(1)} S` },
@@ -202,7 +209,7 @@ function build(trajectory: Trajectory): Built | null {
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(position, 3));
   geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
   geometry.setIndex(index);
-  return { trajectory, geometry, field, length, line, times, marks };
+  return { trajectory, geometry, field, length, line, times, marks, dwell };
 }
 
 const vertexShader = /* glsl */ `
@@ -223,6 +230,7 @@ const fragmentShader = /* glsl */ `
   uniform float uOnBack; // 1 once he is on the way back (that pass is then drawn on top), else 0
   uniform float uAlpha;
   uniform float uTip;    // 0..1: the bright tip that draws the path
+  uniform float uThin;   // the line and its glow, as a share of their full width
   uniform vec2 uTipAt;   // (world x, z)
   uniform float uFeet;   // 0..1: the path is cleared under the subject's feet (at uFeetAt)
   uniform vec2 uFeetAt;
@@ -268,8 +276,8 @@ const fragmentShader = /* glsl */ `
 
   void main() {
     vec4 f = texture2D(uField, vUv);
-    float dIn = drawn(f.rg);
-    float dBack = drawn(f.ba);
+    float dIn = drawn(f.rg) / uThin;
+    float dBack = drawn(f.ba) / uThin;
     float d = min(dIn, dBack);
     if (d >= GLOW || uHead <= 0.0) discard;
 
@@ -317,6 +325,7 @@ const uniforms = {
   uOnBack: { value: 0 },
   uAlpha: { value: 0 },
   uTip: { value: 0 },
+  uThin: { value: 1 },
   uTipAt: { value: new THREE.Vector2() },
   uFeet: { value: 0 },
   uFeetAt: { value: new THREE.Vector2() },
@@ -366,14 +375,30 @@ function Path() {
     const m = mesh.current;
     if (!m) return;
     const { path, marks, pathInfo } = demoLook;
-    m.visible = !!built && path.alpha > 0.001 && path.draw > 0;
+    if (built) {
+      // (the track's own numbers, for the overlay, whether or not the path is drawn)
+      pathInfo.length = built.length;
+      pathInfo.start = built.trajectory.start;
+      pathInfo.end = built.trajectory.end;
+      pathInfo.dwell = built.dwell.seconds;
+      pathInfo.dwellFrom = built.dwell.from;
+      const first = built.line[0];
+      pathInfo.entry[0] = first[0];
+      pathInfo.entry[1] = first[1];
+      pathInfo.entry[2] = first[2];
+      const last = built.line[built.line.length - 1];
+      pathInfo.exit[0] = last[0];
+      pathInfo.exit[1] = last[1];
+      pathInfo.exit[2] = last[2];
+    }
+    m.visible = !!built && path.alpha > 0.001 && (path.draw > 0 || !!path.trail);
     if (!built || !m.visible) {
       for (const mark of marks) mark.on = false;
       return;
     }
     const t = useReplayStore.getState().currentTime;
     // the whole path is drawn on; following the subject, the part behind him is in the walked colour
-    const head = path.draw * built.length;
+    const head = path.trail ? alongAt(built, t) : path.draw * built.length;
     const walked = Math.min(alongAt(built, t), head);
     const [entry, stop, exit] = built.marks;
     uniforms.uField.value = built.field;
@@ -381,7 +406,9 @@ function Path() {
     uniforms.uWalked.value = path.follow ? walked : -1;
     uniforms.uOnBack.value = walked >= stop.s ? 1 : 0;
     uniforms.uAlpha.value = path.alpha;
-    uniforms.uTip.value = path.draw < 1 ? Math.min(1, path.draw * 12) : 0;
+    // (the trail is watched from close by: a slimmer line there)
+    uniforms.uThin.value = path.trail ? TRAIL_THIN : 1;
+    uniforms.uTip.value = path.trail ? 0 : path.draw < 1 ? Math.min(1, path.draw * 12) : 0;
     pointAt(built, head, uniforms.uTipAt.value);
     // (where the scene draws his ring: his fused position at the shown time)
     const at = t > built.trajectory.start && t < built.trajectory.end ? built.trajectory.sample(t) : null;
@@ -395,9 +422,6 @@ function Path() {
 
     // (the readout counts the metres walked when following him, else the metres drawn)
     pathInfo.drawn = path.follow ? walked : head;
-    pathInfo.length = built.length;
-    pathInfo.start = built.trajectory.start;
-    pathInfo.end = built.trajectory.end;
     built.marks.forEach((mark, i) => {
       const out = marks[i];
       point.set(mark.p[0], mark.p[1] + LIFT, mark.p[2]).project(camera);

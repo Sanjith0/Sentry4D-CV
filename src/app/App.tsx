@@ -16,6 +16,7 @@ import { useEvidenceSync } from "../features/sentry/useEvidence";
 import { EvidencePanel } from "../features/sentry/EvidencePanel";
 import { InvestigatorPanel } from "../features/investigator/InvestigatorPanel";
 import { DemoOverlay } from "../features/demo/DemoOverlay";
+import { Demo2Overlay } from "../features/demo/Demo2Overlay";
 import { DemoWall } from "../features/demo/DemoWall";
 import { useDemoStore } from "../features/demo/useDemoStore";
 
@@ -135,9 +136,11 @@ export default function App() {
   useEvidenceSync();
   const annotating = useViewStore((s) => s.annotating);
   const demo = useDemoStore((s) => s.phase !== "idle");
-  // sentry4d.vercel.app/?demo starts the walkthrough by itself (for screen recordings and shared links)
+  const demoVariant = useDemoStore((s) => s.variant);
+  // ?demo starts the walkthrough by itself (for screen recordings and shared links); ?demo=2 starts DEMO 2
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).has("demo")) useDemoStore.getState().start();
+    const wanted = new URLSearchParams(window.location.search).get("demo");
+    if (wanted !== null) useDemoStore.getState().start({ variant: wanted === "2" ? 2 : 1 });
   }, []);
   return (
     <div className="flex h-full flex-col">
@@ -154,7 +157,7 @@ export default function App() {
           {!demo && <EnlargedFeed />}
           {!demo && <CameraSyncPanel />}
           {demo && <DemoWall />}
-          {demo && <DemoOverlay />}
+          {demo && (demoVariant === 2 ? <Demo2Overlay /> : <DemoOverlay />)}
         </main>
         <InvestigatorPanel />
         <CCTVPanel />

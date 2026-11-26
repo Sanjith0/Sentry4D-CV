@@ -1,4 +1,4 @@
-import { Footprints, Ghost, Radar, ScanEye, Users, BrainCircuit, Clapperboard } from "lucide-react";
+import { Footprints, Ghost, Radar, ScanEye, Users, BrainCircuit, Clapperboard, Sparkles } from "lucide-react";
 import { useInvestigatorStore } from "../features/investigator/useInvestigatorStore";
 import { useDemoStore } from "../features/demo/useDemoStore";
 import { incidentConfig } from "../config/incident";
@@ -70,7 +70,7 @@ export function Header() {
 
       <div className="h-8 w-px bg-ink-600" />
 
-      <div className="min-w-0 shrink leading-tight">
+      <div className="min-w-0 shrink leading-tight max-[1560px]:hidden">
         <div className="label">Incident</div>
         <div className="truncate text-[13px] font-medium text-slate-200">{incidentConfig.name}</div>
       </div>
@@ -97,7 +97,7 @@ export function Header() {
         <div className="mr-2 flex items-center gap-2 rounded-md border border-ink-600 bg-ink-850 px-2.5 py-1" title="Active subjects (from tracking module)">
           <Users className="h-3.5 w-3.5 text-cyan-300" />
           <span className="font-mono text-sm text-slate-100">{subjects}</span>
-          <span className="label">subjects</span>
+          <span className="label max-[1700px]:hidden">subjects</span>
         </div>
         <ToolButton
           onClick={(e) => {
@@ -108,6 +108,16 @@ export function Header() {
           className="!border-cyan-400/60 !bg-cyan-400/10 !text-cyan-100 shadow-[0_0_14px_-4px_rgba(34,211,238,0.8)] hover:!border-cyan-300 hover:!bg-cyan-400/20"
         >
           <Clapperboard className="h-3.5 w-3.5" /> DEMO MODE
+        </ToolButton>
+        <ToolButton
+          onClick={(e) => {
+            if (e.detail) e.currentTarget.blur();
+            useDemoStore.getState().start({ variant: 2 });
+          }}
+          title="Demo 2: a second 25-second cut. It opens on the 3D result, searches the four recordings, wipes from the recording to the 3D view, then tracks, orbits and forecasts (Esc to exit)"
+          className="!border-amber-300/60 !bg-amber-300/10 !text-amber-100 shadow-[0_0_14px_-4px_rgba(255,194,51,0.8)] hover:!border-amber-200 hover:!bg-amber-300/20"
+        >
+          <Sparkles className="h-3.5 w-3.5" /> DEMO 2
         </ToolButton>
         <ToolButton
           active={annotating}

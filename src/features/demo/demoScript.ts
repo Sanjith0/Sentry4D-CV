@@ -31,6 +31,10 @@ export const DEMO_DURATION = 25.0;
 /** How long the end card stays before the demo closes itself. */
 export const END_HOLD_SECONDS = 5;
 export const DEMO_SUBJECT = "subject-01";
+/** Demo time applied behind the loading card while the recordings are brought to DEMO_START_TIME. */
+export const PREP_E = 0;
+/** Demo times drawn once behind the loading card: every look, and the path, has its shaders compiled by then. */
+export const WARM_UP: readonly number[] = [3.7, 6.9, 8.1, 9.8, 11.5, 13.3, 14.5, 16.5, 18.7, 19.8, 21.6, 22.3, 23.1, 23.5];
 export const DEMO_CLIP = "clip02";
 /** Incident time shown at e = 0: the subject is walking up the room, in sight of all four cameras. */
 export const DEMO_START_TIME = 10.8;
@@ -95,12 +99,12 @@ export function pchip(xs: readonly number[], ys: readonly number[], x: number): 
   return (2 * t3 - 3 * t2 + 1) * ys[i] + (t3 - 2 * t2 + t) * hi * slope(i) + (-2 * t3 + 3 * t2) * ys[i + 1] + (t3 - t2) * hi * slope(i + 1);
 }
 
-const pchip3 = (xs: readonly number[], vs: readonly Vec3[], x: number): Vec3 => [
+export const pchip3 = (xs: readonly number[], vs: readonly Vec3[], x: number): Vec3 => [
   pchip(xs, vs.map((v) => v[0]), x),
   pchip(xs, vs.map((v) => v[1]), x),
   pchip(xs, vs.map((v) => v[2]), x),
 ];
-const lerp3 = (a: Vec3, b: Vec3, t: number): Vec3 => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+export const lerp3 = (a: Vec3, b: Vec3, t: number): Vec3 => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
 
 // ---------------------------------------------------------------- incident time
 
@@ -340,6 +344,8 @@ export interface PathState {
   labels: number;
   /** The part he has already walked (up to where he is at the shown time) is drawn in the walked colour. */
   follow: boolean;
+  /** Only the part he has walked is drawn (it grows behind him); `draw` is not used. */
+  trail?: boolean;
 }
 
 /**
@@ -472,6 +478,16 @@ export interface WallState {
   footage: number;
   /** The camera on screen once the wall has zoomed in (the one the viewport is in, or nearest to). */
   view: WallView;
+  /** Per feed (wall order), 0..1: its cut-out lit; left out: `highlight` for all four. */
+  highlights?: readonly number[];
+  /** 0..1: a search sweep crossing every feed, left to right; left out: none. */
+  scan?: number;
+  /** 0..1: share of the screen's width, from the left, where the recording is wiped away (the 3D view shows). */
+  wipe?: number;
+  /** The tag on the cut-out; left out: the subject's label and "SAM 2.1". */
+  tag?: string;
+  /** Share of the screen's height kept free under the wall for the captions; left out: 0.165. */
+  reserve?: number;
 }
 
 /** The wall's tile of the pass's first camera has grown into the whole screen by here. */
@@ -555,6 +571,8 @@ export interface DemoContext {
    * The free camera lingers where it looks along these cameras' lines of sight. All 1 when not given.
    */
   sources?: Partial<Record<CameraId, number>>;
+  /** Where the subject came in (the first point of his track), once the track is known. */
+  door?: Vec3;
 }
 
 const DEG = Math.PI / 180;
@@ -580,7 +598,7 @@ export function footageBand(fov: number, aspect: number) {
   return Math.tan((fov * DEG) / 2) / Math.tan((coverFov(fov, aspect) * DEG) / 2);
 }
 
-function throughCamera(id: CameraId, ctx: DemoContext, reach = 7): DemoCam {
+export function throughCamera(id: CameraId, ctx: DemoContext, reach = 7): DemoCam {
   const pose = ctx.poses[id];
   const f = poseForward(pose);
   const p = pose.position;
@@ -623,16 +641,16 @@ export function cctvFilterAt(e: number): string {
   return `brightness(${lerp(1, b, g).toFixed(3)}) contrast(${lerp(1, c, g).toFixed(3)}) saturate(${lerp(1, s, g).toFixed(3)})`;
 }
 
-const unwrap = (deg: number, near: number) => deg + 360 * Math.round((near - deg) / 360);
+export const unwrap = (deg: number, near: number) => deg + 360 * Math.round((near - deg) / 360);
 
-const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+export const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
 /** Part of the frame the room may fill in the overview: clear of the top bar and of the caption. */
 const FRAME = { halfWidth: 0.9, top: 0.84, bottom: -0.62 };
 
 /** Direction of the viewer's home view: degrees around the room and above the floor. */
-function homeAngles(ctx: DemoContext) {
+export function homeAngles(ctx: DemoContext) {
   const home = homePose("orbit", ctx.bounds, ctx.aspect);
   const away = sub(home.position, home.target);
   return { az: Math.atan2(away[0], away[2]) / DEG, el: Math.atan2(away[1], Math.hypot(away[0], away[2])) / DEG, fov: home.fov };
@@ -644,7 +662,7 @@ function homeAngles(ctx: DemoContext) {
  * the room fills the frame and centred in the part of it the overlay leaves free.
  */
 /** From the target towards the camera, the screen's right and up, for a view from azimuth/elevation (degrees). */
-function viewAxes(azimuth: number, elevation: number) {
+export function viewAxes(azimuth: number, elevation: number) {
   const az = azimuth * DEG;
   const el = elevation * DEG;
   const dir: Vec3 = [Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)];
@@ -653,7 +671,7 @@ function viewAxes(azimuth: number, elevation: number) {
   return { dir, right, up };
 }
 
-function fit(ctx: DemoContext, azimuth: number, elevation: number): DemoCam & { up: Vec3 } {
+export function fit(ctx: DemoContext, azimuth: number, elevation: number): DemoCam & { up: Vec3 } {
   const b = ctx.bounds;
   const home = homePose("orbit", b, ctx.aspect);
   const { dir, right, up } = viewAxes(azimuth, elevation);
@@ -846,7 +864,7 @@ const FLY_WIDEN = 8;
 const FLY_AIM = 0.75;
 /** Leg easing: at rest at both cameras, but quicker off and onto them than a quintic (less dead time at each). */
 const smoother = smooth;
-const norm = (v: Vec3): Vec3 => {
+export const norm = (v: Vec3): Vec3 => {
   const l = Math.hypot(v[0], v[1], v[2]) || 1;
   return [v[0] / l, v[1] / l, v[2] / l];
 };

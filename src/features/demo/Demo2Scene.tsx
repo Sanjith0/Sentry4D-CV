@@ -1,0 +1,353 @@
+import { useEffect, useMemo, useRef } from "react";
+import { useFrame } from "@react-three/fiber";
+import * as THREE from "three";
+import { useReplayStore } from "../../store/useReplayStore";
+import type { CameraId } from "../../types/security";
+import { subjectSample } from "../sentry/SceneActors";
+import { recordingSources } from "./recordingSources";
+import { demoLook } from "./demoLook";
+import { FORECAST_HORIZON, forecastAt, raysAt } from "./demo2Script";
+import { CAMERA_ORDER, DEMO_SUBJECT } from "./demoScript";
+import { useDemoStore } from "./useDemoStore";
+
+const CYAN = new THREE.Color("#35e0ff");
+const AMBER = new THREE.Color("#ffc233");
+const UP = new THREE.Vector3(0, 1, 0);
+/** Above the floor (m): over the tracked path's own line. */
+const LIFT = 0.05;
+/** The forecast arrow starts this far from his feet (outside the scene's ring on him). */
+const ARROW_FROM = 0.5;
+const GHOST_RADIUS = 0.3;
+/** The exit pin's beam (m). */
+const PIN_HEIGHT = 1.6;
+/** The predicted route stops this far short of the exit pin (m). */
+const ROUTE_SHORT = 0.42;
+
+const beamVertex = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+/** A sight line: pulses run along it from the camera to the subject. */
+const rayFragment = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uAlpha;
+  uniform float uLen;
+  uniform float uTime;
+  varying vec2 vUv;
+  void main() {
+    float d = fract(vUv.y * uLen / 0.55 - uTime * 2.6);
+    float pulse = smoothstep(0.0, 0.1, d) * (1.0 - smoothstep(0.42, 0.6, d));
+    // (clear of the camera's own marker)
+    float a = uAlpha * (0.22 + 0.78 * pulse) * smoothstep(0.0, 0.35 / max(uLen, 0.001), vUv.y);
+    gl_FragColor = vec4(uColor, a);
+  }
+`;
+/** The exit pin's beam: bright at the floor, fading upwards. */
+const pinFragment = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uAlpha;
+  uniform float uTime;
+  varying vec2 vUv;
+  void main() {
+    float rise = fract(vUv.y * 3.0 - uTime * 0.9);
+    float a = uAlpha * (1.0 - vUv.y) * (0.55 + 0.45 * smoothstep(0.0, 0.2, rise) * (1.0 - smoothstep(0.5, 0.9, rise)));
+    gl_FragColor = vec4(uColor, a);
+  }
+`;
+const floorVertex = /* glsl */ `
+  varying vec2 vAt;
+  void main() {
+    vAt = position.xz;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+/**
+ * The forecast on the floor, in metres from his feet (x ahead of him): a lane of chevrons running ahead, an
+ * arrow head, and a ring where he will stand FORECAST_HORIZON seconds from now at this heading and speed.
+ */
+const arrowFragment = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uAlpha;
+  uniform float uLen;
+  uniform float uTime;
+  varying vec2 vAt;
+  void main() {
+    float x = vAt.x;
+    float z = abs(vAt.y);
+    float tip = uLen - ${GHOST_RADIUS.toFixed(2)};
+    float neck = tip - 0.42;
+    float lane = step(x, neck) * (1.0 - smoothstep(0.13, 0.16, z)) * smoothstep(${ARROW_FROM.toFixed(2)}, ${(ARROW_FROM + 0.55).toFixed(2)}, x);
+    float c = fract((x + z * 1.1) / 0.4 - uTime * 1.8);
+    float chevron = smoothstep(0.0, 0.12, c) * (1.0 - smoothstep(0.45, 0.62, c));
+    float h = (x - neck) / 0.42;
+    float head = step(0.0, h) * step(h, 1.0) * (1.0 - smoothstep(-0.025, 0.0, z - 0.34 * (1.0 - h)));
+    float dr = distance(vAt, vec2(uLen, 0.0));
+    float ring = max(1.0 - smoothstep(0.0, 0.028, abs(dr - ${GHOST_RADIUS.toFixed(2)})), 0.2 * (1.0 - smoothstep(${(GHOST_RADIUS - 0.03).toFixed(2)}, ${GHOST_RADIUS.toFixed(2)}, dr)));
+    float a = max(max(lane * (0.22 + 0.78 * chevron), head), ring);
+    gl_FragColor = vec4(uColor, a * uAlpha);
+  }
+`;
+/** The predicted route: dashes running from the forecast's ring to the exit (x: metres along it). */
+const routeFragment = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uAlpha;
+  uniform float uLen;
+  uniform float uTime;
+  varying vec2 vAt;
+  void main() {
+    float x = vAt.x * uLen;
+    float z = abs(vAt.y);
+    float d = fract(x / 0.34 - uTime * 2.2);
+    float dash = smoothstep(0.0, 0.08, d) * (1.0 - smoothstep(0.5, 0.58, d));
+    float line = 1.0 - smoothstep(0.035, 0.055, z);
+    float ends = smoothstep(0.0, 0.2, x) * (1.0 - smoothstep(uLen - 0.15, uLen, x));
+    gl_FragColor = vec4(uColor, uAlpha * line * dash * ends);
+  }
+`;
+/** Rings spreading on the floor round the exit pin. */
+const ringsFragment = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uAlpha;
+  uniform float uTime;
+  varying vec2 vAt;
+  void main() {
+    float d = length(vAt);
+    float core = 1.0 - smoothstep(0.1, 0.13, d);
+    float fixedRing = 1.0 - smoothstep(0.0, 0.025, abs(d - 0.32));
+    float w = fract(uTime * 0.9);
+    float wave = (1.0 - smoothstep(0.0, 0.04, abs(d - (0.32 + 0.6 * w)))) * (1.0 - w);
+    gl_FragColor = vec4(uColor, max(max(core, fixedRing), wave) * uAlpha);
+  }
+`;
+
+/** Shared by the one set of layers there is; written every frame of the walkthrough. */
+const rayUniforms = CAMERA_ORDER.map(() => ({ uColor: { value: CYAN }, uAlpha: { value: 0 }, uTime: { value: 0 }, uLen: { value: 1 } }));
+const arrowUniforms = { uColor: { value: AMBER }, uAlpha: { value: 0 }, uTime: { value: 0 }, uLen: { value: 1 } };
+const routeUniforms = { uColor: { value: AMBER }, uAlpha: { value: 0 }, uTime: { value: 0 }, uLen: { value: 1 } };
+const pinUniforms = { uColor: { value: AMBER }, uAlpha: { value: 0 }, uTime: { value: 0 } };
+const ringsUniforms = { uColor: { value: AMBER }, uAlpha: { value: 0 }, uTime: { value: 0 } };
+
+function shader(fragmentShader: string, vertexShader: string, uniforms: Record<string, THREE.IUniform>) {
+  return new THREE.ShaderMaterial({
+    vertexShader,
+    fragmentShader,
+    uniforms,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
+  });
+}
+
+/** A flat sheet on the floor: x from x0 to x1, half-width w (metres, its own axes). */
+function sheet(x0: number, x1: number, w: number) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute([x0, 0, -w, x1, 0, -w, x1, 0, w, x0, 0, w], 3));
+  g.setIndex([0, 2, 1, 0, 3, 2]);
+  return g;
+}
+
+const a = new THREE.Vector3();
+const b = new THREE.Vector3();
+const dir = new THREE.Vector3();
+const point = new THREE.Vector3();
+
+/** His position averaged over three samples ending `back` seconds before t (the track's jitter evened out). */
+function meanPosition(t: number, back: number, out: THREE.Vector3): boolean {
+  out.set(0, 0, 0);
+  for (let i = 0; i < 3; i++) {
+    const st = subjectSample(DEMO_SUBJECT, t - back - i * 0.1);
+    if (!st) return false;
+    out.x += st.position[0] / 3;
+    out.y += st.position[1] / 3;
+    out.z += st.position[2] / 3;
+  }
+  return true;
+}
+
+function Layers() {
+  const rays = useRef<(THREE.Mesh | null)[]>([]);
+  const arrow = useRef<THREE.Mesh>(null);
+  const pin = useRef<THREE.Group>(null);
+  const route = useRef<THREE.Mesh>(null);
+
+  const made = useMemo(() => {
+    const tube = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true);
+    return {
+      tube,
+      arrowSheet: sheet(0, 6, 0.75),
+      ringSheet: sheet(-1, 1, 1),
+      routeSheet: sheet(0, 1, 0.08),
+      rayMaterials: rayUniforms.map((u) => shader(rayFragment, beamVertex, u)),
+      arrowMaterial: shader(arrowFragment, floorVertex, arrowUniforms),
+      pinMaterial: shader(pinFragment, beamVertex, pinUniforms),
+      ringsMaterial: shader(ringsFragment, floorVertex, ringsUniforms),
+      routeMaterial: shader(routeFragment, floorVertex, routeUniforms),
+    };
+  }, []);
+  useEffect(
+    () => () => {
+      made.tube.dispose();
+      made.arrowSheet.dispose();
+      made.ringSheet.dispose();
+      made.routeSheet.dispose();
+      for (const m of [...made.rayMaterials, made.arrowMaterial, made.pinMaterial, made.ringsMaterial, made.routeMaterial]) m.dispose();
+    },
+    [made],
+  );
+
+  useFrame(({ camera, size }) => {
+    const e = demoLook.applied;
+    const f = demoLook.forecast;
+    const s = useDemoStore.getState();
+    const live = s.phase === "running" || s.phase === "ended";
+    const replay = useReplayStore.getState();
+    const T = replay.currentTime;
+    const here = live && !demoLook.hideSubject ? subjectSample(DEMO_SUBJECT, T) : null;
+
+    // ---- sight lines: from every camera whose recording has him now, to his chest
+    const rayGain = here ? raysAt(e) : 0;
+    const sources = rayGain > 0 ? recordingSources(T) : null;
+    CAMERA_ORDER.forEach((id: CameraId, i) => {
+      const mesh = rays.current[i];
+      if (!mesh) return;
+      const alpha = rayGain * (sources?.[id] ?? 0);
+      mesh.visible = alpha > 0.004 && !!here;
+      if (!mesh.visible || !here) return;
+      const from = replay.cameraPoses[id].position;
+      a.set(from[0], from[1], from[2]);
+      b.set(here.position[0], here.position[1] + 1.05, here.position[2]);
+      dir.subVectors(b, a);
+      const len = dir.length();
+      mesh.position.copy(a).addScaledVector(dir, 0.5);
+      mesh.quaternion.setFromUnitVectors(UP, dir.divideScalar(len));
+      // (about four pixels wide wherever the viewpoint is)
+      const radius = Math.max(0.012, 0.0032 * camera.position.distanceTo(mesh.position));
+      mesh.scale.set(radius, len, radius);
+      const u = rayUniforms[i];
+      u.uAlpha.value = 0.85 * alpha;
+      u.uLen.value = len;
+      u.uTime.value = e;
+    });
+
+    // ---- forecast: where his heading and speed over the last half second take him
+    const gain = here ? forecastAt(e) : { arrow: 0, exit: 0 };
+    let speed = 0;
+    let heading = 0;
+    f.on = false;
+    f.exitOn = false;
+    f.eta = -1;
+    f.speed = 0;
+    if (here && (gain.arrow > 0 || gain.exit > 0) && meanPosition(T, 0, a) && meanPosition(T, 0.5, b)) {
+      dir.subVectors(a, b).setY(0).divideScalar(0.5);
+      speed = dir.length();
+      heading = Math.atan2(dir.x, dir.z);
+      f.speed = speed;
+      f.heading = ((heading * 180) / Math.PI + 360) % 360;
+    }
+    const moving = THREE.MathUtils.smoothstep(speed, 0.45, 0.9);
+    const arrowAlpha = gain.arrow * moving;
+    const reachNow = speed * FORECAST_HORIZON;
+    if (arrow.current) {
+      arrow.current.visible = arrowAlpha > 0.004 && !!here;
+      if (arrow.current.visible && here) {
+        const reach = speed * FORECAST_HORIZON;
+        arrow.current.position.set(here.position[0], here.position[1] + LIFT, here.position[2]);
+        arrow.current.rotation.set(0, Math.atan2(-dir.z, dir.x), 0);
+        arrowUniforms.uAlpha.value = 0.95 * arrowAlpha;
+        arrowUniforms.uLen.value = reach;
+        arrowUniforms.uTime.value = e;
+        point.set(here.position[0] + Math.sin(heading) * reach, here.position[1] + LIFT, here.position[2] + Math.cos(heading) * reach).project(camera);
+        f.on = point.z < 1;
+        f.x = (0.5 + point.x / 2) * size.width;
+        f.y = (0.5 - point.y / 2) * size.height;
+        f.text = `+${FORECAST_HORIZON.toFixed(1)} S`;
+        f.alpha = arrowAlpha;
+      }
+    }
+
+    // ---- exit: the door he came in through, and the time to it at this speed
+    const exitAlpha = gain.exit;
+    if (pin.current) {
+      pin.current.visible = exitAlpha > 0.004 && !!here && demoLook.pathInfo.length > 0;
+      if (pin.current.visible && here) {
+        const [x, y, z] = demoLook.pathInfo.entry;
+        pin.current.position.set(x, y + LIFT, z);
+        pinUniforms.uAlpha.value = 0.9 * exitAlpha;
+        pinUniforms.uTime.value = e;
+        ringsUniforms.uAlpha.value = 0.95 * exitAlpha;
+        ringsUniforms.uTime.value = e;
+        const metres = Math.hypot(here.position[0] - x, here.position[2] - z);
+        f.eta = speed > 0.45 ? metres / speed : -1;
+        point.set(x, y + PIN_HEIGHT * 0.86, z).project(camera);
+        f.exitOn = point.z < 1;
+        f.ex = (0.5 + point.x / 2) * size.width;
+        f.ey = (0.5 - point.y / 2) * size.height;
+        f.exitText = f.eta >= 0 ? `EXIT \u00B7 ${metres.toFixed(1)} m \u00B7 ETA ${f.eta.toFixed(1)} S` : `EXIT \u00B7 ${metres.toFixed(1)} m`;
+        if (!f.on) f.alpha = exitAlpha;
+      }
+    }
+
+    // ---- the predicted route: from where the forecast puts him, straight to the exit
+    if (route.current) {
+      const [x, y, z] = demoLook.pathInfo.entry;
+      let shown = false;
+      if (here && exitAlpha > 0.004 && demoLook.pathInfo.length > 0) {
+        const from = arrowAlpha > 0.004 ? reachNow + GHOST_RADIUS : ARROW_FROM;
+        a.set(here.position[0] + Math.sin(heading) * from, y + LIFT, here.position[2] + Math.cos(heading) * from);
+        b.set(x, y + LIFT, z);
+        dir.subVectors(b, a);
+        const len = dir.length() - ROUTE_SHORT;
+        if (len > 0.3) {
+          shown = true;
+          route.current.position.copy(a);
+          route.current.rotation.set(0, Math.atan2(-dir.z, dir.x), 0);
+          route.current.scale.set(len, 1, 1);
+          routeUniforms.uAlpha.value = 0.9 * exitAlpha * THREE.MathUtils.smoothstep(len, 0.3, 0.9);
+          routeUniforms.uLen.value = len;
+          routeUniforms.uTime.value = e;
+        }
+      }
+      route.current.visible = shown;
+    }
+  });
+
+  return (
+    <group raycast={() => null}>
+      {CAMERA_ORDER.map((id, i) => (
+        <mesh
+          key={id}
+          ref={(el) => {
+            rays.current[i] = el;
+          }}
+          geometry={made.tube}
+          material={made.rayMaterials[i]}
+          visible={false}
+          frustumCulled={false}
+          renderOrder={3}
+        />
+      ))}
+      <mesh ref={arrow} geometry={made.arrowSheet} material={made.arrowMaterial} visible={false} frustumCulled={false} renderOrder={3} />
+      <mesh ref={route} geometry={made.routeSheet} material={made.routeMaterial} visible={false} frustumCulled={false} renderOrder={3} />
+      <group ref={pin} visible={false}>
+        <mesh geometry={made.ringSheet} material={made.ringsMaterial} frustumCulled={false} renderOrder={3} />
+        <mesh geometry={made.tube} material={made.pinMaterial} position={[0, PIN_HEIGHT / 2, 0]} scale={[0.035, PIN_HEIGHT, 0.035]} frustumCulled={false} renderOrder={3} />
+      </group>
+    </group>
+  );
+}
+
+/**
+ * DEMO 2's own layers in the scene, all from the fused track at the shown time: a sight line from every
+ * camera whose recording has the subject, a forecast arrow on the floor ahead of him (heading and speed over
+ * the last half second, carried FORECAST_HORIZON seconds on), the exit (the door he came in through) with the
+ * distance and the time to it at that speed, and a straight dashed route from the forecast to that exit. Nothing here reads a later moment of the track.
+ */
+export function Demo2Scene() {
+  const on = useDemoStore((s) => s.phase !== "idle" && s.variant === 2);
+  return on ? <Layers /> : null;
+}
