@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { roomConfig } from "../../config/roomConfig";
 import { subjects } from "../../config/subjects";
 import { videoRegistry } from "../../lib/videoRegistry";
-import { buildUniforms, buildWire, setBuildScripted, setBuildBox } from "../../scene/buildIntro";
+import { buildUniforms, buildWire, prepareBuildSweep, setBuildScripted, setBuildBox } from "../../scene/buildIntro";
 import { setCeilingCut } from "../../scene/ceilingClip";
 import { setWindowFrames, setWindowGlass } from "../../scene/windowWallClip";
 import { useReplayStore } from "../../store/useReplayStore";
@@ -206,7 +206,13 @@ export function DemoDirector() {
     buildUniforms.uBuildWireGain.value = build.gain;
     buildUniforms.uBuildGridGain.value = build.grid;
     buildUniforms.uBuildLead.value = build.lead;
-    if (buildWire.object) buildWire.object.visible = build.texY < 1e5; // fully textured: no wire passes its shader
+    // the wireframe over the textured room in a band of the screen (behind a wipe)
+    const sweep = build.sweep && build.sweep[2] > 0 ? build.sweep : null;
+    if (sweep && buildWire.object) prepareBuildSweep(buildWire.object); // (once: behind the loading card, at a WARM_UP time)
+    // (a line is one device pixel wide: on a dense screen it is thinner, and gets that much more strength)
+    if (sweep) buildUniforms.uBuildSweep.value.set(sweep[0], sweep[1], Math.min(1, sweep[2] * gl.getPixelRatio()), 0);
+    else buildUniforms.uBuildSweep.value.set(0, 0, 0, 0);
+    if (buildWire.object) buildWire.object.visible = build.texY < 1e5 || sweep !== null; // fully textured, no sweep: no wire passes its shader
     const cutY = bounds.max[1] - roomConfig.ceilingCutOffset;
     setCeilingCut(S.ceilingShown(e, cutY, build.wireY), cutY);
     setWindowFrames(S.windowFramesAt(e));

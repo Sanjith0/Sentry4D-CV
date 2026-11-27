@@ -266,6 +266,11 @@ export interface BuildState {
   grid: number;
   /** 1: the wireframe's front glows white-hot (building up); 0: it fades out softly (draining). */
   lead: number;
+  /**
+   * The wireframe over the textured room in a band of the screen: its leading and trailing edge (0..1 of the
+   * picture's width, from the left) and the strength of its lines. (Demo 2: behind the wipe from recording to 3D.)
+   */
+  sweep?: readonly [head: number, tail: number, strength: number];
 }
 
 const ALL = 1e6;

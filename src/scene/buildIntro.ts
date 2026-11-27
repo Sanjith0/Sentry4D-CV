@@ -32,6 +32,13 @@ export const buildUniforms = {
    * caught beyond the walls does not stand in the view.
    */
   uBuildBox: { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) },
+  /**
+   * A sweep across the picture (a script wiping from a recording to this view): the room's wireframe is drawn
+   * over its textured surface in a band of the screen that trails the wipe. x: the band's leading edge, y: its
+   * trailing edge (both 0..1 of the picture's width from the left; it is strongest at the leading edge and gone
+   * at the trailing one), z: strength of its lines (0: no sweep, the wireframe goes by the heights above).
+   */
+  uBuildSweep: { value: new THREE.Vector4(0, 0, 0, 0) },
 };
 
 /** Limit the scan to the floor-plan box [minX, minZ, maxX, maxZ]; null: all of it. */
@@ -45,6 +52,79 @@ export function setBuildBox(box: readonly [number, number, number, number] | nul
  * is above the room, so whoever drives the uniforms can skip drawing it then (it is every edge of the scan).
  */
 export const buildWire: { object: THREE.Object3D | null } = { object: null };
+
+/** Sweep: the wireframe's lines are drawn at this share of their distance from the eye (see makeBuildWireMaterial). */
+const SWEEP_PULL = 0.996;
+/**
+ * Sweep: how much of the picture a mesh's lines cover goes by the radius of the circle that fits inside its
+ * triangles as they appear on screen (edge length per area is 1 / that radius, whatever their shape). Lines of
+ * triangles with at least this radius, as a share of the picture's height, have their full strength; those of
+ * smaller ones are fainter in proportion. Every part of the picture then gets at most the same amount of line
+ * light, whether the scan is coarse there (a wall), fine (furniture), far away or seen edge-on (the ceiling, from
+ * a camera mounted on it), instead of a white knot wherever its lines crowd.
+ */
+const SWEEP_FULL = 0.011;
+const sweepReady = new WeakSet<THREE.BufferGeometry>();
+
+/**
+ * Sweep: gives every mesh under `root` (the room's wireframe twin) the vertex attribute the sweep reads:
+ * aBuildMesh = (unit normal, that inner radius for the triangles round the vertex: twice their area over their
+ * perimeter), in the mesh's own space. One pass over its triangles, once per geometry. (The twin shares its
+ * geometry with the textured room, whose materials do not read the attribute; without it the lines all have
+ * their full strength.)
+ */
+export function prepareBuildSweep(root: THREE.Object3D) {
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh || sweepReady.has(mesh.geometry)) return;
+    const geometry = mesh.geometry;
+    sweepReady.add(geometry);
+    const pos = geometry.getAttribute("position");
+    if (!pos || geometry.getAttribute("aBuildMesh")) return;
+    const index = geometry.getIndex();
+    const out = new Float32Array(pos.count * 4); // xyz: normal (summed by area), w: twice the area (summed)
+    const perimeter = new Float32Array(pos.count);
+    const corners = index ? index.count : pos.count;
+    for (let i = 0; i + 2 < corners; i += 3) {
+      const a = index ? index.getX(i) : i;
+      const b = index ? index.getX(i + 1) : i + 1;
+      const c = index ? index.getX(i + 2) : i + 2;
+      const ax = pos.getX(a);
+      const ay = pos.getY(a);
+      const az = pos.getZ(a);
+      const ux = pos.getX(b) - ax;
+      const uy = pos.getY(b) - ay;
+      const uz = pos.getZ(b) - az;
+      const vx = pos.getX(c) - ax;
+      const vy = pos.getY(c) - ay;
+      const vz = pos.getZ(c) - az;
+      const nx = uy * vz - uz * vy;
+      const ny = uz * vx - ux * vz;
+      const nz = ux * vy - uy * vx;
+      const area2 = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      const around = Math.sqrt(ux * ux + uy * uy + uz * uz) + Math.sqrt(vx * vx + vy * vy + vz * vz) + Math.sqrt((vx - ux) ** 2 + (vy - uy) ** 2 + (vz - uz) ** 2);
+      for (let k = 0; k < 3; k++) {
+        const v = k === 0 ? a : k === 1 ? b : c;
+        out[v * 4] += nx;
+        out[v * 4 + 1] += ny;
+        out[v * 4 + 2] += nz;
+        out[v * 4 + 3] += area2;
+        perimeter[v] += around;
+      }
+    }
+    for (let v = 0; v < pos.count; v++) {
+      const k = v * 4;
+      const len = Math.sqrt(out[k] * out[k] + out[k + 1] * out[k + 1] + out[k + 2] * out[k + 2]);
+      if (len > 0) {
+        out[k] /= len;
+        out[k + 1] /= len;
+        out[k + 2] /= len;
+      }
+      out[k + 3] = perimeter[v] > 0 ? out[k + 3] / perimeter[v] : 0;
+    }
+    geometry.setAttribute("aBuildMesh", new THREE.BufferAttribute(out, 4));
+  });
+}
 
 const WIRE_DURATION = 4.0;
 const TEX_DELAY = 1.8;
@@ -86,6 +166,7 @@ export function setBuildScripted(on: boolean) {
     buildUniforms.uBuildWireGain.value = 1;
     buildUniforms.uBuildGridGain.value = 1;
     buildUniforms.uBuildLead.value = 1;
+    buildUniforms.uBuildSweep.value.set(0, 0, 0, 0);
     if (buildWire.object) buildWire.object.visible = true;
     settle();
   }
@@ -226,14 +307,47 @@ export function makeBuildWireMaterial(clippingPlanes: THREE.Plane[], opacity = 0
   });
   m.onBeforeCompile = (shader) => {
     injectVaryings(shader);
-    if (!dimmable) shader.uniforms.uBuildWireGain = { value: 1 };
+    if (!dimmable) {
+      // an object next to the room keeps its own strength, and takes no part in a sweep
+      shader.uniforms.uBuildWireGain = { value: 1 };
+      shader.uniforms.uBuildSweep = { value: new THREE.Vector4(0, 0, 0, 0) };
+    }
+    // Sweep: the lines lie in the textured surface they are drawn over, so they are taken a touch nearer along
+    // the line of sight (same place on screen) and win the depth test against it, not against what hides it.
+    // vBuildFine: the inner radius of the triangles here as a share of the picture's height (their size by the
+    // distance, less when they are seen edge-on: the area shrinks with the cosine, the edges by less): SWEEP_FULL.
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nuniform vec4 uBuildSweep; attribute vec4 aBuildMesh; varying vec2 vBuildClip; varying float vBuildFine;")
+      .replace(
+        "#include <project_vertex>",
+        `#include <project_vertex>
+vBuildFine = 1.0;
+if (uBuildSweep.z > 0.0) {
+  gl_Position = projectionMatrix * vec4(mvPosition.xyz * ${SWEEP_PULL.toFixed(4)}, 1.0);
+  vec3 bNormal = normalMatrix * aBuildMesh.xyz;
+  float bFacing = dot(bNormal, bNormal) > 1e-12 ? abs(dot(normalize(bNormal), normalize(mvPosition.xyz))) : 1.0;
+  bFacing /= mix(0.637, 1.0, bFacing);
+  vBuildFine = aBuildMesh.w * length(modelViewMatrix[0].xyz) * projectionMatrix[1][1] * 0.5 * bFacing / max(-mvPosition.z, 0.05);
+}
+vBuildClip = gl_Position.xw;`,
+      );
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", `#include <common>\n${BUILD_PARS}`)
+      .replace("#include <common>", `#include <common>\n${BUILD_PARS}\nuniform vec4 uBuildSweep; varying vec2 vBuildClip; varying float vBuildFine;`)
       .replace(
         "#include <clipping_planes_fragment>",
         `#include <clipping_planes_fragment>
 if (bOutside(vBuildWorld)) discard;
-if (vBuildWorld.y > uBuildWireY || vBuildWorld.y < uBuildTexY - 0.04 || vBuildWorld.y < uBuildMinY) discard;`,
+// (in a sweep the textured room is all there: the lines go by their place on screen instead of the fronts)
+float bSweep = 0.0;
+float bTexY = uBuildTexY;
+if (uBuildSweep.z > 0.0) {
+  float bAcross = 0.5 + 0.5 * vBuildClip.x / vBuildClip.y;
+  float bBehind = (uBuildSweep.x - bAcross) / max(uBuildSweep.x - uBuildSweep.y, 1e-4);
+  if (bBehind < 0.0 || bBehind >= 1.0) discard;
+  bSweep = uBuildSweep.z * pow(1.0 - bBehind, 1.6) * min(1.0, vBuildFine / ${SWEEP_FULL.toFixed(4)});
+  bTexY = -1e6;
+}
+if (vBuildWorld.y > uBuildWireY || vBuildWorld.y < bTexY - 0.04 || vBuildWorld.y < uBuildMinY) discard;`,
       )
       .replace(
         "#include <opaque_fragment>",
@@ -241,7 +355,7 @@ if (vBuildWorld.y > uBuildWireY || vBuildWorld.y < uBuildTexY - 0.04 || vBuildWo
 { float lead = exp(-(uBuildWireY - vBuildWorld.y) * 6.0) * uBuildLead;
   // without the glow the lines thin out over the last 0.6 m under the front rather than end in a hard cut
   float soft = mix(smoothstep(0.0, 0.6, uBuildWireY - vBuildWorld.y), 1.0, uBuildLead);
-  float trail = smoothstep(uBuildTexY - 0.04, uBuildTexY + 0.25, vBuildWorld.y);
+  float trail = smoothstep(bTexY - 0.04, bTexY + 0.25, vBuildWorld.y);
   float building = uBuildWireY < 1e5 ? 1.0 : 0.0;
   // Height gradient: deep blue at the floor -> cyan -> white-hot at the leading edge.
   vec3 deep = vec3(0.10, 0.25, 1.0);
@@ -255,10 +369,11 @@ if (vBuildWorld.y > uBuildWireY || vBuildWorld.y < uBuildTexY - 0.04 || vBuildWo
   float wireModeGain = uWireMode * (1.0 - building);
   gl_FragColor.rgb = col * (0.35 + 2.8 * lead + 1.6 * pulse + sparkle + 0.35 * wireModeGain) * flick * trail * 0.9;
   gl_FragColor.rgb *= soft;
-  gl_FragColor.a *= trail * soft * uBuildWireGain; }`,
+  gl_FragColor.a *= trail * soft * uBuildWireGain;
+  if (uBuildSweep.z > 0.0) gl_FragColor = vec4(mix(col, vec3(1.0), 0.2), bSweep); }`,
       );
   };
-  m.customProgramCacheKey = () => `sentry3d-build-wire-v5${dimmable ? "" : "-fixed"}`;
+  m.customProgramCacheKey = () => `sentry3d-build-wire-v6${dimmable ? "" : "-fixed"}`;
   return m;
 }
 

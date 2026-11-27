@@ -71,6 +71,15 @@ export const DEMO_START_TIME = 16.6;
 export const PREP_E = BEAT.wall;
 /** The wipe across CAM 01's picture. */
 const WIPE = [BEAT.reveal + 0.7, BEAT.reveal + 1.9] as const;
+/**
+ * Behind the wipe's line the room's wireframe shows over the 3D view, faintly: from the line back to where the
+ * line was WIRE_WAKE seconds ago, at most WIRE_BAND of the picture's width, strongest at the line.
+ */
+const WIRE_WAKE = 0.4;
+const WIRE_BAND = 0.3;
+const WIRE_STRENGTH = 0.13;
+/** It leaves with the line once the wipe is through. */
+const WIRE_OUT = [WIPE[1], WIPE[1] + 0.35] as const;
 /** From the twin beat he walks on in slow motion until he has faded out; then time rewinds. */
 const TWIN_TIME = DEMO_START_TIME + (BEAT.twin - BEAT.wall);
 const TWIN_RATE = 0.5;
@@ -172,7 +181,7 @@ export function buildAt(e: number, floorY: number, topY: number): BuildState {
   const y1 = topY + 0.3;
   const minY = floorY - 0.12;
   const at = (texY: number, wireY: number, wireMode: number, gain = 1): BuildState => ({ texY, wireY, wireMode, minY, gain, grid: 1, lead: 0 });
-  if (e < BEAT.twin) return at(ALL, ALL, 0);
+  if (e < BEAT.twin) return { ...at(ALL, ALL, 0), sweep: wireWakeAt(e) };
   // the texture dissolves from the ceiling down as the viewport leaves CAM 01: the LiDAR wireframe is left
   if (e < RISE[0]) return at(e < BEAT.twin + 1.2 ? lerp(y1, y0, easeInOut(span(e, BEAT.twin, BEAT.twin + 1.2))) : NONE, ALL, 1, WIRE_DIM);
   if (e < RISE[1]) return at(lerp(y0, y1, easeInOut(span(e, RISE[0], RISE[1]))), ALL, 0, WIRE_DIM);
@@ -317,6 +326,13 @@ export function wallAt(e: number): WallState {
 
 /** 0..1: share of the picture's width, from the left, that is the 3D view (the wipe). */
 export const wipeAt = (e: number) => (e < WIPE[0] ? 0 : e >= WIPE[1] ? 1 : easeInOut(span(e, WIPE[0], WIPE[1])));
+/** The wireframe in the wake of the wipe's line: [leading edge, trailing edge, strength] (see WIRE_WAKE). */
+function wireWakeAt(e: number): readonly [number, number, number] | undefined {
+  if (e <= WIPE[0] || e >= WIRE_OUT[1]) return undefined;
+  const head = wipeAt(e);
+  const tail = Math.max(wipeAt(e - WIRE_WAKE), head - WIRE_BAND);
+  return [head, tail, WIRE_STRENGTH * (1 - smooth(span(e, WIRE_OUT[0], WIRE_OUT[1])))];
+}
 /** Whether the wipe's line and its two labels are on screen. */
 export const wipeShown = (e: number) => e >= BEAT.reveal + 0.45 && e < WIPE[1] + 0.25;
 
@@ -593,7 +609,10 @@ export function cameraAt(e: number, ctx: DemoContext): DemoCam {
   return { p: lerp3(P.p, R.p, w), t: lerp3(P.t, R.t, w), roll: 0, fov: lerp(P.fov, R.fov, w) };
 }
 
-/** Demo times drawn once behind the loading card (every look has its shaders compiled by then). */
-export const WARM_UP: readonly number[] = [0.6, 6.4, 7.1, 7.9, 9.1, 10.9, 13.4, 14.4, 15.8, 17.3, 19.0, 20.4, 22.1, 23.0];
+/**
+ * Demo times drawn once behind the loading card (every look has its shaders compiled by then). 4.7 is the wipe
+ * with its wireframe wake, which also prepares the scan's vertex data for it (see prepareBuildSweep).
+ */
+export const WARM_UP: readonly number[] = [0.6, 4.7, 6.4, 7.1, 7.9, 9.1, 10.9, 13.4, 14.4, 15.8, 17.3, 19.0, 20.4, 22.1, 23.0];
 
 export { clamp01, easeOut, lerp, span };
