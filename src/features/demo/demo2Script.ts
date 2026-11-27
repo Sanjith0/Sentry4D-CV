@@ -69,17 +69,17 @@ export const BEAT = {
 export const DEMO_START_TIME = 16.6;
 /** Demo time applied behind the loading card while the recordings are brought to DEMO_START_TIME. */
 export const PREP_E = BEAT.wall;
-/** The wipe across CAM 01's picture. */
-const WIPE = [BEAT.reveal + 0.7, BEAT.reveal + 1.9] as const;
+/** The wipe across CAM 01's picture: it sets off as the push comes to rest and is through just before the twin beat. */
+const WIPE = [BEAT.reveal + 0.5, BEAT.reveal + 2.1] as const;
 /**
- * Behind the wipe's line the room's wireframe shows over the 3D view, faintly: from the line back to where the
- * line was WIRE_WAKE seconds ago, at most WIRE_BAND of the picture's width, strongest at the line.
+ * Behind the wipe's line the room's wireframe shows over the 3D view, in a band from the line back over
+ * WIRE_BAND of the picture's width: at full strength next to the line, fading out towards the band's far end
+ * (see uBuildSweep). WIRE_STRENGTH: of a line whose triangles are large on screen, in a picture 720 pixels high.
  */
-const WIRE_WAKE = 0.4;
-const WIRE_BAND = 0.3;
-const WIRE_STRENGTH = 0.13;
-/** It leaves with the line once the wipe is through. */
-const WIRE_OUT = [WIPE[1], WIPE[1] + 0.35] as const;
+const WIRE_BAND = 0.4;
+const WIRE_STRENGTH = 0.26;
+/** As the line comes to rest at the right edge the band closes up on it; its lines are out by the twin beat. */
+const WIRE_OUT = [WIPE[1] - 0.25, BEAT.twin - 0.04] as const;
 /** From the twin beat he walks on in slow motion until he has faded out; then time rewinds. */
 const TWIN_TIME = DEMO_START_TIME + (BEAT.twin - BEAT.wall);
 const TWIN_RATE = 0.5;
@@ -299,8 +299,8 @@ export const LOCK_FIRST: CameraId = "cam1";
 export const SEARCH = { type: [BEAT.wall + 0.3, BEAT.wall + 1.45], scan: [BEAT.wall + 1.5, BEAT.lock], query: "man carrying a chair" } as const;
 /** The cut-outs light up one feed after the other. */
 const MATCH_STAGGER = 0.11;
-/** The lock's marks leave before the wipe: the recording as filmed on one side, the 3D view on the other. */
-const UNMARK = [BEAT.reveal + 0.4, BEAT.reveal + 0.7] as const;
+/** The lock's marks leave as the wipe sets off: the recording as filmed on one side, the 3D view on the other. */
+const UNMARK = [BEAT.reveal + 0.3, BEAT.reveal + 0.6] as const;
 
 export function wallAt(e: number): WallState {
   const off = 1 - smooth(span(e, UNMARK[0], UNMARK[1]));
@@ -318,23 +318,28 @@ export function wallAt(e: number): WallState {
     footage: 1,
     view: { cam: LOCK_FIRST, punch: 0, focusTime: incidentTime(e) },
     scan: e >= SEARCH.scan[0] && e < SEARCH.scan[1] ? span(e, SEARCH.scan[0], SEARCH.scan[1]) : undefined,
-    wipe: easeInOut(span(e, WIPE[0], WIPE[1])),
+    wipe: wipeAt(e),
     tag: "MATCH \u00B7 SAM 2.1",
     reserve: 0.25,
   };
 }
 
-/** 0..1: share of the picture's width, from the left, that is the 3D view (the wipe). */
-export const wipeAt = (e: number) => (e < WIPE[0] ? 0 : e >= WIPE[1] ? 1 : easeInOut(span(e, WIPE[0], WIPE[1])));
-/** The wireframe in the wake of the wipe's line: [leading edge, trailing edge, strength] (see WIRE_WAKE). */
+/**
+ * 0..1: share of the picture's width, from the left, that is the 3D view (the wipe). An even pace: the line
+ * is slow only as it leaves the left edge and as it reaches the right one.
+ */
+export const wipeAt = (e: number) => (e < WIPE[0] ? 0 : e >= WIPE[1] ? 1 : smooth(span(e, WIPE[0], WIPE[1])));
+/** The wireframe behind the wipe's line: [leading edge, trailing edge, strength] (see WIRE_BAND). */
 function wireWakeAt(e: number): readonly [number, number, number] | undefined {
   if (e <= WIPE[0] || e >= WIRE_OUT[1]) return undefined;
   const head = wipeAt(e);
-  const tail = Math.max(wipeAt(e - WIRE_WAKE), head - WIRE_BAND);
-  return [head, tail, WIRE_STRENGTH * (1 - smooth(span(e, WIRE_OUT[0], WIRE_OUT[1])))];
+  const tail = lerp(Math.max(head - WIRE_BAND, 0), head, smooth(span(e, WIRE_OUT[0], WIRE_OUT[1])));
+  return [head, tail, WIRE_STRENGTH * (1 - smooth(span(e, WIPE[1], WIRE_OUT[1])))];
 }
-/** Whether the wipe's line and its two labels are on screen. */
-export const wipeShown = (e: number) => e >= BEAT.reveal + 0.45 && e < WIPE[1] + 0.25;
+/** 0..1: the wipe's line and its two labels: up at the left edge as the push comes to rest, out once it is through. */
+export const wipeLineAt = (e: number) => span(e, WIPE[0] - 0.05, WIPE[0] + 0.15) * (1 - span(e, WIPE[1] + 0.03, WIPE[1] + 0.17));
+/** Whether they are on screen. */
+export const wipeShown = (e: number) => e >= WIPE[0] - 0.05 && e < WIPE[1] + 0.17;
 
 // ---------------------------------------------------------------- chapters
 

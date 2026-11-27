@@ -24,6 +24,7 @@ import {
   SEARCH,
   STATS_CHAPTER,
   wipeAt,
+  wipeLineAt,
   wipeShown,
 } from "./demo2Script";
 import { CAMERA_ORDER, clamp01, DEMO_CLIP, DEMO_SUBJECT, easeInOut, easeOut, lerp, span } from "./demoScript";
@@ -51,6 +52,8 @@ const SEARCH_REST = 0.78;
 /** Sizes follow the window's height; its width only caps them in a narrow (portrait) window. */
 const SMALL = { fontSize: "clamp(9px, min(1.5vh, 2.6vw), 15px)" };
 const SUB = { fontSize: "clamp(9px, min(1.7vh, 2.9vw), 17px)" };
+/** The wipe's "3D RECONSTRUCTION" label: its cyan tint over a dark backing (the room's wireframe passes behind it). */
+const WIPE_3D = { ...SUB, background: "linear-gradient(rgba(34,211,238,0.2), rgba(34,211,238,0.2)), rgba(4,18,26,0.55)" };
 const TITLE = { fontSize: "clamp(20px, min(6.4vh, 8.6vw), 78px)", textShadow: "0 0 34px rgba(34,211,238,0.5), 0 2px 18px rgba(2,6,12,0.9)" };
 const STAT = { fontSize: "clamp(16px, min(4.6vh, 6.2vw), 56px)" };
 /**
@@ -222,7 +225,7 @@ export function Demo2Overlay() {
         show(wipe.current, on);
         if (on) {
           wipe.current.style.transform = `translate3d(${(w * W).toFixed(1)}px, 0, 0)`;
-          wipe.current.style.opacity = (span(e, BEAT.reveal + 0.45, BEAT.reveal + 0.65) * (1 - span(e, BEAT.reveal + 1.95, BEAT.reveal + 2.15))).toFixed(3);
+          wipe.current.style.opacity = wipeLineAt(e).toFixed(3);
           if (wipeLeft.current) wipeLeft.current.style.opacity = span(w, 0.16, 0.3).toFixed(3);
           if (wipeRight.current) wipeRight.current.style.opacity = (1 - span(w, 0.7, 0.84)).toFixed(3);
         }
@@ -353,7 +356,7 @@ export function Demo2Overlay() {
           {/* the wipe: 3D view on its left, the recording on its right */}
           <div ref={wipe} className="absolute inset-y-0 left-0 w-0" style={{ display: "none" }}>
             <div className="absolute inset-y-0 -left-px w-[2px] bg-cyan-100 shadow-[0_0_22px_3px_rgba(34,211,238,0.95)]" />
-            <div ref={wipeLeft} className="absolute top-[13vh] right-[1.1em] rounded border border-cyan-300 bg-cyan-400/20 px-[0.9em] py-[0.45em] font-semibold tracking-[0.16em] whitespace-nowrap text-cyan-50 shadow-[0_0_18px_-2px_rgba(34,211,238,0.85)]" style={SUB}>
+            <div ref={wipeLeft} className="absolute top-[13vh] right-[1.1em] rounded border border-cyan-300 px-[0.9em] py-[0.45em] font-semibold tracking-[0.16em] whitespace-nowrap text-cyan-50 shadow-[0_0_18px_-2px_rgba(34,211,238,0.85)]" style={WIPE_3D}>
               3D RECONSTRUCTION
             </div>
             <div ref={wipeRight} className="absolute top-[13vh] left-[1.1em] flex items-center gap-[0.6em] rounded border border-ink-500 bg-ink-950/85 px-[0.9em] py-[0.45em] font-semibold tracking-[0.16em] whitespace-nowrap text-slate-200" style={SUB}>

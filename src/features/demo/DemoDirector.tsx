@@ -209,8 +209,9 @@ export function DemoDirector() {
     // the wireframe over the textured room in a band of the screen (behind a wipe)
     const sweep = build.sweep && build.sweep[2] > 0 ? build.sweep : null;
     if (sweep && buildWire.object) prepareBuildSweep(buildWire.object); // (once: behind the loading card, at a WARM_UP time)
-    // (a line is one device pixel wide: on a dense screen it is thinner, and gets that much more strength)
-    if (sweep) buildUniforms.uBuildSweep.value.set(sweep[0], sweep[1], Math.min(1, sweep[2] * gl.getPixelRatio()), 0);
+    // (a line is one device pixel wide whatever the picture's size: in a larger picture it is that much
+    // thinner, and gets that much more strength; the script's figure is for a picture 720 pixels high)
+    if (sweep) buildUniforms.uBuildSweep.value.set(sweep[0], sweep[1], (sweep[2] * gl.domElement.height) / 720, 0);
     else buildUniforms.uBuildSweep.value.set(0, 0, 0, 0);
     if (buildWire.object) buildWire.object.visible = build.texY < 1e5 || sweep !== null; // fully textured, no sweep: no wire passes its shader
     const cutY = bounds.max[1] - roomConfig.ceilingCutOffset;

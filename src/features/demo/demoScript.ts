@@ -268,7 +268,8 @@ export interface BuildState {
   lead: number;
   /**
    * The wireframe over the textured room in a band of the screen: its leading and trailing edge (0..1 of the
-   * picture's width, from the left) and the strength of its lines. (Demo 2: behind the wipe from recording to 3D.)
+   * picture's width, from the left) and the strength of its lines in a picture 720 pixels high. (Demo 2: behind
+   * the wipe from recording to 3D.)
    */
   sweep?: readonly [head: number, tail: number, strength: number];
 }

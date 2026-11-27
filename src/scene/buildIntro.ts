@@ -35,8 +35,9 @@ export const buildUniforms = {
   /**
    * A sweep across the picture (a script wiping from a recording to this view): the room's wireframe is drawn
    * over its textured surface in a band of the screen that trails the wipe. x: the band's leading edge, y: its
-   * trailing edge (both 0..1 of the picture's width from the left; it is strongest at the leading edge and gone
-   * at the trailing one), z: strength of its lines (0: no sweep, the wireframe goes by the heights above).
+   * trailing edge (both 0..1 of the picture's width from the left; its lines have their full strength over the
+   * first SWEEP_HOLD of the band and fade out from there to the trailing edge), z: strength of its lines (0: no
+   * sweep, the wireframe goes by the heights above; above 1 for a large picture: what a line ends up with is capped).
    */
   uBuildSweep: { value: new THREE.Vector4(0, 0, 0, 0) },
 };
@@ -64,6 +65,8 @@ const SWEEP_PULL = 0.996;
  * a camera mounted on it), instead of a white knot wherever its lines crowd.
  */
 const SWEEP_FULL = 0.011;
+/** Sweep: the share of the band, from its leading edge, over which the lines keep their full strength. */
+const SWEEP_HOLD = 0.25;
 const sweepReady = new WeakSet<THREE.BufferGeometry>();
 
 /**
@@ -344,7 +347,7 @@ if (uBuildSweep.z > 0.0) {
   float bAcross = 0.5 + 0.5 * vBuildClip.x / vBuildClip.y;
   float bBehind = (uBuildSweep.x - bAcross) / max(uBuildSweep.x - uBuildSweep.y, 1e-4);
   if (bBehind < 0.0 || bBehind >= 1.0) discard;
-  bSweep = uBuildSweep.z * pow(1.0 - bBehind, 1.6) * min(1.0, vBuildFine / ${SWEEP_FULL.toFixed(4)});
+  bSweep = min(1.0, uBuildSweep.z * (1.0 - smoothstep(${SWEEP_HOLD.toFixed(3)}, 1.0, bBehind)) * min(1.0, vBuildFine / ${SWEEP_FULL.toFixed(4)}));
   bTexY = -1e6;
 }
 if (vBuildWorld.y > uBuildWireY || vBuildWorld.y < bTexY - 0.04 || vBuildWorld.y < uBuildMinY) discard;`,
@@ -370,10 +373,11 @@ if (vBuildWorld.y > uBuildWireY || vBuildWorld.y < bTexY - 0.04 || vBuildWorld.y
   gl_FragColor.rgb = col * (0.35 + 2.8 * lead + 1.6 * pulse + sparkle + 0.35 * wireModeGain) * flick * trail * 0.9;
   gl_FragColor.rgb *= soft;
   gl_FragColor.a *= trail * soft * uBuildWireGain;
-  if (uBuildSweep.z > 0.0) gl_FragColor = vec4(mix(col, vec3(1.0), 0.2), bSweep); }`,
+  // (in a sweep: one weight for every line, and less of the floor's deep blue, which is dark over a textured room)
+  if (uBuildSweep.z > 0.0) gl_FragColor = vec4(mix(mix(deep, cyan, 0.4 + 0.6 * smoothstep(0.0, 2.5, vBuildWorld.y)), vec3(1.0), 0.2), bSweep); }`,
       );
   };
-  m.customProgramCacheKey = () => `sentry3d-build-wire-v6${dimmable ? "" : "-fixed"}`;
+  m.customProgramCacheKey = () => `sentry3d-build-wire-v7${dimmable ? "" : "-fixed"}`;
   return m;
 }
 
