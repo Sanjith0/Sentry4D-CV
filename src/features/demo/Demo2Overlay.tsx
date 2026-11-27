@@ -497,7 +497,7 @@ export function Demo2Overlay() {
                   </div>
                 )}
                 <div className="mt-[1vh] max-w-full tracking-[0.14em] text-cyan-100/90 uppercase" style={SUB}>
-                  {chapter === STATS_CHAPTER ? "Measured on this clip, not a mock-up" : current?.sub}
+                  {chapter === STATS_CHAPTER ? "The whole incident in one frame \u00B7 measured on this clip" : current?.sub}
                 </div>
               </div>
               <div className="relative mt-[1.6vh] flex gap-[0.5vh]">

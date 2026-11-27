@@ -398,6 +398,8 @@ export interface LookState {
   hideBody: boolean;
   /** 0: the hologram is a flat tint (as on the footage cut-out); 1: scan lines, rim light, a sweeping band. */
   holoStyle: number;
+  /** 0..1: the hologram is white instead of cyan (demo 2's timeline: the live subject among his earlier selves). */
+  holoWhite?: number;
   /** World height of the hologram's bright band above the floor. */
   holoBand: number;
   /** 0..1: tracking bracket with the live fused values (0 = off; below 1 it is still closing in). */
@@ -488,6 +490,11 @@ export interface WallState {
   tag?: string;
   /** Share of the screen's height kept free under the wall for the captions; left out: 0.165. */
   reserve?: number;
+  /**
+   * 0..1: instead of the wall, one recording as a small picture beside the 3D view: that of the camera in which
+   * he is largest at the shown moment (handed on from camera to camera as he walks). Left out: none.
+   */
+  pip?: number;
 }
 
 /** The wall's tile of the pass's first camera has grown into the whole screen by here. */

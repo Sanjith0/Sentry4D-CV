@@ -3,10 +3,12 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useReplayStore } from "../../store/useReplayStore";
 import type { CameraId } from "../../types/security";
+import { formatClock } from "../../lib/format";
+import { bakeSubjectPose } from "../reconstruction/avatarBake";
 import { subjectSample } from "../sentry/SceneActors";
 import { recordingSources } from "./recordingSources";
 import { demoLook } from "./demoLook";
-import { FORECAST_HORIZON, forecastAt, raysAt } from "./demo2Script";
+import { FORECAST_HORIZON, forecastAt, ghostAt, GHOST_TIMES, nowAt, raysAt } from "./demo2Script";
 import { CAMERA_ORDER, DEMO_SUBJECT } from "./demoScript";
 import { useDemoStore } from "./useDemoStore";
 
@@ -22,6 +24,124 @@ const GHOST_RADIUS = 0.3;
 const PIN_HEIGHT = 1.6;
 /** The predicted route stops this far short of the exit pin (m). */
 const ROUTE_SHORT = 0.42;
+
+/** A body of the timeline: its time stands this high over the floor (m), this wide and tall. */
+const STAMP_Y = 2.14;
+/** The NOW stamp floats this much higher (m), clear of the row of time stamps he walks along. */
+const NOW_LIFT = 0.42;
+const STAMP_SIZE = [1.0, 0.3] as const;
+
+const ghostVertex = /* glsl */ `
+  #include <common>
+  #include <logdepthbuf_pars_vertex>
+  varying vec3 vNormal;
+  varying vec3 vView;
+  varying float vY;
+  void main() {
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vNormal = normalMatrix * normal;
+    vView = -mv.xyz;
+    vY = position.y;
+    gl_Position = projectionMatrix * mv;
+    #include <logdepthbuf_vertex>
+  }
+`;
+/** A body of the timeline: a hologram, bright at its outline, scan lines running up it. */
+const ghostFragment = /* glsl */ `
+  #include <logdepthbuf_pars_fragment>
+  uniform vec3 uColor;
+  uniform float uAlpha;
+  uniform float uTime;
+  varying vec3 vNormal;
+  varying vec3 vView;
+  varying float vY;
+  void main() {
+    #include <logdepthbuf_fragment>
+    float rim = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 1.5);
+    float lines = 0.8 + 0.2 * sin(vY * 150.0 - uTime * 7.0);
+    gl_FragColor = vec4(uColor * (0.7 + 1.2 * rim), uAlpha * (0.24 + 0.76 * rim) * lines);
+  }
+`;
+const ghostDepthFragment = /* glsl */ `
+  #include <logdepthbuf_pars_fragment>
+  void main() {
+    #include <logdepthbuf_fragment>
+    gl_FragColor = vec4(0.0);
+  }
+`;
+
+/** One body of the timeline: its own depth first (so that it is one shape, not its far side through its near one), then its glow, and its time. */
+interface Ghost {
+  group: THREE.Group;
+  uniforms: { uColor: THREE.IUniform; uAlpha: THREE.IUniform; uTime: THREE.IUniform };
+  stamp: THREE.SpriteMaterial;
+  /** Where it stands (floor point). */
+  at: readonly [number, number, number];
+  dispose: () => void;
+}
+
+/** While he is himself this close to one of the timeline's bodies (m) it is left out; from the second distance on it is whole. */
+const GHOST_CLEAR = [0.45, 0.9] as const;
+
+function stampTexture(label: string, now = false) {
+  const c = document.createElement("canvas");
+  c.width = 320;
+  c.height = 96;
+  const g = c.getContext("2d")!;
+  g.fillStyle = now ? "rgba(236,254,255,0.95)" : "rgba(4,7,12,0.78)";
+  g.fillRect(0, 0, c.width, c.height);
+  g.strokeStyle = "rgba(53,224,255,0.9)";
+  g.lineWidth = 4;
+  g.strokeRect(2, 2, c.width - 4, c.height - 4);
+  g.fillStyle = now ? "#04070c" : "#cffafe";
+  g.font = '600 56px "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace';
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.fillText(label, c.width / 2, c.height / 2 + 4);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/** The subject's body (and what he carries) as it stood at incident time t; null until his model is there. */
+function makeGhost(t: number): Ghost | null {
+  const at = subjectSample(DEMO_SUBJECT, t);
+  const geometries = at ? bakeSubjectPose(DEMO_SUBJECT, t) : null;
+  if (!at || !geometries) return null;
+  const uniforms = { uColor: { value: CYAN }, uAlpha: { value: 0 }, uTime: { value: 0 } };
+  const depth = new THREE.ShaderMaterial({ vertexShader: ghostVertex, fragmentShader: ghostDepthFragment, colorWrite: false });
+  const glow = new THREE.ShaderMaterial({ vertexShader: ghostVertex, fragmentShader: ghostFragment, uniforms, transparent: true, depthWrite: false, depthFunc: THREE.LessEqualDepth, toneMapped: false });
+  const group = new THREE.Group();
+  group.visible = false;
+  for (const g of geometries) {
+    const first = new THREE.Mesh(g, depth);
+    first.renderOrder = 4;
+    const second = new THREE.Mesh(g, glow);
+    second.renderOrder = 5;
+    first.frustumCulled = second.frustumCulled = false;
+    group.add(first, second);
+  }
+  const texture = stampTexture(formatClock(t).slice(1, -1));
+  const stamp = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false, toneMapped: false, opacity: 0 });
+  const sprite = new THREE.Sprite(stamp);
+  sprite.position.set(at.position[0], at.position[1] + STAMP_Y, at.position[2]);
+  sprite.scale.set(STAMP_SIZE[0], STAMP_SIZE[1], 1);
+  sprite.renderOrder = 6;
+  group.add(sprite);
+  return {
+    group,
+    uniforms,
+    stamp,
+    at: [at.position[0], at.position[1], at.position[2]],
+    dispose: () => {
+      for (const g of geometries) g.dispose();
+      depth.dispose();
+      glow.dispose();
+      texture.dispose();
+      stamp.dispose();
+    },
+  };
+}
 
 const beamVertex = /* glsl */ `
   varying vec2 vUv;
@@ -174,6 +294,19 @@ function Layers() {
   const arrow = useRef<THREE.Mesh>(null);
   const pin = useRef<THREE.Group>(null);
   const route = useRef<THREE.Mesh>(null);
+  const timeline = useRef<THREE.Group>(null);
+  const now = useRef<THREE.Sprite>(null);
+  const ghosts = useRef<(Ghost | null)[]>(GHOST_TIMES.map(() => null));
+  useEffect(() => {
+    const list = ghosts.current;
+    return () => {
+      list.forEach((g, i) => {
+        g?.group.removeFromParent();
+        g?.dispose();
+        list[i] = null;
+      });
+    };
+  }, []);
 
   const made = useMemo(() => {
     const tube = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true);
@@ -187,6 +320,7 @@ function Layers() {
       pinMaterial: shader(pinFragment, beamVertex, pinUniforms),
       ringsMaterial: shader(ringsFragment, floorVertex, ringsUniforms),
       routeMaterial: shader(routeFragment, floorVertex, routeUniforms),
+      nowMaterial: new THREE.SpriteMaterial({ map: stampTexture("NOW", true), transparent: true, depthTest: false, depthWrite: false, toneMapped: false, opacity: 0 }),
     };
   }, []);
   useEffect(
@@ -196,6 +330,8 @@ function Layers() {
       made.ringSheet.dispose();
       made.routeSheet.dispose();
       for (const m of [...made.rayMaterials, made.arrowMaterial, made.pinMaterial, made.ringsMaterial, made.routeMaterial]) m.dispose();
+      made.nowMaterial.map?.dispose();
+      made.nowMaterial.dispose();
     },
     [made],
   );
@@ -208,6 +344,33 @@ function Layers() {
     const replay = useReplayStore.getState();
     const T = replay.currentTime;
     const here = live && !demoLook.hideSubject ? subjectSample(DEMO_SUBJECT, T) : null;
+
+    // ---- the timeline: his body at moments already played, one after the other
+    // (made one a frame, behind the loading card, as soon as his model is there)
+    const missing = ghosts.current.findIndex((g) => g === null);
+    if (missing >= 0 && timeline.current) {
+      const made = makeGhost(GHOST_TIMES[missing]);
+      if (made) {
+        ghosts.current[missing] = made;
+        timeline.current.add(made.group);
+      }
+    }
+    ghosts.current.forEach((g, i) => {
+      if (!g) return;
+      // (not where he is himself right now: he walks out along the line he came in on)
+      const clear = here ? THREE.MathUtils.smoothstep(Math.hypot(here.position[0] - g.at[0], here.position[2] - g.at[2]), GHOST_CLEAR[0], GHOST_CLEAR[1]) : 1;
+      const alpha = live && T >= GHOST_TIMES[i] ? ghostAt(e, i) * clear : 0;
+      g.group.visible = alpha > 0.004;
+      g.uniforms.uAlpha.value = alpha;
+      g.uniforms.uTime.value = e;
+      g.stamp.opacity = alpha;
+    });
+    if (now.current) {
+      const alpha = here ? nowAt(e) : 0;
+      now.current.visible = alpha > 0.004;
+      now.current.material.opacity = alpha;
+      if (here) now.current.position.set(here.position[0], here.position[1] + STAMP_Y + NOW_LIFT, here.position[2]);
+    }
 
     // ---- sight lines: from every camera whose recording has him now, to his chest
     const rayGain = here ? raysAt(e) : 0;
@@ -318,6 +481,8 @@ function Layers() {
 
   return (
     <group raycast={() => null}>
+      <group ref={timeline} />
+      <sprite ref={now} material={made.nowMaterial} scale={[STAMP_SIZE[0] * 0.62, STAMP_SIZE[1], 1]} visible={false} renderOrder={7} />
       {CAMERA_ORDER.map((id, i) => (
         <mesh
           key={id}

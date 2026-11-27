@@ -215,25 +215,24 @@ Click a camera marker in the 3D view to look through it (its feed highlights). C
 
 ### Demo 2
 
-**DEMO 2** in the header (or `/?demo=2`) is a second 25-second cut made for a short post. It opens on the result and then shows how it was made, with titles sized to stay inside a 4:5 crop of a 16:9 recording:
+**DEMO 2** in the header (or `/?demo=2`) is a second 25-second cut made for a short post. It has no title card: it starts on the four recordings, and every beat is something the system does with them. Titles are sized to stay inside a 4:5 crop of a 16:9 recording (the last shot, the timeline, uses the full width):
 
 | At | What it shows |
 |---|---|
-| 0.0 s | cold open: the reconstruction itself in slow motion, him carrying the chair, on CAM 01's line of sight ("4 CCTV CAMERAS. 1 PERSON. FULL 3D.") |
-| 1.5 s | ASK THE FOOTAGE: the four recordings; "man carrying a chair" is typed into a search bar and a sweep crosses every feed |
-| 3.6 s | SUBJECT LOCKED: his SAM 2.1 cut-out lights up feed by feed; the bar counts the feeds that have him |
-| 4.9 s | SAME CAMERA. NOW IN 3D: push into CAM 01 and a wipe crosses the picture, recording on one side and the 3D view of the same instant on the other |
-| 7.0 s | THE ROOM. TO SCALE: the view rises out of CAM 01 to the whole room from outside (ceiling off, only the room itself: what the scan caught beyond its walls is left out), the room melts to its LiDAR wireframe, the four cameras' coverage unfolds, time rewinds |
-| 9.4 s | 4 CAMERAS. 1 TRACK: the replay from his entry (2.2x) in a tracking shot along the room; a sight line from every camera that sees him at that moment, his path growing behind him, the forecast arrow ahead |
-| 13.2 s | DWELL TIME: the seconds he stands at the table run through fast and are counted while the camera comes down to him |
-| 14.4 s | ANY ANGLE. ANY MOMENT: half speed, a free camera from CAM 04's line of sight round to CAM 01's as he lifts the chair and turns: 3D model, X-ray in the wireframe room, 3D + footage (front-on at the end, his own recorded pixels) |
-| 19.0 s | NEXT MOVE. PREDICTED: he walks off; the camera swings out over the window wall to a view that holds him and the door and closes in as he nears it: heading, speed, the dashed route to the exit and the time to it |
-| 22.0 s | the numbers of this clip over the same shot: cameras, seconds tracked, metres of path, SAM 2.1 cut-outs |
-| 23.4 s | end card |
+| 0.0 s | ASK THE FOOTAGE: the four recordings; "man carrying a chair" is typed into a search bar and a sweep crosses every feed |
+| 2.1 s | SUBJECT LOCKED: his SAM 2.1 cut-out lights up feed by feed; the bar counts the feeds that have him |
+| 3.4 s | SAME CAMERA. NOW IN 3D: push into CAM 01 and a wipe crosses the picture, recording on one side and the 3D view of the same instant on the other |
+| 5.7 s | THE ROOM. TO SCALE: the view rises out of CAM 01 to the whole room from outside (ceiling off, only the room itself: what the scan caught beyond its walls is left out), the room melts to its LiDAR wireframe, the four cameras' coverage unfolds, time rewinds |
+| 8.1 s | 4 CAMERAS. 1 TRACK: the replay from his entry (1.8x) in a tracking shot along the room; a sight line from every camera that sees him at that moment, his path growing behind him, the forecast arrow ahead. Beside it (landscape only) the recording of the camera that sees him best plays in step, zoomed on him, and is handed on from camera to camera (CAM 02, CAM 01, CAM 04 on this clip) |
+| 12.8 s | DWELL TIME: the seconds he stands at the table run through fast and are counted while the camera comes down to him |
+| 13.95 s | ANY ANGLE. ANY MOMENT: half speed, a free camera from CAM 04's line of sight round to CAM 01's as he lifts the chair and turns: 3D model, X-ray in the wireframe room, 3D + footage (front-on at the end, his own recorded pixels) |
+| 18.35 s | NEXT MOVE. PREDICTED: he walks off; the camera swings out over the window wall to a view that holds him and the door and closes in as he nears it: heading, speed, the dashed route to the exit and the time to it |
+| 21.2 s | the timeline: the room turns to its wireframe and the camera comes round beside the track. His reconstructed body at five earlier moments (0:04.9, 0:06.5, 0:10.3, 0:19.0, 0:21.1) stands along the path, each under its time, while he himself walks on among them in white under "NOW"; below, the numbers of this clip: cameras, seconds tracked, metres of path, SAM 2.1 cut-outs |
+| 23.8 s | end card |
 
-What is staged in it: the search bar is a title, there is no search behind it (the cut-outs it "finds" and the feed count are the real SAM 2.1 masks of the clip). The forecast is plain dead reckoning on the fused track (position and velocity over the last half second), and the exit it points at is the door he came in through. Everything else is the viewer's own data at the shown instant: recordings, reconstruction, track, camera calibration, coverage.
+What is staged in it: the search bar is a title, there is no search behind it (the cut-outs it "finds" and the feed count are the real SAM 2.1 masks of the clip). The forecast is plain dead reckoning on the fused track (position and velocity over the last half second), and the exit it points at is the door he came in through. The camera handoff beside the tracking shot is a simple rule (the camera whose cut-out of him is tallest, with some hysteresis), not a tracker's decision. The timeline's figures are the reconstructed body baked at those instants, at the positions the track has for them; the five instants are picked by hand, a figure fades out while he walks within 0.9 m of it, and his pace drops to 0.3x so that he stays in the gap between two of them. Everything else is the viewer's own data at the shown instant: recordings, reconstruction, track, camera calibration, coverage.
 
-`demo2Script.ts` is the second script (same interface as the first, `scripts.ts` picks one by the store's `variant`), `Demo2Overlay.tsx` its HUD and `Demo2Scene.tsx` what it adds inside the canvas (sight lines, forecast, predicted route, exit pin).
+`demo2Script.ts` is the second script (same interface as the first, `scripts.ts` picks one by the store's `variant`), `Demo2Overlay.tsx` its HUD and `Demo2Scene.tsx` what it adds inside the canvas (sight lines, forecast, predicted route, exit pin, the timeline's figures and time stamps). `reconstruction/avatarBake.ts` bakes the subject's body (and what he holds) at any master time into plain geometry for those figures; the recording beside the tracking shot is drawn by `DemoWall.tsx`.
 
 The whole walkthrough is data: `src/features/demo/demoScript.ts` holds pure functions of the demo clock (camera path, incident time, room build, looks, captions), `DemoDirector.tsx` (inside the canvas) applies them every frame, `DemoWall.tsx` draws the four-feed wall and each camera's recording during the pass on a 2D canvas, `DemoPath.tsx` is the two-colour path on the floor (the fused track, baked into a distance field), `DemoOverlay.tsx` is the HUD, `labelFit.ts` keeps the scene's floating labels clear of the frame's edge, the captions and each other while the camera flies. Because nothing depends on anything but the clock, the walkthrough can also be stepped frame by frame: in a dev build `window.__sentryDemo.step(seconds)` shows any moment of it.
 

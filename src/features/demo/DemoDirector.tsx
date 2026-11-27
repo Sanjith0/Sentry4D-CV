@@ -228,6 +228,7 @@ export function DemoDirector() {
     demoLook.hologram = look.hologram;
     demoLook.hideBody = look.hideBody;
     demoLook.holoStyle = look.holoStyle;
+    demoLook.holoWhite = look.holoWhite ?? 0;
     demoLook.holoBand = bounds.min[1] + look.holoBand;
     demoLook.hideTags = look.hideTags;
     demoLook.hideTrail = look.hideTrail;
@@ -382,6 +383,7 @@ export function DemoDirector() {
     demoLook.hologram = 0;
     demoLook.hideBody = false;
     demoLook.holoStyle = 0;
+    demoLook.holoWhite = 0;
     demoLook.coverage = 1;
     demoLook.hideTags = false;
     demoLook.hideTrail = false;

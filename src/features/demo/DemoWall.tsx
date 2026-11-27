@@ -58,6 +58,8 @@ interface FeedStyle {
   scan?: number;
   /** The tag on the bracket. */
   tag: string;
+  /** The part of the recording to draw (its pixels); left out: all of it that fills the rectangle, punched in. */
+  src?: { sx: number; sy: number; sw: number; sh: number };
 }
 
 interface Env {
@@ -88,6 +90,147 @@ function cropNear(clip: AppearanceClipManifest | undefined, cam: CameraId, maste
     if (crop) return crop;
   }
   return null;
+}
+
+/** The picture beside the 3D view: another camera takes over once his cut-out in it is this many times as tall. */
+const HANDOFF_GAIN = 1.3;
+/** ...and the takeover is marked for this long (s of the demo's clock). */
+const HANDOFF_MARK = 0.55;
+const picked: { cam: CameraId | null; since: number; last: number } = { cam: null, since: -10, last: -10 };
+/** In that picture he is brought to this share of its height, by at most PIP_ZOOM, following him this softly (s). */
+const PIP_FILL = 0.62;
+const PIP_ZOOM = 1.7;
+const PIP_EASE = 0.22;
+/** Where the picture is on him: his middle (shares of the recording) and the zoom; of which camera, and when. */
+const aim = { cx: 0.5, cy: 0.5, zoom: 1, cam: null as CameraId | null, at: -10 };
+
+/**
+ * The camera whose recording is shown beside the 3D view at incident time T: the one in which he is tallest,
+ * kept until another has him clearly taller (or it loses him).
+ */
+function bestCamera(clip: AppearanceClipManifest | undefined, T: number, e: number): CameraId | null {
+  const frames = (id: CameraId) => clip?.cameras[id]?.frames;
+  const k = clip ? Math.round((T - clip.t0) * clip.fps) : -1;
+  // (not while he is only coming into a picture at its edge)
+  const tall = (id: CameraId) => {
+    const c = frames(id)?.[k]?.crop;
+    return c && (c[2] - c[0] > 0.1 || (c[0] > 0.01 && c[2] < 0.99)) ? c[3] - c[1] : 0;
+  };
+  // (a new run, or the clock was moved back: start over)
+  if (e < picked.last - 0.2 || e > picked.last + 1) picked.cam = null;
+  picked.last = e;
+  let best: CameraId | null = null;
+  for (const cam of securityCameras.slice(0, 4)) if (tall(cam.id) > (best ? tall(best) : 0)) best = cam.id;
+  if (!best) return picked.cam;
+  if (picked.cam === null || (best !== picked.cam && tall(best) > HANDOFF_GAIN * tall(picked.cam))) {
+    if (picked.cam !== null) picked.since = e;
+    picked.cam = best;
+  }
+  return picked.cam;
+}
+
+/**
+ * One recording as a small picture beside the 3D view (landscape windows only: left of the column the captions
+ * keep to): the camera's name and clock, his box in it, and a mark when another camera takes over.
+ */
+function drawPip(ctx: CanvasRenderingContext2D, env: Env, W: number, H: number, T: number) {
+  const band = (W - Math.min(W, 0.8 * H)) / 2;
+  const w = Math.min(0.24 * W, band - 0.03 * W);
+  if (w < 0.12 * W) return;
+  const h = w / CCTV_ASPECT;
+  const r: Rect = { x: 0.018 * W, y: 0.95 * H - h, w, h };
+  const id = bestCamera(env.clip, T, env.e);
+  const cam = securityCameras.find((c) => c.id === id);
+  if (!cam) return;
+  const font = Math.max(8, h * 0.068);
+  const line = Math.max(1, H * 0.0022);
+  const video = videoRegistry.get(cam.id);
+  const clip = env.clip;
+
+  // closer in on him, following him (at once after a takeover, softly otherwise)
+  const near = cropNear(clip, cam.id, T);
+  if (near) {
+    const zoom = Math.min(Math.max(PIP_FILL / Math.max(near[3] - near[1], 1e-3), 1), PIP_ZOOM);
+    const dt = env.e - aim.at;
+    const k = aim.cam !== cam.id || dt < 0 || dt > 1 ? 1 : 1 - Math.exp(-dt / PIP_EASE);
+    aim.cx = lerp(aim.cx, (near[0] + near[2]) / 2, k);
+    aim.cy = lerp(aim.cy, (near[1] + near[3]) / 2, k);
+    aim.zoom = lerp(aim.zoom, zoom, k);
+    aim.cam = cam.id;
+  }
+  aim.at = env.e;
+  let src: FeedStyle["src"];
+  if (video && video.videoWidth > 0 && aim.cam === cam.id) {
+    const full = coverRect(video.videoWidth, video.videoHeight, r.w / r.h);
+    const sw = full.sw / aim.zoom;
+    const sh = full.sh / aim.zoom;
+    src = {
+      sx: full.sx + Math.min(Math.max(aim.cx * video.videoWidth - full.sx - sw / 2, 0), full.sw - sw),
+      sy: full.sy + Math.min(Math.max(aim.cy * video.videoHeight - full.sy - sh / 2, 0), full.sh - sh),
+      sw,
+      sh,
+    };
+  }
+  drawFeed(ctx, env, cam, r, { highlight: 0, dim: 0, tint: 0, mark: 0, punch: 0, focusTime: T, chrome: 1, font, tagFont: font, line, glow: 1, safeTop: r.y, safeBottom: r.y + r.h, tag: "", src });
+
+  // his box in this recording, at the frame it shows
+  const kf = clip && video ? Math.round((video.currentTime - (env.offsets[cam.id] ?? 0) - clip.t0) * clip.fps) : -1;
+  const box = clip?.cameras[cam.id]?.frames[kf]?.crop;
+  if (box && video && src) {
+    const { sx, sy, sw, sh } = src;
+    const px = (u: number) => r.x + ((u * video.videoWidth - sx) / sw) * r.w;
+    const py = (v: number) => r.y + ((v * video.videoHeight - sy) / sh) * r.h;
+    const pad = r.h * 0.035;
+    const x0 = Math.max(px(box[0]) - pad, r.x + 2);
+    const x1 = Math.min(px(box[2]) + pad, r.x + r.w - 2);
+    const y0 = Math.max(py(box[1]) - pad, r.y + font * 2.1);
+    const y1 = Math.min(py(box[3]) + pad, r.y + r.h - 2);
+    if (x1 - x0 > 4 && y1 - y0 > 4) {
+      const arm = Math.min(x1 - x0, y1 - y0) * 0.28;
+      ctx.save();
+      ctx.strokeStyle = CYAN;
+      ctx.shadowColor = "rgba(34,211,238,0.9)";
+      ctx.shadowBlur = 6 * env.dpr;
+      ctx.lineWidth = line * 1.2;
+      ctx.beginPath();
+      for (const [cx, cy, sxn, syn] of [
+        [x0, y0, 1, 1],
+        [x1, y0, -1, 1],
+        [x0, y1, 1, -1],
+        [x1, y1, -1, -1],
+      ]) {
+        ctx.moveTo(cx + sxn * arm, cy);
+        ctx.lineTo(cx, cy);
+        ctx.lineTo(cx, cy + syn * arm);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // frame and caption; both light up when another camera has just taken over
+  const mark = clamp01(1 - (env.e - picked.since) / HANDOFF_MARK);
+  ctx.save();
+  ctx.strokeStyle = `rgba(34,211,238,${lerp(0.6, 1, mark)})`;
+  ctx.shadowColor = "rgba(34,211,238,1)";
+  ctx.shadowBlur = (4 + 18 * mark) * env.dpr;
+  ctx.lineWidth = line * lerp(1, 2.4, mark);
+  ctx.strokeRect(r.x, r.y, r.w, r.h);
+  ctx.restore();
+  const caption = mark > 0 ? `HANDOFF \u2192 ${cam.name.split(" \u00B7 ")[0].toUpperCase()}` : "REAL FOOTAGE \u00B7 IN STEP";
+  ctx.font = `600 ${font}px ${MONO}`;
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "left";
+  const ch = font * 1.9;
+  const cw = ctx.measureText(caption).width + font * 1.3;
+  const cy = r.y - ch - font * 0.4;
+  ctx.fillStyle = mark > 0 ? "rgba(8,145,178,0.92)" : "rgba(4,7,12,0.85)";
+  ctx.fillRect(r.x, cy, cw, ch);
+  ctx.strokeStyle = "rgba(34,211,238,0.7)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(r.x + 0.5, cy + 0.5, cw - 1, ch - 1);
+  ctx.fillStyle = mark > 0 ? "#ecfeff" : "#67e8f9";
+  ctx.fillText(caption, r.x + font * 0.65, cy + ch / 2 + 1);
 }
 
 /** Per camera: the subject's cut-out as a flat cyan silhouette (for the X-ray tint). */
@@ -123,8 +266,8 @@ function drawFeed(ctx: CanvasRenderingContext2D, env: Env, cam: SecurityCamera, 
   if (ready) {
     const vw = video.videoWidth;
     const vh = video.videoHeight;
-    let { sx, sy, sw, sh } = coverRect(vw, vh, r.w / r.h);
-    if (st.punch > 0) {
+    let { sx, sy, sw, sh } = st.src ?? coverRect(vw, vh, r.w / r.h);
+    if (st.punch > 0 && !st.src) {
       // Closer in on the subject: a zoom about a fixed point of the picture, chosen so that the subject ends
       // up near AIM. (A point inside the picture: it keeps filling its rectangle all the way in.)
       const box = cropNear(env.clip, cam.id, st.focusTime);
@@ -307,7 +450,7 @@ export function DemoWall() {
       const show = s.phase !== "idle" && wall.visible;
       el.style.display = show ? "block" : "none";
       if (!show) return;
-      el.style.opacity = String(wall.footage);
+      el.style.opacity = String(wall.footage * (wall.pip ?? 1));
       // a wipe: the recording is cut away from the left, the 3D viewport underneath shows there
       const clipPath = wall.wipe ? `inset(0 0 0 ${(wall.wipe * 100).toFixed(2)}%)` : "";
       if (el.style.clipPath !== clipPath) el.style.clipPath = clipPath;
@@ -323,6 +466,12 @@ export function DemoWall() {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = "source-over";
+      if (wall.pip !== undefined) {
+        // one recording beside the 3D view, which stays in sight
+        ctx.clearRect(0, 0, W, H);
+        if (W > H) drawPip(ctx, { clip: useAppearanceStore.getState().clips[DEMO_CLIP], offsets: useReplayStore.getState().cameraOffsets, dpr, e }, W, H, wall.view.focusTime);
+        return;
+      }
       ctx.fillStyle = INK;
       ctx.fillRect(0, 0, W, H);
 

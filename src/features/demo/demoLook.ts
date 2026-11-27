@@ -11,6 +11,8 @@ export const demoLook = {
   hideBody: false,
   /** 0: the hologram is a flat tint (as on the footage cut-out), 1: scan lines, rim light and a sweeping band. */
   holoStyle: 0,
+  /** 0..1: the hologram is white instead of cyan. */
+  holoWhite: 0,
   /** World height of the hologram's bright band. */
   holoBand: -10,
   /** The scene's own floating tags on the subject are left out (the overlay labels it instead). */

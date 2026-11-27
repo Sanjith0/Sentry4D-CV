@@ -7,7 +7,6 @@ import {
   fit,
   lerp,
   lerp3,
-  norm,
   pchip,
   pchip3,
   smooth,
@@ -26,50 +25,46 @@ import {
 } from "./demoScript";
 
 /**
- * DEMO 2: a second cut of the walkthrough, as data (see demoScript.ts for how a script is played). It opens
- * on the result, then shows how it was made:
+ * DEMO 2: a second cut of the walkthrough, as data (see demoScript.ts for how a script is played). No title
+ * card: it starts on the recordings and every beat is something the system does with them:
  *
- *   0.0  COLD OPEN  the reconstruction itself, close up, in slow motion: him carrying the chair, seen along
- *                   CAM 01's line of sight (his own recorded pixels on the 3D body)
- *   1.5  SEARCH     cut to the wall of the four recordings; a query is typed, a sweep crosses every feed
- *   3.6  LOCK       his SAM 2.1 cut-out lights up in every feed
- *   4.9  REVEAL     push into CAM 01; a wipe crosses the picture: recording on one side, 3D view on the other
- *   7.0  TWIN       the viewport rises out of CAM 01 to the whole room seen from outside (only the room: what
+ *   0.0  SEARCH     the wall of the four recordings; a query is typed, a sweep crosses every feed
+ *   2.1  LOCK       his SAM 2.1 cut-out lights up in every feed
+ *   3.4  REVEAL     push into CAM 01; a wipe crosses the picture: recording on one side, 3D view on the other
+ *   5.7  TWIN       the viewport rises out of CAM 01 to the whole room seen from outside (only the room: what
  *                   the scan caught beyond its walls is left out) while it melts to its LiDAR wireframe; he
  *                   fades out, time rewinds, the four cameras' coverage unfolds, the texture comes back
- *   9.4  TRACK      replay from his entry (2.2x) in a tracking shot along the room: his path grows behind
- *                   him, a sight line from every camera that sees him at that moment, a forecast arrow ahead
- *  13.2  DWELL      the seconds he stands at the table run through fast, counted; the camera comes down to him
- *  14.4  FREE CAM   half speed: round him from CAM 04's line of sight to CAM 01's as he lifts the chair and
+ *   8.1  TRACK      replay from his entry (1.8x) in a tracking shot along the room: his path grows behind
+ *                   him, a sight line from every camera that sees him at that moment, a forecast arrow ahead;
+ *                   beside it the recording of the camera that sees him best, in step, handed on from camera
+ *                   to camera
+ *  12.8  DWELL      the seconds he stands at the table run through fast, counted; the camera comes down to him
+ *  13.95 FREE CAM   half speed: round him from CAM 04's line of sight to CAM 01's as he lifts the chair and
  *                   turns (3D model, X-ray in the wireframe room, 3D + footage)
- *  19.0  PREDICT    he walks off; the camera swings out over the window wall to a view that holds him and the
+ *  18.35 PREDICT    he walks off; the camera swings out over the window wall to a view that holds him and the
  *                   door and closes in as he nears it: forecast arrow, the predicted route, the exit and the
  *                   time to it, from the fused track's position and velocity
- *  22.0  STATS      the numbers of this reconstruction over the same shot
- *  23.4  END CARD
+ *  21.2  TIMELINE   the room turns to its wireframe and the camera comes round beside the track: his body at
+ *                   five earlier moments stands along it, each with its time, he himself walks on among them
+ *                   (white, "NOW"), under the numbers of this reconstruction
+ *  23.8  END CARD
  */
 export const DEMO_DURATION = 25.0;
 
 export const BEAT = {
-  open: 0,
-  wall: 1.5,
-  lock: 3.6,
-  reveal: 4.9,
-  twin: 7.0,
-  track: 9.4,
-  /** (set below: where the walk in ends) */
-  dwell: 13.22,
-  free: 14.4,
-  predict: 19.0,
-  stats: 22.0,
-  end: 23.4,
+  wall: 0,
+  lock: 2.1,
+  reveal: 3.4,
+  twin: 5.7,
+  track: 8.1,
+  free: 13.95,
+  predict: 18.35,
+  stats: 21.2,
+  end: 23.8,
 } as const;
 
 // ---------------------------------------------------------------- incident time
 
-/** Cold open: carrying the chair towards CAM 01, in slow motion. */
-const OPEN_TIME = 21.6;
-const OPEN_RATE = 0.4;
 /** Incident time when the wall comes up: he stands at the table with the chair, in sight of all four cameras. */
 export const DEMO_START_TIME = 16.6;
 /** Demo time applied behind the loading card while the recordings are brought to DEMO_START_TIME. */
@@ -92,7 +87,7 @@ const HELD_TIME = twinTime(REWIND_FROM);
 /** Just before any camera has seen him. */
 const REWOUND_TIME = 4.0;
 /** The walk in, replayed at WALK_RATE up to where he slows at the table. */
-const WALK_RATE = 2.2;
+const WALK_RATE = 1.8;
 const WALK_END_TIME = 12.4;
 const WALK_END = BEAT.track + (WALK_END_TIME - REWOUND_TIME) / WALK_RATE;
 /** Free camera: from here (standing at the table, the chair in his hands), at FREE_RATE. */
@@ -100,8 +95,16 @@ export const FREEZE_TIME = 18.0;
 const FREE_RATE = 0.5;
 /** From the predict beat the pace eases up to END_RATE. */
 const PREDICT_TIME = FREEZE_TIME + FREE_RATE * (BEAT.predict - BEAT.free);
-const END_RATE = 0.75;
+const END_RATE = 0.58;
 const END_EASE = 0.8;
+/** In the timeline he slows once more (to TIMELINE_RATE), so he stays in the gap between two of his earlier selves. */
+const TIMELINE_RATE = 0.3;
+const TIMELINE_SLOW = BEAT.stats + 0.9;
+/** Integral of smoothstep over x seconds of an ease of END_EASE seconds, then 1 per second. */
+const eased = (x: number) => {
+  const u = clamp01(x / END_EASE);
+  return x <= 0 ? 0 : END_EASE * (u * u * u - (u * u * u * u) / 2) + Math.max(x - END_EASE, 0);
+};
 
 /** Incident time and rate through the dwell (cubic Hermite, the neighbours' rates at both ends). */
 function dwellAt(e: number): { t: number; rate: number } {
@@ -114,24 +117,24 @@ function dwellAt(e: number): { t: number; rate: number } {
   const rate = (3 * u2 - 4 * u + 1) * WALK_RATE + ((-6 * u2 + 6 * u) * dp) / L + (3 * u2 - 2 * u) * FREE_RATE;
   return { t, rate };
 }
-const endRate = (e: number) => lerp(FREE_RATE, END_RATE, smooth(span(e, BEAT.predict, BEAT.predict + END_EASE)));
+const endRate = (e: number) =>
+  lerp(FREE_RATE, END_RATE, smooth(span(e, BEAT.predict, BEAT.predict + END_EASE))) +
+  (TIMELINE_RATE - END_RATE) * smooth(span(e, TIMELINE_SLOW, TIMELINE_SLOW + END_EASE));
 
-/** While true the recordings are on screen and play by themselves. */
-export const videosLive = (e: number) => e >= BEAT.wall && e < BEAT.twin;
-export const videoRate = (_e: number) => 1;
+/** While true the recordings are on screen and play by themselves: the wall, and the feed beside the tracking shot. */
+export const videosLive = (e: number) => e < BEAT.twin || (e >= BEAT.track && e < WALK_END);
+export const videoRate = (e: number) => (e >= BEAT.track ? WALK_RATE : 1);
 
 /** Master (incident) time shown at demo time e. */
 export function incidentTime(e: number): number {
-  if (e < BEAT.wall) return OPEN_TIME + OPEN_RATE * Math.max(e, 0);
-  if (e < BEAT.twin) return DEMO_START_TIME + (e - BEAT.wall);
+  if (e < BEAT.twin) return DEMO_START_TIME + Math.max(e - BEAT.wall, 0);
   if (e < REWIND_FROM) return twinTime(e);
   if (e < BEAT.track) return lerp(HELD_TIME, REWOUND_TIME, easeInOut(span(e, REWIND_FROM, BEAT.track)));
   if (e < WALK_END) return REWOUND_TIME + WALK_RATE * (e - BEAT.track);
   if (e < BEAT.free) return dwellAt(e).t;
   if (e < BEAT.predict) return FREEZE_TIME + FREE_RATE * (e - BEAT.free);
   const x = e - BEAT.predict;
-  const u = Math.min(x / END_EASE, 1);
-  return PREDICT_TIME + FREE_RATE * x + (END_RATE - FREE_RATE) * (END_EASE * (u * u * u - (u * u * u * u) / 2) + Math.max(x - END_EASE, 0));
+  return PREDICT_TIME + FREE_RATE * x + (END_RATE - FREE_RATE) * eased(x) + (TIMELINE_RATE - END_RATE) * eased(e - TIMELINE_SLOW);
 }
 
 /** Footage frames the walkthrough draws (loaded and kept before the clock starts). */
@@ -141,7 +144,6 @@ export function frameWanted(masterTime: number): boolean {
 
 export function rateLabel(e: number): string {
   const slow = (r: number) => `\u25B6 ${r.toFixed(1)}\u00D7 SLOW-MO`;
-  if (e < BEAT.wall) return slow(OPEN_RATE);
   if (e < BEAT.twin) return "\u25B6 1.0\u00D7";
   if (e < REWIND_FROM) return slow(1 - (1 - TWIN_RATE) * smooth(span(e, BEAT.twin, BEAT.twin + TWIN_EASE)));
   if (e < BEAT.track) return "\u25C0\u25C0 REWIND";
@@ -156,8 +158,12 @@ export function rateLabel(e: number): string {
 const ALL = 1e6;
 const NONE = -1e6;
 const WIRE_DIM = 0.5;
+/** ...and under the timeline's bodies. */
+const TIMELINE_DIM = 0.3;
 /** The texture is back (rising behind the replay's first steps) over this span. */
 const RISE = [BEAT.track - 0.5, BEAT.track + 0.8] as const;
+/** The timeline: the camera's way back out to the whole room, and the room's texture dissolving on the way. */
+const TIMELINE = { cam: [BEAT.stats - 0.2, BEAT.stats + 1.0], wire: [BEAT.stats + 0.1, BEAT.stats + 0.7] } as const;
 /** Free camera: the room is wireframe under the X-ray look. */
 const XRAY = { in: [BEAT.free + 0.95, BEAT.free + 1.5], out: [BEAT.free + 2.6, BEAT.free + 3.2] } as const;
 
@@ -174,10 +180,12 @@ export function buildAt(e: number, floorY: number, topY: number): BuildState {
   if (e < XRAY.in[1]) return at(lerp(y1, y0, easeInOut(span(e, XRAY.in[0], XRAY.in[1]))), ALL, 1, WIRE_DIM);
   if (e < XRAY.out[0]) return at(NONE, ALL, 1, WIRE_DIM);
   if (e < XRAY.out[1]) return at(lerp(y0, y1, easeInOut(span(e, XRAY.out[0], XRAY.out[1]))), ALL, 0, WIRE_DIM);
-  return at(ALL, ALL, 0);
+  if (e < TIMELINE.wire[0]) return at(ALL, ALL, 0);
+  // the timeline: the wireframe twin again, under his body at moments along the track
+  return at(e < TIMELINE.wire[1] ? lerp(y1, y0, easeInOut(span(e, TIMELINE.wire[0], TIMELINE.wire[1]))) : NONE, ALL, 1, lerp(WIRE_DIM, TIMELINE_DIM, span(e, TIMELINE.wire[0], TIMELINE.wire[1])));
 }
 
-/** The ceiling is drawn while the viewport is inside CAM 01 or beside him in the cold open; never after. */
+/** The ceiling is drawn while the viewport is inside CAM 01; never after. */
 export const ceilingShown = (e: number, _cutY: number, _wireY: number) => e < BEAT.twin;
 /** The scanned window frames stand between the outside views and him: open while the viewport is outside. */
 export const glassWithFrames = true;
@@ -185,6 +193,22 @@ export const windowFramesAt = (e: number) =>
   e < BEAT.free ? 1 - smooth(span(e, BEAT.twin + 0.5, BEAT.twin + 1.1)) : smooth(span(e, BEAT.free, BEAT.free + 0.4)) * (1 - smooth(span(e, BEAT.predict - 0.15, BEAT.predict + 0.35)));
 /** From the twin beat the room is seen from outside and above: what the scan caught beyond the walls is left out. */
 export const roomMarginAt = (e: number) => (e >= BEAT.twin ? 0.45 : null);
+
+/**
+ * Incident times of his body in the timeline: along the walk in, at the table with the chair off the floor, on
+ * his way out with it. (He walks out along the line he came in on: the gap in the middle of the walk in is
+ * where he is himself while the timeline is up.)
+ */
+export const GHOST_TIMES: readonly number[] = [4.9, 6.5, 10.3, 19.0, 21.1];
+/** 0..1: the body of GHOST_TIMES[i] in the timeline (they come up one after the other, along the track). */
+export const ghostAt = (e: number, i: number) => smooth(span(e, BEAT.stats + 0.35 + i * 0.15, BEAT.stats + 0.65 + i * 0.15));
+/** Timeline: strength of the hologram shell over the live subject's textured body. */
+const NOW_GLOW = 0.9;
+/** 0..1: "NOW" over him in the timeline. */
+export const nowAt = (e: number) => smooth(span(e, BEAT.stats + 0.5, BEAT.stats + 0.8));
+
+/** 0..1: the recording of the camera that sees him best, beside the tracking shot. */
+export const pipAt = (e: number) => smooth(span(e, BEAT.track + 0.4, BEAT.track + 0.75)) * (1 - smooth(span(e, WALK_END - 0.15, WALK_END + 0.05)));
 /** The cameras' coverage volumes: unfolded over the wireframe twin, folded away as the replay starts. */
 export const coverageAt = (e: number) => (e < BEAT.track + 0.6 ? span(e, BEAT.twin + 1.2, BEAT.twin + 2.0) : 1 - span(e, BEAT.track + 0.6, BEAT.track + 1.2));
 
@@ -215,8 +239,9 @@ export const FORECAST_HORIZON = 1.5;
 /** 0..1: the forecast arrow ahead of him; exit: the exit pin and the time to it. */
 export function forecastAt(e: number): { arrow: number; exit: number } {
   const track = smooth(span(e, BEAT.track + 0.6, BEAT.track + 0.9)) * (1 - smooth(span(e, WALK_END, WALK_END + 0.3)));
-  const predict = smooth(span(e, BEAT.predict + 0.25, BEAT.predict + 0.7));
-  return { arrow: Math.max(track, predict), exit: smooth(span(e, BEAT.predict + 0.7, BEAT.predict + 1.2)) };
+  const out = 1 - smooth(span(e, BEAT.stats - 0.25, BEAT.stats + 0.15));
+  const predict = smooth(span(e, BEAT.predict + 0.25, BEAT.predict + 0.7)) * out;
+  return { arrow: Math.max(track, predict), exit: smooth(span(e, BEAT.predict + 0.7, BEAT.predict + 1.2)) * out };
 }
 
 // ---------------------------------------------------------------- subject look
@@ -225,7 +250,7 @@ export function forecastAt(e: number): { arrow: number; exit: number } {
 export const FREEZE_LOOKS: { name: DemoLookName; at: number; label: string }[] = [
   { name: "texture", at: BEAT.free, label: "3D MODEL" },
   { name: "xray", at: BEAT.free + 1.2, label: "X-RAY" },
-  { name: "footage", at: BEAT.free + 2.9, label: "3D + FOOTAGE" },
+  { name: "footage", at: BEAT.free + 2.8, label: "3D + FOOTAGE" },
 ];
 const look = (name: DemoLookName) => FREEZE_LOOKS.find((l) => l.name === name)!.at;
 
@@ -252,7 +277,9 @@ export function lookStateAt(e: number): LookState {
   if (e < look("footage")) return { ...base, xray: true, hologram: 1, hideBody: true, holoStyle: 1, holoBand: lerp(-0.25, 2.1, span(e, look("xray"), look("footage") - 0.1)), name: "xray" };
   // on CAM 01's line of sight the body carries that camera's own pixels; the fused track's values beside him
   if (e < BEAT.predict) return { ...base, name: "footage", bracket: easeOut(span(e, look("footage") + 0.15, look("footage") + 0.5)) * (1 - span(e, BEAT.predict - 0.25, BEAT.predict)) };
-  return base;
+  if (e < BEAT.stats + 0.1) return base;
+  // the timeline: the real, textured him in a white outline, among the cyan holograms of where he has been
+  return { ...base, mode: "model", hologram: NOW_GLOW * smooth(span(e, BEAT.stats + 0.1, BEAT.stats + 0.5)), holoStyle: 1, holoWhite: 1 };
 }
 
 // ---------------------------------------------------------------- CCTV wall
@@ -270,8 +297,10 @@ export function wallAt(e: number): WallState {
   const off = 1 - smooth(span(e, UNMARK[0], UNMARK[1]));
   const lit = (i: number) => easeOut(span(e, BEAT.lock + i * MATCH_STAGGER, BEAT.lock + i * MATCH_STAGGER + 0.35)) * off;
   const highlight = lit(0);
+  const pip = pipAt(e);
+  if (e >= WIPE[1]) return { visible: pip > 0.002, zoom: 0, highlight: 1, dim: 0, tint: 0, footage: 1, view: { cam: LOCK_FIRST, punch: 0, focusTime: incidentTime(e) }, tag: "TRACKED", pip };
   return {
-    visible: e >= BEAT.wall && e < WIPE[1],
+    visible: true,
     zoom: easeInOut(span(e, BEAT.reveal, BEAT.reveal + 0.5)),
     highlight,
     highlights: [0, 1, 2, 3].map(lit),
@@ -302,7 +331,6 @@ export interface Chapter2 {
 }
 
 export const CHAPTERS: Chapter2[] = [
-  { at: BEAT.open, rail: "OPEN", title: ["4 CCTV CAMERAS.", "1 PERSON.", "FULL 3D."], sub: "Rebuilt from the recordings" },
   { at: BEAT.wall, rail: "SEARCH", title: ["ASK THE FOOTAGE."], sub: "Four recordings, one question" },
   { at: BEAT.lock, rail: "LOCK", title: ["SUBJECT LOCKED."], sub: "SAM 2.1 isolates him in every feed" },
   { at: BEAT.reveal, rail: "REVEAL", title: ["SAME CAMERA.", "NOW IN 3D."], sub: "Reconstructed from the footage, not generated" },
@@ -311,11 +339,11 @@ export const CHAPTERS: Chapter2[] = [
   { at: WALK_END, rail: "DWELL", title: ["DWELL TIME.", "0.0 S"], sub: "Measured from the fused track" },
   { at: BEAT.free, rail: "FREE CAM", title: ["ANY ANGLE.", "ANY MOMENT."], sub: "A camera that was never there \u00B7 time still running" },
   { at: BEAT.predict, rail: "PREDICT", title: ["NEXT MOVE.", "PREDICTED."], sub: "Heading, speed and time to the exit, from the track" },
-  { at: BEAT.stats, rail: "PROOF", title: [], sub: "" },
+  { at: BEAT.stats, rail: "TIMELINE", title: [], sub: "" },
 ];
 /** Index of the chapter whose title's last line is the running dwell counter. */
-export const DWELL_CHAPTER = 6;
-export const STATS_CHAPTER = 9;
+export const DWELL_CHAPTER = 5;
+export const STATS_CHAPTER = 8;
 
 /** Index into CHAPTERS, or -1 during the end card. */
 export function chapterAt(e: number): number {
@@ -329,17 +357,17 @@ export function chapterAt(e: number): number {
 export function flashAt(e: number): number {
   const pulse = (at: number, len: number, gain: number) => (e >= at && e < at + len ? gain * (1 - (e - at) / len) : 0);
   return Math.max(
-    pulse(BEAT.wall, 0.34, 0.9),
     pulse(BEAT.lock, 0.2, 0.25),
-    pulse(BEAT.twin, 0.3, 0.6),
+    pulse(BEAT.twin, 0.26, 0.3),
+    pulse(BEAT.stats + 0.1, 0.24, 0.25),
     pulse(BEAT.free, 0.24, 0.35),
     pulse(BEAT.predict, 0.24, 0.3),
     ...FREEZE_LOOKS.slice(1).map((l) => pulse(l.at, 0.16, 0.2)),
   );
 }
 
-/** 0..1: the cold open tears (a glitch) just before it cuts to the wall. */
-export const glitchAt = (e: number) => (e < BEAT.wall ? span(e, BEAT.wall - 0.22, BEAT.wall) : 0);
+/** 0..1: the picture tears (a glitch) as the timeline comes up. */
+export const glitchAt = (e: number) => (e >= BEAT.stats + 0.02 && e < BEAT.stats + 0.2 ? 1 - span(e, BEAT.stats + 0.02, BEAT.stats + 0.2) : 0);
 /** 0..1: CCTV scan lines over the recording (the wall and CAM 01's picture, on the recording's side of the wipe). */
 export const scanLinesAt = (e: number) => (e >= BEAT.wall && e < WIPE[1] ? 1 : 0);
 
@@ -349,7 +377,7 @@ const DEG = Math.PI / 180;
 
 /** The CCTV camera the viewport looks through, else null. */
 export function cctvAt(e: number): CameraId | null {
-  return e >= BEAT.wall && e < BEAT.twin + 0.2 ? LOCK_FIRST : null;
+  return e < BEAT.twin + 0.2 ? LOCK_FIRST : null;
 }
 /** The camera named in the top bar (once the wall's own labels are gone). */
 export const namedCamAt = (e: number) => (e >= BEAT.reveal + 0.3 && e < BEAT.twin + 0.2 ? LOCK_FIRST : null);
@@ -366,16 +394,6 @@ function fromPolar(c: Vec3, az: number, el: number, d: number): Vec3 {
   const a = az * DEG;
   const b = el * DEG;
   return [c[0] + d * Math.cos(b) * Math.sin(a), c[1] + d * Math.sin(b), c[2] + d * Math.cos(b) * Math.cos(a)];
-}
-
-/** Cold open: on CAM 01's line of sight to him (the body is that camera's cut-out, pixel for pixel), pushing in. */
-function openCamera(e: number, ctx: DemoContext): DemoCam {
-  const feet = ctx.live ?? ctx.subject;
-  const body: Vec3 = [feet[0], feet[1] + 0.96, feet[2]];
-  const ray = norm(sub(ctx.poses.cam1.position, body));
-  const d = lerp(3.55, 2.95, clamp01(e / BEAT.wall));
-  // (aimed below his chest: he stands in the upper part of the picture, clear of the headline)
-  return { p: [body[0] + ray[0] * d, body[1] + ray[1] * d, body[2] + ray[2] * d], t: [feet[0], feet[1] + (ctx.aspect < 1 ? 0.8 : 0.66), feet[2]], roll: 0, fov: 50 };
 }
 
 /** The outside view of the room: from the window side with its long side across a wide picture; cornerwise in a tall one. */
@@ -519,9 +537,16 @@ const EXIT_IN = 2.0;
  * keeps both). As he nears the door the two close up and the view moves in.
  */
 function exitView(ctx: DemoContext): DemoCam {
-  const { az, el, sx, sy } = exitAngles(ctx);
+  return holdBoth(ctx, ctx.live ?? ctx.subject, exitAngles(ctx));
+}
+
+/** The timeline's view: the door and the table, his whole way between them across the picture. */
+const timelineAngles = (ctx: DemoContext) => (ctx.aspect < 1 ? { az: 199, el: 52, sx: 0.5, sy: 0.4 } : { az: 270, el: 42, sx: 0.6, sy: 0.5 });
+const timelineView = (ctx: DemoContext) => holdBoth(ctx, ctx.subject, timelineAngles(ctx));
+
+/** The view from (az, el) that holds a point on the floor and the door at most (sx, sy) of the picture apart. */
+function holdBoth(ctx: DemoContext, feet: Vec3, { az, el, sx, sy }: { az: number; el: number; sx: number; sy: number }): DemoCam {
   const { dir, right, up } = viewAxes(az, el);
-  const feet = ctx.live ?? ctx.subject;
   const door: Vec3 = ctx.door ?? [-1.41, feet[1], -6.14];
   const A: Vec3 = [feet[0], feet[1] + 0.9, feet[2]];
   const B: Vec3 = [door[0], door[1] + 0.8, door[2]];
@@ -535,7 +560,6 @@ function exitView(ctx: DemoContext): DemoCam {
 }
 
 export function cameraAt(e: number, ctx: DemoContext): DemoCam {
-  if (e < BEAT.wall) return openCamera(e, ctx);
   if (e < BEAT.twin) return throughCamera(LOCK_FIRST, ctx);
   if (e < WALK_END) return outsideCamera(e, ctx);
 
@@ -561,10 +585,15 @@ export function cameraAt(e: number, ctx: DemoContext): DemoCam {
   const X = exitView(ctx);
   const u = easeInOut(span(e, BEAT.predict, BEAT.predict + EXIT_IN));
   const rise = 1 - Math.pow(1 - u, 2.2);
-  return { p: [lerp(K.p[0], X.p[0], u), lerp(K.p[1], X.p[1], rise), lerp(K.p[2], X.p[2], u)], t: lerp3(K.t, X.t, smooth(clamp01(u * 1.3))), roll: 0, fov: lerp(K.fov, X.fov, u) };
+  const P: DemoCam = { p: [lerp(K.p[0], X.p[0], u), lerp(K.p[1], X.p[1], rise), lerp(K.p[2], X.p[2], u)], t: lerp3(K.t, X.t, smooth(clamp01(u * 1.3))), roll: 0, fov: lerp(K.fov, X.fov, u) };
+  // the timeline: back out to his whole way through the room
+  const w = easeInOut(span(e, TIMELINE.cam[0], TIMELINE.cam[1]));
+  if (w <= 0) return P;
+  const R = timelineView(ctx);
+  return { p: lerp3(P.p, R.p, w), t: lerp3(P.t, R.t, w), roll: 0, fov: lerp(P.fov, R.fov, w) };
 }
 
 /** Demo times drawn once behind the loading card (every look has its shaders compiled by then). */
-export const WARM_UP: readonly number[] = [0.6, 7.7, 8.4, 9.2, 10.4, 12.0, 13.9, 14.8, 16.3, 17.8, 19.6, 21.0, 23.0];
+export const WARM_UP: readonly number[] = [0.6, 6.4, 7.1, 7.9, 9.1, 10.9, 13.4, 14.4, 15.8, 17.3, 19.0, 20.4, 22.1, 23.0];
 
 export { clamp01, easeOut, lerp, span };

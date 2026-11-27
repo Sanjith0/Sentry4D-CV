@@ -47,6 +47,7 @@ import type { CameraId } from "../../types/security";
 import { HYBRID_TUNING, HybridProjector, type HybridCrop, type HybridFinish, type HybridOwn } from "./hybridProjection";
 import type { AvatarMotion, AvatarProp } from "./ReconstructionTypes";
 import { getTexture, prefetchAround, useAppearanceStore } from "./useAppearanceStore";
+import { bakeSources } from "./avatarBake";
 import { avatarModelUrl, floorAt, motionAt, useAvatarStore } from "./useAvatarStore";
 import { demoLook } from "../demo/demoLook";
 
@@ -96,7 +97,7 @@ function formShade(variant: "body" | "flat" | "xray", after = "") {
           float avLines = 0.55 + 0.45 * sin( vAvatarP.y * 170.0 - uAvHoloTime * 9.0 );
           float avBand = exp( - abs( vAvatarP.y - uAvHoloBand ) * 11.0 );
           float avHolo = ( 0.07 + 1.25 * pow( 1.0 - avFacing, 1.6 ) ) * avLines + 0.9 * avBand;
-          outgoingLight = diffuseColor.rgb * mix( avTint, avHolo, uAvHolo );`;
+          outgoingLight = mix( diffuseColor.rgb, vec3( 1.0, 0.97, 0.9 ), uAvHoloWhite ) * mix( avTint, avHolo, uAvHolo );`;
   return /* glsl */ `{
           vec3 avN = normalize( vAvatarN );
           #ifdef DOUBLE_SIDED
@@ -113,8 +114,8 @@ function formShade(variant: "body" | "flat" | "xray", after = "") {
  * X-ray shell as a hologram (demo walkthrough): 0 = the flat X-ray tint, 1 = scan lines, rim light and a
  * bright band at world height uAvHoloBand. Shared by every X-ray material.
  */
-const holoUniforms = { uAvHolo: { value: 0 }, uAvHoloTime: { value: 0 }, uAvHoloBand: { value: -10 } };
-const HOLO_PARS = "uniform float uAvHolo;\nuniform float uAvHoloTime;\nuniform float uAvHoloBand;";
+const holoUniforms = { uAvHolo: { value: 0 }, uAvHoloTime: { value: 0 }, uAvHoloBand: { value: -10 }, uAvHoloWhite: { value: 0 } };
+const HOLO_PARS = "uniform float uAvHolo;\nuniform float uAvHoloTime;\nuniform float uAvHoloBand;\nuniform float uAvHoloWhite;";
 
 /** `finish`: a look on top of the form term (a metal object's sheen), the same one its footage-on-model material fills with. */
 function shadeMaterial(mat: THREE.MeshBasicMaterial, variant: "body" | "flat" | "xray", finish: HybridFinish | null = null) {
@@ -302,7 +303,7 @@ function makeShadowTexture() {
 }
 
 /** A rigid object next to the body (the carried chair): a wrapper group posed per frame. */
-interface PropModel {
+export interface PropModel {
   root: THREE.Group;
   /**
    * Per-piece uniforms of its footage-on-model materials (empty without a projector): one entry per mesh
@@ -315,7 +316,7 @@ interface PropModel {
   dispose: () => void;
 }
 
-interface AvatarModel {
+export interface AvatarModel {
   /** glTF scene root; stays at the origin with identity transform (root motion is in room coordinates). */
   root: THREE.Object3D;
   xray: THREE.SkinnedMesh;
@@ -334,6 +335,11 @@ interface AvatarModel {
   setHologram: (strength: number, hideBody: boolean) => void;
   /** Pose the skeleton for a time on the baked clip (seconds). Idempotent and history-free. */
   setTime: (clipTime: number) => void;
+  /**
+   * The body as it stands at a time on the baked clip, as plain geometry in room coordinates (the caller owns
+   * it). The model itself is left posed as it was.
+   */
+  bake: (clipTime: number) => THREE.BufferGeometry;
   dispose: () => void;
 }
 
@@ -596,6 +602,27 @@ async function loadAvatarModel(url: string, subjectId: string, motion: AvatarMot
       }
     },
     setTime,
+    bake: (clipTime) => {
+      const was = last;
+      setTime(clipTime);
+      root.updateMatrixWorld(true);
+      const count = mesh.geometry.getAttribute("position").count;
+      const out = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        mesh.getVertexPosition(i, bakePoint).applyMatrix4(mesh.matrixWorld);
+        out[3 * i] = bakePoint.x;
+        out[3 * i + 1] = bakePoint.y;
+        out[3 * i + 2] = bakePoint.z;
+      }
+      const baked = new THREE.BufferGeometry();
+      baked.setAttribute("position", new THREE.BufferAttribute(out, 3));
+      if (mesh.geometry.index) baked.setIndex(mesh.geometry.index.clone());
+      baked.computeVertexNormals();
+      if (Number.isNaN(was)) last = NaN;
+      else setTime(was);
+      root.updateMatrixWorld(true);
+      return baked;
+    },
     dispose: () => {
       disposed = true;
       for (const p of props) p?.dispose();
@@ -614,6 +641,7 @@ async function loadAvatarModel(url: string, subjectId: string, motion: AvatarMot
 
 const qa = new THREE.Quaternion();
 const qb = new THREE.Quaternion();
+const bakePoint = new THREE.Vector3();
 
 /** Pose a prop at (fractional) frame f; `shown` is the frame whose footage is on screen (hybrid look). */
 function poseProp(prop: PropModel, data: AvatarProp, f: number, shown: number, slots: readonly (CameraId | null)[] | null) {
@@ -700,6 +728,7 @@ function SubjectAvatar({ subjectId }: { subjectId: string }) {
     const slot = live.current;
     const models: Live["models"] = {};
     slot.models = models;
+    bakeSources.set(subjectId, slot);
     for (const motion of motions) {
       loadAvatarModel(avatarModelUrl(motion), subjectId, motion).then(
         (model) => {
@@ -848,6 +877,7 @@ function SubjectAvatar({ subjectId }: { subjectId: string }) {
     holoUniforms.uAvHolo.value = holo > 0 ? demoLook.holoStyle : 0;
     holoUniforms.uAvHoloTime.value = demoLook.applied;
     holoUniforms.uAvHoloBand.value = demoLook.holoBand;
+    holoUniforms.uAvHoloWhite.value = holo > 0 ? demoLook.holoWhite : 0;
     model.xray.visible = xray || holo > 0;
     // Wireframe view (once the room is shown as one: after the page-load reveal): the handled objects are drawn
     // as wireframes like the room. The cameras whose cut-out of the shown frame contains such an object then keep
