@@ -109,10 +109,10 @@ const PIP_EASE = 0.22;
 const aim = { cx: 0.5, cy: 0.5, zoom: 1, cam: null as CameraId | null, at: -10 };
 
 /**
- * The camera whose recording is shown beside the 3D view at incident time T: the one in which he is tallest,
- * kept until another has him clearly taller (or it loses him).
+ * The camera whose recording is shown beside the 3D view at incident time T: the one the script names, else the
+ * one in which he is tallest, kept until another has him clearly taller (or it loses him).
  */
-function bestCamera(clip: AppearanceClipManifest | undefined, T: number, e: number): CameraId | null {
+function bestCamera(clip: AppearanceClipManifest | undefined, T: number, e: number, wanted?: CameraId): CameraId | null {
   const frames = (id: CameraId) => clip?.cameras[id]?.frames;
   const k = clip ? Math.round((T - clip.t0) * clip.fps) : -1;
   // (not while he is only coming into a picture at its edge)
@@ -123,6 +123,11 @@ function bestCamera(clip: AppearanceClipManifest | undefined, T: number, e: numb
   // (a new run, or the clock was moved back: start over)
   if (e < picked.last - 0.2 || e > picked.last + 1) picked.cam = null;
   picked.last = e;
+  if (wanted) {
+    if (picked.cam !== null && picked.cam !== wanted) picked.since = e;
+    picked.cam = wanted;
+    return wanted;
+  }
   let best: CameraId | null = null;
   for (const cam of securityCameras.slice(0, 4)) if (tall(cam.id) > (best ? tall(best) : 0)) best = cam.id;
   if (!best) return picked.cam;
@@ -152,13 +157,13 @@ function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: num
  * keep to): his box in it, one label over it (what it is, and of which camera), and its frame lights up when
  * another camera takes over.
  */
-function drawPip(ctx: CanvasRenderingContext2D, env: Env, W: number, H: number, T: number) {
+function drawPip(ctx: CanvasRenderingContext2D, env: Env, W: number, H: number, T: number, wanted?: CameraId) {
   const band = (W - Math.min(W, 0.8 * H)) / 2;
   const w = Math.min(0.24 * W, band - 0.03 * W);
   if (w < 0.12 * W) return;
   const h = w / CCTV_ASPECT;
   const r: Rect = { x: 0.018 * W, y: 0.95 * H - h, w, h };
-  const id = bestCamera(env.clip, T, env.e);
+  const id = bestCamera(env.clip, T, env.e, wanted);
   const cam = securityCameras.find((c) => c.id === id);
   if (!cam) return;
   // (the size of the overlay's own small labels)
@@ -522,7 +527,7 @@ export function DemoWall() {
       if (wall.pip !== undefined) {
         // one recording beside the 3D view, which stays in sight
         ctx.clearRect(0, 0, W, H);
-        if (W > H) drawPip(ctx, { clip: useAppearanceStore.getState().clips[DEMO_CLIP], offsets: useReplayStore.getState().cameraOffsets, dpr, e }, W, H, wall.view.focusTime);
+        if (W > H) drawPip(ctx, { clip: useAppearanceStore.getState().clips[DEMO_CLIP], offsets: useReplayStore.getState().cameraOffsets, dpr, e }, W, H, wall.view.focusTime, wall.pipCam);
         return;
       }
       ctx.fillStyle = INK;

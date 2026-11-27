@@ -2,7 +2,7 @@ import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 import { roomConfig } from "../config/roomConfig";
 import { useViewStore } from "../store/useViewStore";
-import { setWindowClip, windowGlass } from "./windowWallClip";
+import { setWindowClip, windowGlass, windowRise } from "./windowWallClip";
 import { applyBuildClip, buildUniforms } from "./buildIntro";
 
 /**
@@ -18,6 +18,7 @@ function makeGlassMaterial(opacity = 0.07) {
       uTint: { value: new THREE.Color("#cfe9f5") },
       uBase: { value: opacity },
       uShown: windowGlass,
+      uRise: windowRise,
       uBuildTexY: buildUniforms.uBuildTexY,
       uBuildBox: buildUniforms.uBuildBox,
     },
@@ -35,13 +36,14 @@ function makeGlassMaterial(opacity = 0.07) {
         #include <logdepthbuf_vertex>
       }`,
     fragmentShader: /* glsl */ `
-      uniform vec3 uTint; uniform float uBase; uniform float uShown; uniform float uBuildTexY; uniform vec4 uBuildBox;
+      uniform vec3 uTint; uniform float uBase; uniform float uShown; uniform float uRise; uniform float uBuildTexY; uniform vec4 uBuildBox;
       varying vec3 vN; varying vec3 vV; varying float vY; varying vec2 vXZ;
       #include <common>
       #include <logdepthbuf_pars_fragment>
       void main() {
         #include <logdepthbuf_fragment>
         if (vY > uBuildTexY) discard; // page-load build reveal
+        if (vY > uRise) discard; // a demo walkthrough raises the window wall from the floor
         // a script that closes the scan round the room (buildIntro: uBuildBox) leaves the balcony out: its railing too
         if (vXZ.x < uBuildBox.x || vXZ.y < uBuildBox.y || vXZ.x > uBuildBox.z || vXZ.y > uBuildBox.w) discard;
         float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 3.0);

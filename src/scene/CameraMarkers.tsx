@@ -177,7 +177,13 @@ function CameraMarker({ cam, index }: { cam: SecurityCamera; index: number }) {
               CAM {String(index + 1).padStart(2, "0")}
               {selected && <span className="ml-1 text-cyan-300">● LINKED</span>}
               {evidence && evidence !== "no-evidence" && evidence !== "not-recording" && (
-                <span ref={statusRef} className="ml-1" style={{ color: CAMERA_STATE_COLOR[evidence] }}>
+                <span
+                  ref={statusRef}
+                  className="ml-1"
+                  // (hidden from its first frame where the walkthrough hides it: this span is mounted when a camera
+                  // first has something to say about him, and the frame loop above only reaches it a frame later)
+                  style={{ color: CAMERA_STATE_COLOR[evidence], display: demoLook.active && (demoLook.hideSubject || demoLook.plainCameraTags) ? "none" : undefined }}
+                >
                   {tracking ? "◉ " : ""}
                   {CAMERA_STATE_LABEL[evidence]}
                 </span>

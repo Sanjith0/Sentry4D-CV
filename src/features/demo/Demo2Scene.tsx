@@ -8,7 +8,7 @@ import { bakeSubjectPose } from "../reconstruction/avatarBake";
 import { subjectSample } from "../sentry/SceneActors";
 import { recordingSources } from "./recordingSources";
 import { demoLook } from "./demoLook";
-import { FORECAST_HORIZON, forecastAt, ghostAt, GHOST_TIMES, nowAt, raysAt, stampsAt } from "./demo2Script";
+import { FORECAST_HORIZON, forecastAt, ghostAt, GHOST_TIMES, nowAt, RAY_CLEAR, raysAt, stampsAt } from "./demo2Script";
 import { CAMERA_ORDER, DEMO_SUBJECT } from "./demoScript";
 import { useDemoStore } from "./useDemoStore";
 
@@ -173,18 +173,36 @@ const beamVertex = /* glsl */ `
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
+/**
+ * A sight line's tube (a unit one, stretched to the line's length): as thick, everywhere along it, as its
+ * distance from the viewpoint there asks for, so it is one thin line of even width on the screen from a camera
+ * across the room to him, however near the viewpoint it passes.
+ */
+const rayVertex = /* glsl */ `
+  uniform float uWidth;
+  varying vec2 vUv;
+  varying float vDepth;
+  void main() {
+    vUv = uv;
+    vDepth = -(modelViewMatrix * vec4(0.0, position.y, 0.0, 1.0)).z;
+    float radius = uWidth * max(vDepth, 0.05);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position.x * radius, position.y, position.z * radius, 1.0);
+  }
+`;
 /** A sight line: pulses run along it from the camera to the subject. */
 const rayFragment = /* glsl */ `
   uniform vec3 uColor;
   uniform float uAlpha;
   uniform float uLen;
   uniform float uTime;
+  uniform vec2 uNear;
   varying vec2 vUv;
+  varying float vDepth;
   void main() {
     float d = fract(vUv.y * uLen / 0.55 - uTime * 2.6);
     float pulse = smoothstep(0.0, 0.1, d) * (1.0 - smoothstep(0.42, 0.6, d));
-    // (clear of the camera's own marker)
-    float a = uAlpha * (0.22 + 0.78 * pulse) * smoothstep(0.0, 0.35 / max(uLen, 0.001), vUv.y);
+    // (clear of the camera's own marker, and gone where it passes right before the viewpoint)
+    float a = uAlpha * (0.22 + 0.78 * pulse) * smoothstep(0.0, 0.35 / max(uLen, 0.001), vUv.y) * smoothstep(uNear.x, uNear.y, vDepth);
     gl_FragColor = vec4(uColor, a);
   }
 `;
@@ -267,7 +285,17 @@ const ringsFragment = /* glsl */ `
 `;
 
 /** Shared by the one set of layers there is; written every frame of the walkthrough. */
-const rayUniforms = CAMERA_ORDER.map(() => ({ uColor: { value: CYAN }, uAlpha: { value: 0 }, uTime: { value: 0 }, uLen: { value: 1 } }));
+/** A sight line's radius per metre from the viewpoint (about four pixels wide), and the metres before the viewpoint over which it comes in. */
+const RAY_WIDTH = 0.0032;
+const RAY_NEAR = new THREE.Vector2(0.8, 2.4);
+const rayUniforms = CAMERA_ORDER.map(() => ({
+  uColor: { value: CYAN },
+  uAlpha: { value: 0 },
+  uTime: { value: 0 },
+  uLen: { value: 1 },
+  uWidth: { value: RAY_WIDTH },
+  uNear: { value: RAY_NEAR },
+}));
 const arrowUniforms = { uColor: { value: AMBER }, uAlpha: { value: 0 }, uTime: { value: 0 }, uLen: { value: 1 } };
 const routeUniforms = { uColor: { value: AMBER }, uAlpha: { value: 0 }, uTime: { value: 0 }, uLen: { value: 1 } };
 const pinUniforms = { uColor: { value: AMBER }, uAlpha: { value: 0 }, uTime: { value: 0 } };
@@ -338,7 +366,7 @@ function Layers() {
       arrowSheet: sheet(0, 6, 0.75),
       ringSheet: sheet(-1, 1, 1),
       routeSheet: sheet(0, 1, 0.08),
-      rayMaterials: rayUniforms.map((u) => shader(rayFragment, beamVertex, u)),
+      rayMaterials: rayUniforms.map((u) => shader(rayFragment, rayVertex, u)),
       arrowMaterial: shader(arrowFragment, floorVertex, arrowUniforms),
       pinMaterial: shader(pinFragment, beamVertex, pinUniforms),
       ringsMaterial: shader(ringsFragment, floorVertex, ringsUniforms),
@@ -402,19 +430,23 @@ function Layers() {
     CAMERA_ORDER.forEach((id: CameraId, i) => {
       const mesh = rays.current[i];
       if (!mesh) return;
-      const alpha = rayGain * (sources?.[id] ?? 0);
-      mesh.visible = alpha > 0.004 && !!here;
+      const gain = rayGain * (sources?.[id] ?? 0);
+      mesh.visible = gain > 0.004 && !!here;
       if (!mesh.visible || !here) return;
       const from = replay.cameraPoses[id].position;
       a.set(from[0], from[1], from[2]);
       b.set(here.position[0], here.position[1] + 1.05, here.position[2]);
+      // (not the line of the camera the viewport looks along: it would come in from beside the lens, right across the picture)
+      const off = point.subVectors(camera.position, b).angleTo(dir.subVectors(a, b)) * THREE.MathUtils.RAD2DEG;
+      const alpha = gain * THREE.MathUtils.smoothstep(off, RAY_CLEAR[0], RAY_CLEAR[1]);
+      mesh.visible = alpha > 0.004;
+      if (!mesh.visible) return;
       dir.subVectors(b, a);
       const len = dir.length();
       mesh.position.copy(a).addScaledVector(dir, 0.5);
       mesh.quaternion.setFromUnitVectors(UP, dir.divideScalar(len));
-      // (about four pixels wide wherever the viewpoint is)
-      const radius = Math.max(0.012, 0.0032 * camera.position.distanceTo(mesh.position));
-      mesh.scale.set(radius, len, radius);
+      // (its thickness is the shader's: see rayVertex)
+      mesh.scale.set(1, len, 1);
       const u = rayUniforms[i];
       u.uAlpha.value = 0.85 * alpha;
       u.uLen.value = len;

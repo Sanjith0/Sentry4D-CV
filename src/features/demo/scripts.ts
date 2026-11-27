@@ -27,6 +27,8 @@ export interface DemoScript {
   windowFramesAt: (e: number) => number;
   /** The window wall's glass dissolves with its frames (views from outside it). */
   glassWithFrames?: boolean;
+  /** The height (world y) up to which the window wall stands, as it rises from the floor; null or left out: all of it. */
+  windowRiseAt?: (e: number, floorY: number, topY: number) => number | null;
   /** Metres beyond the room's walls up to which the scan is drawn (null: all of it). */
   roomMarginAt?: (e: number) => number | null;
   coverageAt: (e: number) => number;

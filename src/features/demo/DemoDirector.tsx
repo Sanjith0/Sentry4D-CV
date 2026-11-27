@@ -6,7 +6,7 @@ import { subjects } from "../../config/subjects";
 import { videoRegistry } from "../../lib/videoRegistry";
 import { buildUniforms, buildWire, prepareBuildSweep, setBuildScripted, setBuildBox } from "../../scene/buildIntro";
 import { setCeilingCut } from "../../scene/ceilingClip";
-import { setWindowFrames, setWindowGlass } from "../../scene/windowWallClip";
+import { setWindowFrames, setWindowGlass, setWindowRise } from "../../scene/windowWallClip";
 import { useReplayStore } from "../../store/useReplayStore";
 import { useViewStore, type SubjectRenderMode } from "../../store/useViewStore";
 import type { CameraId, CameraMode, RoomBounds, Vec3 } from "../../types/security";
@@ -218,6 +218,7 @@ export function DemoDirector() {
     setCeilingCut(S.ceilingShown(e, cutY, build.wireY), cutY);
     setWindowFrames(S.windowFramesAt(e));
     setWindowGlass(S.glassWithFrames ? S.windowFramesAt(e) : 1);
+    setWindowRise(S.windowRiseAt?.(e, bounds.min[1], bounds.max[1]) ?? null);
     const margin = S.roomMarginAt?.(e) ?? null;
     setBuildBox(margin === null ? null : [bounds.min[0] - margin, bounds.min[2] - margin, bounds.max[0] + margin, bounds.max[2] + margin]);
 
@@ -418,6 +419,7 @@ export function DemoDirector() {
     setBuildScripted(false);
     setWindowFrames(1);
     setWindowGlass(1);
+    setWindowRise(null);
     setBuildBox(null);
     unpinAll();
     const bounds = useViewStore.getState().roomBounds ?? FALLBACK_BOUNDS;

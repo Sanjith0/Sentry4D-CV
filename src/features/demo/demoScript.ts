@@ -503,6 +503,8 @@ export interface WallState {
    * he is largest at the shown moment (handed on from camera to camera as he walks). Left out: none.
    */
   pip?: number;
+  /** That small picture's camera, when the script names it; left out: the one in which he is largest. */
+  pipCam?: CameraId;
 }
 
 /** The wall's tile of the pass's first camera has grown into the whole screen by here. */
