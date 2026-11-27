@@ -12,6 +12,7 @@
     "build:api": "rolldown server/vercel/entry.ts --platform node --format esm --file api/investigate.mjs --minify"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.2",
     "@react-three/postprocessing": "^3.2.2",

@@ -8,7 +8,7 @@ import { bakeSubjectPose } from "../reconstruction/avatarBake";
 import { subjectSample } from "../sentry/SceneActors";
 import { recordingSources } from "./recordingSources";
 import { demoLook } from "./demoLook";
-import { FORECAST_HORIZON, forecastAt, ghostAt, GHOST_TIMES, nowAt, raysAt } from "./demo2Script";
+import { FORECAST_HORIZON, forecastAt, ghostAt, GHOST_TIMES, nowAt, raysAt, stampsAt } from "./demo2Script";
 import { CAMERA_ORDER, DEMO_SUBJECT } from "./demoScript";
 import { useDemoStore } from "./useDemoStore";
 
@@ -29,7 +29,11 @@ const ROUTE_SHORT = 0.42;
 const STAMP_Y = 2.14;
 /** The NOW stamp floats this much higher (m), clear of the row of time stamps he walks along. */
 const NOW_LIFT = 0.42;
-const STAMP_SIZE = [1.0, 0.3] as const;
+const STAMP_SIZE = [0.84, 0.3] as const;
+/** ...and the stamp on him himself. */
+const NOW_SIZE = [0.62, 0.3] as const;
+/** Their figures: the face the captions are set in (shipped with the app, see index.css). */
+const STAMP_FONT = '600 50px "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif';
 
 const ghostVertex = /* glsl */ `
   #include <common>
@@ -83,23 +87,42 @@ interface Ghost {
 /** While he is himself this close to one of the timeline's bodies (m) it is left out; from the second distance on it is whole. */
 const GHOST_CLEAR = [0.45, 0.9] as const;
 
+/** A time of the timeline as a pill: dark with light figures; the one on him himself light with dark letters. */
 function stampTexture(label: string, now = false) {
+  const size = now ? NOW_SIZE : STAMP_SIZE;
   const c = document.createElement("canvas");
-  c.width = 320;
   c.height = 96;
-  const g = c.getContext("2d")!;
-  g.fillStyle = now ? "rgba(236,254,255,0.95)" : "rgba(4,7,12,0.78)";
-  g.fillRect(0, 0, c.width, c.height);
-  g.strokeStyle = "rgba(53,224,255,0.9)";
-  g.lineWidth = 4;
-  g.strokeRect(2, 2, c.width - 4, c.height - 4);
-  g.fillStyle = now ? "#04070c" : "#cffafe";
-  g.font = '600 56px "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace';
-  g.textAlign = "center";
-  g.textBaseline = "middle";
-  g.fillText(label, c.width / 2, c.height / 2 + 4);
+  c.width = Math.round((c.height * size[0]) / size[1]);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
+  const draw = () => {
+    const g = c.getContext("2d")!;
+    const inset = 5;
+    const q = c.height / 2 - inset;
+    g.clearRect(0, 0, c.width, c.height);
+    g.beginPath();
+    g.arc(inset + q, c.height / 2, q, Math.PI / 2, (Math.PI * 3) / 2);
+    g.arc(c.width - inset - q, c.height / 2, q, -Math.PI / 2, Math.PI / 2);
+    g.closePath();
+    g.fillStyle = now ? "rgba(248,250,252,0.96)" : "rgba(4,7,12,0.8)";
+    g.fill();
+    if (!now) {
+      g.strokeStyle = "rgba(255,255,255,0.26)";
+      g.lineWidth = 2.5;
+      g.stroke();
+    }
+    g.fillStyle = now ? "#04070c" : "#f8fafc";
+    g.font = STAMP_FONT;
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    const spacing = "letterSpacing" in g ? (now ? 5 : 1) : 0;
+    if (spacing) g.letterSpacing = `${spacing}px`;
+    g.fillText(label, c.width / 2 + spacing / 2, c.height / 2 + 3);
+    tex.needsUpdate = true;
+  };
+  draw();
+  // (made behind the loading card, possibly before the face has arrived: drawn again when it has)
+  if (document.fonts && !document.fonts.check(STAMP_FONT)) document.fonts.load(STAMP_FONT).then(draw, () => {});
   return tex;
 }
 
@@ -355,6 +378,7 @@ function Layers() {
         timeline.current.add(made.group);
       }
     }
+    const stamps = stampsAt(e);
     ghosts.current.forEach((g, i) => {
       if (!g) return;
       // (not where he is himself right now: he walks out along the line he came in on)
@@ -363,10 +387,10 @@ function Layers() {
       g.group.visible = alpha > 0.004;
       g.uniforms.uAlpha.value = alpha;
       g.uniforms.uTime.value = e;
-      g.stamp.opacity = alpha;
+      g.stamp.opacity = alpha * stamps;
     });
     if (now.current) {
-      const alpha = here ? nowAt(e) : 0;
+      const alpha = here ? nowAt(e) * stamps : 0;
       now.current.visible = alpha > 0.004;
       now.current.material.opacity = alpha;
       if (here) now.current.position.set(here.position[0], here.position[1] + STAMP_Y + NOW_LIFT, here.position[2]);
@@ -401,16 +425,11 @@ function Layers() {
     const gain = here ? forecastAt(e) : { arrow: 0, exit: 0 };
     let speed = 0;
     let heading = 0;
-    f.on = false;
     f.exitOn = false;
-    f.eta = -1;
-    f.speed = 0;
     if (here && (gain.arrow > 0 || gain.exit > 0) && meanPosition(T, 0, a) && meanPosition(T, 0.5, b)) {
       dir.subVectors(a, b).setY(0).divideScalar(0.5);
       speed = dir.length();
       heading = Math.atan2(dir.x, dir.z);
-      f.speed = speed;
-      f.heading = ((heading * 180) / Math.PI + 360) % 360;
     }
     const moving = THREE.MathUtils.smoothstep(speed, 0.45, 0.9);
     const arrowAlpha = gain.arrow * moving;
@@ -424,12 +443,6 @@ function Layers() {
         arrowUniforms.uAlpha.value = 0.95 * arrowAlpha;
         arrowUniforms.uLen.value = reach;
         arrowUniforms.uTime.value = e;
-        point.set(here.position[0] + Math.sin(heading) * reach, here.position[1] + LIFT, here.position[2] + Math.cos(heading) * reach).project(camera);
-        f.on = point.z < 1;
-        f.x = (0.5 + point.x / 2) * size.width;
-        f.y = (0.5 - point.y / 2) * size.height;
-        f.text = `+${FORECAST_HORIZON.toFixed(1)} S`;
-        f.alpha = arrowAlpha;
       }
     }
 
@@ -444,14 +457,14 @@ function Layers() {
         pinUniforms.uTime.value = e;
         ringsUniforms.uAlpha.value = 0.95 * exitAlpha;
         ringsUniforms.uTime.value = e;
+        // (one figure on the pin: the seconds to it at the speed he walks now; none while he stands)
         const metres = Math.hypot(here.position[0] - x, here.position[2] - z);
-        f.eta = speed > 0.45 ? metres / speed : -1;
         point.set(x, y + PIN_HEIGHT * 0.86, z).project(camera);
         f.exitOn = point.z < 1;
         f.ex = (0.5 + point.x / 2) * size.width;
         f.ey = (0.5 - point.y / 2) * size.height;
-        f.exitText = f.eta >= 0 ? `EXIT \u00B7 ${metres.toFixed(1)} m \u00B7 ETA ${f.eta.toFixed(1)} S` : `EXIT \u00B7 ${metres.toFixed(1)} m`;
-        if (!f.on) f.alpha = exitAlpha;
+        f.exitText = speed > 0.45 ? `EXIT IN ${(metres / speed).toFixed(1)}s` : "EXIT";
+        f.exitAlpha = exitAlpha;
       }
     }
 
@@ -482,7 +495,7 @@ function Layers() {
   return (
     <group raycast={() => null}>
       <group ref={timeline} />
-      <sprite ref={now} material={made.nowMaterial} scale={[STAMP_SIZE[0] * 0.62, STAMP_SIZE[1], 1]} visible={false} renderOrder={7} />
+      <sprite ref={now} material={made.nowMaterial} scale={[NOW_SIZE[0], NOW_SIZE[1], 1]} visible={false} renderOrder={7} />
       {CAMERA_ORDER.map((id, i) => (
         <mesh
           key={id}

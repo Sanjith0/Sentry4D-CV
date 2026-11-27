@@ -14,6 +14,8 @@ export interface DemoScript {
   /** Demo time applied behind the loading card while the recordings are brought to DEMO_START_TIME. */
   PREP_E: number;
   WARM_UP: readonly number[];
+  /** Fonts its captions are set in (CSS font shorthand): fetched behind the loading card. */
+  FONTS?: readonly string[];
   /** The camera whose tile the wall pushes into. */
   LOCK_FIRST: CameraId;
   incidentTime: (e: number) => number;
@@ -30,6 +32,8 @@ export interface DemoScript {
   coverageAt: (e: number) => number;
   pathAt: (e: number) => PathState;
   tagLiftAt: (e: number) => number;
+  /** The cameras' labels in the scene: 0..1 shown; plain: their name only. Left out: as the viewer draws them. */
+  cameraTagsAt?: (e: number) => { show: number; plain: boolean };
   lookStateAt: (e: number) => LookState;
   wallAt: (e: number) => WallState;
   cameraAt: (e: number, ctx: DemoContext) => DemoCam;

@@ -14,9 +14,15 @@ import { applyBuildClip, buildUniforms } from "./buildIntro";
 /** Fresnel glass: almost invisible face-on, a soft cool sheen at grazing angles. */
 function makeGlassMaterial(opacity = 0.07) {
   return new THREE.ShaderMaterial({
-    uniforms: { uTint: { value: new THREE.Color("#cfe9f5") }, uBase: { value: opacity }, uShown: windowGlass, uBuildTexY: buildUniforms.uBuildTexY },
+    uniforms: {
+      uTint: { value: new THREE.Color("#cfe9f5") },
+      uBase: { value: opacity },
+      uShown: windowGlass,
+      uBuildTexY: buildUniforms.uBuildTexY,
+      uBuildBox: buildUniforms.uBuildBox,
+    },
     vertexShader: /* glsl */ `
-      varying vec3 vN; varying vec3 vV; varying float vY;
+      varying vec3 vN; varying vec3 vV; varying float vY; varying vec2 vXZ;
       #include <common>
       #include <logdepthbuf_pars_vertex>
       void main() {
@@ -24,17 +30,20 @@ function makeGlassMaterial(opacity = 0.07) {
         vN = normalize(mat3(modelMatrix) * normal);
         vV = normalize(cameraPosition - w.xyz);
         vY = w.y;
+        vXZ = w.xz;
         gl_Position = projectionMatrix * viewMatrix * w;
         #include <logdepthbuf_vertex>
       }`,
     fragmentShader: /* glsl */ `
-      uniform vec3 uTint; uniform float uBase; uniform float uShown; uniform float uBuildTexY;
-      varying vec3 vN; varying vec3 vV; varying float vY;
+      uniform vec3 uTint; uniform float uBase; uniform float uShown; uniform float uBuildTexY; uniform vec4 uBuildBox;
+      varying vec3 vN; varying vec3 vV; varying float vY; varying vec2 vXZ;
       #include <common>
       #include <logdepthbuf_pars_fragment>
       void main() {
         #include <logdepthbuf_fragment>
         if (vY > uBuildTexY) discard; // page-load build reveal
+        // a script that closes the scan round the room (buildIntro: uBuildBox) leaves the balcony out: its railing too
+        if (vXZ.x < uBuildBox.x || vXZ.y < uBuildBox.y || vXZ.x > uBuildBox.z || vXZ.y > uBuildBox.w) discard;
         float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 3.0);
         // faint vertical gradient: a touch brighter toward the top, like sky reflection
         float g = 0.85 + 0.15 * smoothstep(0.0, 3.0, vY);

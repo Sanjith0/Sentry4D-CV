@@ -15,6 +15,8 @@ import { useDemoStore } from "./useDemoStore";
 const INK = "#04070c";
 const CYAN = "#22d3ee";
 const MONO = '"JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace';
+/** DEMO 2's own labels: the face its captions are set in (shipped with the app, see index.css). */
+const SANS = '"Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif';
 const subjectLabel = subjects.find((s) => s.id === DEMO_SUBJECT)?.label ?? "PERSON 01";
 
 /** Punch-in: the subject is brought to this share of the picture's height, by at most MAX_PUNCH. */
@@ -56,8 +58,10 @@ interface FeedStyle {
   safeBottom: number;
   /** 0..1: a search sweep crossing the picture (absent: none). */
   scan?: number;
-  /** The tag on the bracket. */
+  /** The tag on the bracket; "": none. */
   tag: string;
+  /** The tile's name is its camera's number alone, without its clock. */
+  plain?: boolean;
   /** The part of the recording to draw (its pixels); left out: all of it that fills the rectangle, punched in. */
   src?: { sx: number; sy: number; sw: number; sh: number };
 }
@@ -129,9 +133,24 @@ function bestCamera(clip: AppearanceClipManifest | undefined, T: number, e: numb
   return picked.cam;
 }
 
+/** "CAM 01": a camera's number, without where it hangs. */
+const cameraNumber = (cam: SecurityCamera) => cam.name.split(" \u00B7 ")[0].toUpperCase();
+
+function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, radius: number) {
+  const q = Math.min(radius, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + q, y);
+  ctx.arcTo(x + w, y, x + w, y + h, q);
+  ctx.arcTo(x + w, y + h, x, y + h, q);
+  ctx.arcTo(x, y + h, x, y, q);
+  ctx.arcTo(x, y, x + w, y, q);
+  ctx.closePath();
+}
+
 /**
  * One recording as a small picture beside the 3D view (landscape windows only: left of the column the captions
- * keep to): the camera's name and clock, his box in it, and a mark when another camera takes over.
+ * keep to): his box in it, one label over it (what it is, and of which camera), and its frame lights up when
+ * another camera takes over.
  */
 function drawPip(ctx: CanvasRenderingContext2D, env: Env, W: number, H: number, T: number) {
   const band = (W - Math.min(W, 0.8 * H)) / 2;
@@ -142,8 +161,10 @@ function drawPip(ctx: CanvasRenderingContext2D, env: Env, W: number, H: number, 
   const id = bestCamera(env.clip, T, env.e);
   const cam = securityCameras.find((c) => c.id === id);
   if (!cam) return;
-  const font = Math.max(8, h * 0.068);
+  // (the size of the overlay's own small labels)
+  const font = Math.min(Math.max(10, Math.min(0.017 * H, 0.029 * W)), 28);
   const line = Math.max(1, H * 0.0022);
+  const corner = H * 0.011;
   const video = videoRegistry.get(cam.id);
   const clip = env.clip;
 
@@ -171,7 +192,20 @@ function drawPip(ctx: CanvasRenderingContext2D, env: Env, W: number, H: number, 
       sh,
     };
   }
-  drawFeed(ctx, env, cam, r, { highlight: 0, dim: 0, tint: 0, mark: 0, punch: 0, focusTime: T, chrome: 1, font, tagFont: font, line, glow: 1, safeTop: r.y, safeBottom: r.y + r.h, tag: "", src });
+
+  // the picture: rounded corners, lifted off the 3D view by a soft shadow
+  ctx.save();
+  ctx.shadowColor = "rgba(2,6,12,0.6)";
+  ctx.shadowBlur = 0.03 * H * env.dpr;
+  ctx.shadowOffsetY = 0.006 * H * env.dpr;
+  ctx.fillStyle = INK;
+  roundedRect(ctx, r.x, r.y, r.w, r.h, corner);
+  ctx.fill();
+  ctx.restore();
+  ctx.save();
+  roundedRect(ctx, r.x, r.y, r.w, r.h, corner);
+  ctx.clip();
+  drawFeed(ctx, env, cam, r, { highlight: 0, dim: 0, tint: 0, mark: 0, punch: 0, focusTime: T, chrome: 0, font, tagFont: font, line, glow: 1, safeTop: r.y, safeBottom: r.y + r.h, tag: "", src });
 
   // his box in this recording, at the frame it shows
   const kf = clip && video ? Math.round((video.currentTime - (env.offsets[cam.id] ?? 0) - clip.t0) * clip.fps) : -1;
@@ -181,10 +215,11 @@ function drawPip(ctx: CanvasRenderingContext2D, env: Env, W: number, H: number, 
     const px = (u: number) => r.x + ((u * video.videoWidth - sx) / sw) * r.w;
     const py = (v: number) => r.y + ((v * video.videoHeight - sy) / sh) * r.h;
     const pad = r.h * 0.035;
-    const x0 = Math.max(px(box[0]) - pad, r.x + 2);
-    const x1 = Math.min(px(box[2]) + pad, r.x + r.w - 2);
-    const y0 = Math.max(py(box[1]) - pad, r.y + font * 2.1);
-    const y1 = Math.min(py(box[3]) + pad, r.y + r.h - 2);
+    const edge = corner * 0.6;
+    const x0 = Math.max(px(box[0]) - pad, r.x + edge);
+    const x1 = Math.min(px(box[2]) + pad, r.x + r.w - edge);
+    const y0 = Math.max(py(box[1]) - pad, r.y + edge);
+    const y1 = Math.min(py(box[3]) + pad, r.y + r.h - edge);
     if (x1 - x0 > 4 && y1 - y0 > 4) {
       const arm = Math.min(x1 - x0, y1 - y0) * 0.28;
       ctx.save();
@@ -207,30 +242,44 @@ function drawPip(ctx: CanvasRenderingContext2D, env: Env, W: number, H: number, 
       ctx.restore();
     }
   }
+  ctx.restore();
 
-  // frame and caption; both light up when another camera has just taken over
+  // its frame: a thin light line, cyan for a moment when another camera has just taken over
   const mark = clamp01(1 - (env.e - picked.since) / HANDOFF_MARK);
   ctx.save();
-  ctx.strokeStyle = `rgba(34,211,238,${lerp(0.6, 1, mark)})`;
-  ctx.shadowColor = "rgba(34,211,238,1)";
-  ctx.shadowBlur = (4 + 18 * mark) * env.dpr;
-  ctx.lineWidth = line * lerp(1, 2.4, mark);
-  ctx.strokeRect(r.x, r.y, r.w, r.h);
+  roundedRect(ctx, r.x, r.y, r.w, r.h, corner);
+  ctx.strokeStyle = `rgba(${Math.round(lerp(255, 34, mark))},${Math.round(lerp(255, 211, mark))},${Math.round(lerp(255, 238, mark))},${lerp(0.3, 1, mark).toFixed(3)})`;
+  if (mark > 0) {
+    ctx.shadowColor = "rgba(34,211,238,1)";
+    ctx.shadowBlur = 20 * mark * env.dpr;
+  }
+  ctx.lineWidth = line * lerp(0.65, 1.9, mark);
+  ctx.stroke();
   ctx.restore();
-  const caption = mark > 0 ? `HANDOFF \u2192 ${cam.name.split(" \u00B7 ")[0].toUpperCase()}` : "REAL FOOTAGE \u00B7 IN STEP";
-  ctx.font = `600 ${font}px ${MONO}`;
+
+  // one label over it, as the overlay's own (a pill, a red dot: a recording)
+  const label = `REAL FOOTAGE \u00B7 ${cameraNumber(cam)}`;
+  const spacing = "letterSpacing" in ctx ? font * 0.14 : 0;
+  ctx.save();
+  ctx.font = `600 ${font}px ${SANS}`;
+  if (spacing) ctx.letterSpacing = `${spacing.toFixed(2)}px`;
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
-  const ch = font * 1.9;
-  const cw = ctx.measureText(caption).width + font * 1.3;
-  const cy = r.y - ch - font * 0.4;
-  ctx.fillStyle = mark > 0 ? "rgba(8,145,178,0.92)" : "rgba(4,7,12,0.85)";
-  ctx.fillRect(r.x, cy, cw, ch);
-  ctx.strokeStyle = "rgba(34,211,238,0.7)";
-  ctx.lineWidth = 1;
-  ctx.strokeRect(r.x + 0.5, cy + 0.5, cw - 1, ch - 1);
-  ctx.fillStyle = mark > 0 ? "#ecfeff" : "#67e8f9";
-  ctx.fillText(caption, r.x + font * 0.65, cy + ch / 2 + 1);
+  const dot = font * 0.5;
+  const pad = font;
+  const ph = font * 2.24;
+  const pw = pad + dot + font * 0.6 + ctx.measureText(label).width - spacing + pad;
+  const top = r.y - ph - font * 0.75;
+  ctx.fillStyle = "rgba(4,7,12,0.78)";
+  roundedRect(ctx, r.x, top, pw, ph, ph / 2);
+  ctx.fill();
+  ctx.fillStyle = "#f87171";
+  ctx.beginPath();
+  ctx.arc(r.x + pad + dot / 2, top + ph / 2, dot / 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#f8fafc";
+  ctx.fillText(label, r.x + pad + dot + font * 0.6, top + ph / 2 + font * 0.05);
+  ctx.restore();
 }
 
 /** Per camera: the subject's cut-out as a flat cyan silhouette (for the X-ray tint). */
@@ -344,21 +393,23 @@ function drawFeed(ctx: CanvasRenderingContext2D, env: Env, cam: SecurityCamera, 
         ctx.stroke();
         const tf = st.tagFont;
         const tag = st.tag;
-        ctx.font = `600 ${tf}px ${MONO}`;
-        ctx.textBaseline = "bottom";
-        const tagW = ctx.measureText(tag).width + tf * 1.0;
-        const tagH = tf * 1.65;
-        const gap = tf * 0.35;
-        // above the bracket; under it when the subject is at the top of the picture; else inside its top edge
-        const roof = Math.max(st.safeTop, r.y + st.font * 2.3 * st.chrome);
-        let ty = y0 - tagH - gap;
-        if (ty < roof) ty = y1 + gap;
-        if (ty + tagH > st.safeBottom) ty = y0 + gap;
-        const tx = Math.min(Math.max(x0, r.x + 4), r.x + r.w - tagW - 4);
-        ctx.fillStyle = "rgba(4,7,12,0.82)";
-        ctx.fillRect(tx, ty, tagW, tagH);
-        ctx.fillStyle = "#a5f3fc";
-        ctx.fillText(tag, tx + tf * 0.5, ty + tagH - tf * 0.3);
+        if (tag) {
+          ctx.font = `600 ${tf}px ${MONO}`;
+          ctx.textBaseline = "bottom";
+          const tagW = ctx.measureText(tag).width + tf * 1.0;
+          const tagH = tf * 1.65;
+          const gap = tf * 0.35;
+          // above the bracket; under it when the subject is at the top of the picture; else inside its top edge
+          const roof = Math.max(st.safeTop, r.y + st.font * 2.3 * st.chrome);
+          let ty = y0 - tagH - gap;
+          if (ty < roof) ty = y1 + gap;
+          if (ty + tagH > st.safeBottom) ty = y0 + gap;
+          const tx = Math.min(Math.max(x0, r.x + 4), r.x + r.w - tagW - 4);
+          ctx.fillStyle = "rgba(4,7,12,0.82)";
+          ctx.fillRect(tx, ty, tagW, tagH);
+          ctx.fillStyle = "#a5f3fc";
+          ctx.fillText(tag, tx + tf * 0.5, ty + tagH - tf * 0.3);
+        }
         ctx.restore();
       }
     }
@@ -405,11 +456,13 @@ function drawFeed(ctx: CanvasRenderingContext2D, env: Env, cam: SecurityCamera, 
     ctx.arc(r.x + font * 1.1, r.y + strip / 2, font * 0.32, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = "#e2e8f0";
-    ctx.fillText(cam.name.toUpperCase(), r.x + font * 1.9, r.y + strip / 2 + 1);
-    ctx.fillStyle = "#94a3b8";
-    ctx.textAlign = "right";
-    ctx.fillText(`VID ${formatClock(Math.max(0, video?.currentTime ?? 0))}`, r.x + r.w - font * 0.9, r.y + strip / 2 + 1);
-    ctx.textAlign = "left";
+    ctx.fillText(st.plain ? cameraNumber(cam) : cam.name.toUpperCase(), r.x + font * 1.9, r.y + strip / 2 + 1);
+    if (!st.plain) {
+      ctx.fillStyle = "#94a3b8";
+      ctx.textAlign = "right";
+      ctx.fillText(`VID ${formatClock(Math.max(0, video?.currentTime ?? 0))}`, r.x + r.w - font * 0.9, r.y + strip / 2 + 1);
+      ctx.textAlign = "left";
+    }
     ctx.globalAlpha = 1;
   }
   ctx.restore();
@@ -509,6 +562,7 @@ export function DemoWall() {
         highlight: wall.highlights?.[index] ?? wall.highlight,
         scan: wall.scan,
         tag,
+        plain: wall.plain,
         dim: wall.highlights?.[index] ?? wall.dim,
         tint: wall.tint,
         mark,

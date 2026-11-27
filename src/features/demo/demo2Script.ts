@@ -26,28 +26,32 @@ import {
 
 /**
  * DEMO 2: a second cut of the walkthrough, as data (see demoScript.ts for how a script is played). No title
- * card: it starts on the recordings and every beat is something the system does with them:
+ * card: it starts on the recordings and every beat is something the system does with them. One caption per
+ * beat, in plain words (CHAPTERS): read one after the other they say what the product does.
  *
- *   0.0  SEARCH     the wall of the four recordings; a query is typed, a sweep crosses every feed
- *   2.1  LOCK       his SAM 2.1 cut-out lights up in every feed
- *   3.4  REVEAL     push into CAM 01; a wipe crosses the picture: recording on one side, 3D view on the other
- *   5.7  TWIN       the viewport rises out of CAM 01 to the whole room seen from outside (only the room: what
- *                   the scan caught beyond its walls is left out) while it melts to its LiDAR wireframe; he
- *                   fades out, time rewinds, the four cameras' coverage unfolds, the texture comes back
- *   8.1  TRACK      replay from his entry (1.8x) in a tracking shot along the room: his path grows behind
- *                   him, a sight line from every camera that sees him at that moment, a forecast arrow ahead;
- *                   beside it the recording of the camera that sees him best, in step, handed on from camera
- *                   to camera
- *  12.8  DWELL      the seconds he stands at the table run through fast, counted; the camera comes down to him
- *  13.95 FREE CAM   half speed: round him from CAM 04's line of sight to CAM 01's as he lifts the chair and
- *                   turns (3D model, X-ray in the wireframe room, 3D + footage)
- *  18.35 PREDICT    he walks off; the camera swings out over the window wall to a view that holds him and the
- *                   door and closes in as he nears it: forecast arrow, the predicted route, the exit and the
- *                   time to it, from the fused track's position and velocity
- *  21.2  TIMELINE   the room turns to its wireframe and the camera comes round beside the track: his body at
- *                   five earlier moments stands along it, each with its time, he himself walks on among them
- *                   (white, "NOW"), under the numbers of this reconstruction
- *  23.8  END CARD
+ *   0.0  WALL       "Four security cameras. One room."  the wall of the four recordings; a query is typed, a
+ *                   sweep crosses every feed
+ *   2.1  LOCK       "One person. Found in every camera."  his SAM 2.1 cut-out lights up in every feed
+ *   3.4  REVEAL     "The same moment. Rebuilt in 3D."  push into CAM 01; a wipe crosses the picture: recording
+ *                   on one side, 3D view on the other, the room's wireframe trailing its line
+ *   5.7  TWIN       "The whole room. Scanned to scale."  the viewport rises out of CAM 01 to the whole room
+ *                   seen from outside (only the room: what the scan caught beyond its walls is left out) while
+ *                   it melts to its LiDAR wireframe; he fades out, time rewinds, the four cameras' coverage
+ *                   unfolds, the texture comes back
+ *   8.1  TRACK      "Every step. Tracked across cameras."  replay from his entry (1.8x) in a tracking shot
+ *                   along the room: his path grows behind him, a sight line from every camera that sees him
+ *                   at that moment, a forecast arrow ahead; beside it the recording of the camera that sees
+ *                   him best, in step, handed on from camera to camera. The seconds he stands at the table
+ *                   (from 12.8) run through fast while the camera comes down to him
+ *  13.95 FREE CAM   "Any angle. Any moment."  half speed: round him from CAM 04's line of sight to CAM 01's as
+ *                   he lifts the chair and turns (3D model, X-ray in the wireframe room, 3D + footage)
+ *  18.35 PREDICT    "His next move. Predicted."  he walks off; the camera swings out over the window wall to a
+ *                   view that holds him and the door and closes in as he nears it: forecast arrow, the
+ *                   predicted route, the exit and the time to it, from the fused track's position and velocity
+ *  21.2  TIMELINE   "The whole incident. In one view."  the room turns to its wireframe and the camera comes
+ *                   round beside the track: his body at five earlier moments stands along it, each with its
+ *                   time, he himself walks on among them (white, "NOW")
+ *  23.8  END CARD   "Security footage in. 3D replay out."
  */
 export const DEMO_DURATION = 25.0;
 
@@ -77,7 +81,7 @@ const WIPE = [BEAT.reveal + 0.5, BEAT.reveal + 2.1] as const;
  * (see uBuildSweep). WIRE_STRENGTH: of a line whose triangles are large on screen, in a picture 720 pixels high.
  */
 const WIRE_BAND = 0.4;
-const WIRE_STRENGTH = 0.26;
+const WIRE_STRENGTH = 0.36;
 /** As the line comes to rest at the right edge the band closes up on it; its lines are out by the twin beat. */
 const WIRE_OUT = [WIPE[1] - 0.25, BEAT.twin - 0.04] as const;
 /** From the twin beat he walks on in slow motion until he has faded out; then time rewinds. */
@@ -151,15 +155,15 @@ export function frameWanted(masterTime: number): boolean {
   return masterTime >= WALK_END_TIME - 0.3 && masterTime <= incidentTime(DEMO_DURATION) + 0.3;
 }
 
-export function rateLabel(e: number): string {
-  const slow = (r: number) => `\u25B6 ${r.toFixed(1)}\u00D7 SLOW-MO`;
-  if (e < BEAT.twin) return "\u25B6 1.0\u00D7";
-  if (e < REWIND_FROM) return slow(1 - (1 - TWIN_RATE) * smooth(span(e, BEAT.twin, BEAT.twin + TWIN_EASE)));
-  if (e < BEAT.track) return "\u25C0\u25C0 REWIND";
-  if (e < WALK_END) return `\u25B6\u25B6 ${WALK_RATE.toFixed(1)}\u00D7`;
-  if (e < BEAT.free) return `\u25B6\u25B6 ${dwellAt(e).rate.toFixed(1)}\u00D7`;
-  if (e < BEAT.predict) return slow(FREE_RATE);
-  return slow(endRate(e));
+/** The replay's pace at demo time e, in times real time; negative while it rewinds. */
+export function rateAt(e: number): number {
+  if (e < BEAT.twin) return 1;
+  if (e < REWIND_FROM) return 1 - (1 - TWIN_RATE) * smooth(span(e, BEAT.twin, BEAT.twin + TWIN_EASE));
+  if (e < BEAT.track) return (REWOUND_TIME - HELD_TIME) / (BEAT.track - REWIND_FROM);
+  if (e < WALK_END) return WALK_RATE;
+  if (e < BEAT.free) return dwellAt(e).rate;
+  if (e < BEAT.predict) return FREE_RATE;
+  return endRate(e);
 }
 
 // ---------------------------------------------------------------- room build
@@ -200,7 +204,10 @@ export const ceilingShown = (e: number, _cutY: number, _wireY: number) => e < BE
 export const glassWithFrames = true;
 export const windowFramesAt = (e: number) =>
   e < BEAT.free ? 1 - smooth(span(e, BEAT.twin + 0.5, BEAT.twin + 1.1)) : smooth(span(e, BEAT.free, BEAT.free + 0.4)) * (1 - smooth(span(e, BEAT.predict - 0.15, BEAT.predict + 0.35)));
-/** From the twin beat the room is seen from outside and above: what the scan caught beyond the walls is left out. */
+/**
+ * From the twin beat the room is seen from outside and above: what the scan caught beyond the walls is left out,
+ * and with it the balcony drawn outside the window wall (its floor, its posts and its glass railing).
+ */
 export const roomMarginAt = (e: number) => (e >= BEAT.twin ? 0.45 : null);
 
 /**
@@ -215,6 +222,8 @@ export const ghostAt = (e: number, i: number) => smooth(span(e, BEAT.stats + 0.3
 const NOW_GLOW = 0.9;
 /** 0..1: "NOW" over him in the timeline. */
 export const nowAt = (e: number) => smooth(span(e, BEAT.stats + 0.5, BEAT.stats + 0.8));
+/** 0..1: the times over the timeline's bodies (they leave as the end card comes, so nothing is written behind it). */
+export const stampsAt = (e: number) => 1 - smooth(span(e, BEAT.end, BEAT.end + 0.35));
 
 /** 0..1: the recording of the camera that sees him best, beside the tracking shot. */
 export const pipAt = (e: number) => smooth(span(e, BEAT.track + 0.4, BEAT.track + 0.75)) * (1 - smooth(span(e, WALK_END - 0.15, WALK_END + 0.05)));
@@ -238,7 +247,16 @@ export function pathAt(e: number): PathState {
   };
 }
 
-export const tagLiftAt = (e: number) => (e >= BEAT.track && e < BEAT.free ? 26 : 0);
+/** (The scene's own tag on him is left out all the way through: see lookStateAt.) */
+export const tagLiftAt = (_e: number) => 0;
+
+/**
+ * The cameras' own labels in the scene: 0..1 shown, and plain (their name only, without what they see of him).
+ * Out while the viewport looks through CAM 01 (the wipe compares the recording with the bare 3D view), in
+ * while the cameras are what the picture is about (their coverage, their sight lines to him), out again from
+ * the free camera on.
+ */
+export const cameraTagsAt = (e: number) => ({ show: smooth(span(e, BEAT.twin + 0.9, BEAT.twin + 1.3)) * (1 - smooth(span(e, WALK_END + 0.35, WALK_END + 0.8))), plain: true });
 
 /** 0..1: the sight lines from the cameras to him (each camera's own line only while it sees him). */
 export const raysAt = (e: number) => smooth(span(e, BEAT.track + 0.25, BEAT.track + 0.6)) * (1 - smooth(span(e, WALK_END + 0.35, WALK_END + 0.8)));
@@ -255,11 +273,11 @@ export function forecastAt(e: number): { arrow: number; exit: number } {
 
 // ---------------------------------------------------------------- subject look
 
-/** The free camera's looks, named as the viewer's own modes are. */
-export const FREEZE_LOOKS: { name: DemoLookName; at: number; label: string }[] = [
-  { name: "texture", at: BEAT.free, label: "3D MODEL" },
-  { name: "xray", at: BEAT.free + 1.2, label: "X-RAY" },
-  { name: "footage", at: BEAT.free + 2.8, label: "3D + FOOTAGE" },
+/** The free camera's looks (the viewer's own modes: 3D model, X-ray, 3D + footage). */
+export const FREEZE_LOOKS: { name: DemoLookName; at: number }[] = [
+  { name: "texture", at: BEAT.free },
+  { name: "xray", at: BEAT.free + 1.2 },
+  { name: "footage", at: BEAT.free + 2.8 },
 ];
 const look = (name: DemoLookName) => FREEZE_LOOKS.find((l) => l.name === name)!.at;
 
@@ -272,7 +290,7 @@ export function lookStateAt(e: number): LookState {
     holoStyle: 0,
     holoBand: -10,
     bracket: 0,
-    hideTags: e < BEAT.track + 1.2 || e >= WALK_END + 0.3,
+    hideTags: true,
     hideTrail: true,
     hideSubject: e >= SUBJECT_OUT[1] && e < BEAT.track,
     name: null,
@@ -284,7 +302,7 @@ export function lookStateAt(e: number): LookState {
   if (e < BEAT.free) return { ...base, mode: "model" };
   if (e < look("xray")) return { ...base, mode: "model", name: "texture" };
   if (e < look("footage")) return { ...base, xray: true, hologram: 1, hideBody: true, holoStyle: 1, holoBand: lerp(-0.25, 2.1, span(e, look("xray"), look("footage") - 0.1)), name: "xray" };
-  // on CAM 01's line of sight the body carries that camera's own pixels; the fused track's values beside him
+  // on CAM 01's line of sight the body carries that camera's own pixels; the tracking bracket closes on him
   if (e < BEAT.predict) return { ...base, name: "footage", bracket: easeOut(span(e, look("footage") + 0.15, look("footage") + 0.5)) * (1 - span(e, BEAT.predict - 0.25, BEAT.predict)) };
   if (e < BEAT.stats + 0.1) return base;
   // the timeline: the real, textured him in a white outline, among the cyan holograms of where he has been
@@ -297,6 +315,8 @@ export function lookStateAt(e: number): LookState {
 export const LOCK_FIRST: CameraId = "cam1";
 /** The search: typed from, typed by, sweep until (= the lock). */
 export const SEARCH = { type: [BEAT.wall + 0.3, BEAT.wall + 1.45], scan: [BEAT.wall + 1.5, BEAT.lock], query: "man carrying a chair" } as const;
+/** Share of the picture's height kept free under the wall: the caption's two lines, and the search bar above them. */
+export const WALL_RESERVE = 0.28;
 /** The cut-outs light up one feed after the other. */
 const MATCH_STAGGER = 0.11;
 /** The lock's marks leave as the wipe sets off: the recording as filmed on one side, the 3D view on the other. */
@@ -307,7 +327,7 @@ export function wallAt(e: number): WallState {
   const lit = (i: number) => easeOut(span(e, BEAT.lock + i * MATCH_STAGGER, BEAT.lock + i * MATCH_STAGGER + 0.35)) * off;
   const highlight = lit(0);
   const pip = pipAt(e);
-  if (e >= WIPE[1]) return { visible: pip > 0.002, zoom: 0, highlight: 1, dim: 0, tint: 0, footage: 1, view: { cam: LOCK_FIRST, punch: 0, focusTime: incidentTime(e) }, tag: "TRACKED", pip };
+  if (e >= WIPE[1]) return { visible: pip > 0.002, zoom: 0, highlight: 1, dim: 0, tint: 0, footage: 1, view: { cam: LOCK_FIRST, punch: 0, focusTime: incidentTime(e) }, tag: "", pip };
   return {
     visible: true,
     zoom: easeInOut(span(e, BEAT.reveal, BEAT.reveal + 0.5)),
@@ -319,8 +339,9 @@ export function wallAt(e: number): WallState {
     view: { cam: LOCK_FIRST, punch: 0, focusTime: incidentTime(e) },
     scan: e >= SEARCH.scan[0] && e < SEARCH.scan[1] ? span(e, SEARCH.scan[0], SEARCH.scan[1]) : undefined,
     wipe: wipeAt(e),
-    tag: "MATCH \u00B7 SAM 2.1",
-    reserve: 0.25,
+    tag: "",
+    plain: true,
+    reserve: WALL_RESERVE,
   };
 }
 
@@ -345,26 +366,24 @@ export const wipeShown = (e: number) => e >= WIPE[0] - 0.05 && e < WIPE[1] + 0.1
 
 export interface Chapter2 {
   at: number;
-  rail: string;
-  /** Lines of the title (short: they stay inside a 4:5 crop of a 16:9 recording). */
-  title: string[];
-  sub: string;
+  /** The caption: two short lines in plain words (short: they stay inside a 4:5 crop of a 16:9 recording). */
+  lines: readonly [string, string];
 }
 
 export const CHAPTERS: Chapter2[] = [
-  { at: BEAT.wall, rail: "SEARCH", title: ["ASK THE FOOTAGE."], sub: "Four recordings, one question" },
-  { at: BEAT.lock, rail: "LOCK", title: ["SUBJECT LOCKED."], sub: "SAM 2.1 isolates him in every feed" },
-  { at: BEAT.reveal, rail: "REVEAL", title: ["SAME CAMERA.", "NOW IN 3D."], sub: "Reconstructed from the footage, not generated" },
-  { at: BEAT.twin, rail: "TWIN", title: ["THE ROOM.", "TO SCALE."], sub: "LiDAR digital twin \u00B7 4 calibrated cameras" },
-  { at: BEAT.track, rail: "TRACK", title: ["4 CAMERAS.", "1 TRACK."], sub: "Every sight line fused on one clock" },
-  { at: WALK_END, rail: "DWELL", title: ["DWELL TIME.", "0.0 S"], sub: "Measured from the fused track" },
-  { at: BEAT.free, rail: "FREE CAM", title: ["ANY ANGLE.", "ANY MOMENT."], sub: "A camera that was never there \u00B7 time still running" },
-  { at: BEAT.predict, rail: "PREDICT", title: ["NEXT MOVE.", "PREDICTED."], sub: "Heading, speed and time to the exit, from the track" },
-  { at: BEAT.stats, rail: "TIMELINE", title: [], sub: "" },
+  { at: BEAT.wall, lines: ["Four security cameras.", "One room."] },
+  { at: BEAT.lock, lines: ["One person.", "Found in every camera."] },
+  { at: BEAT.reveal, lines: ["The same moment.", "Rebuilt in 3D."] },
+  { at: BEAT.twin, lines: ["The whole room.", "Scanned to scale."] },
+  { at: BEAT.track, lines: ["Every step.", "Tracked across cameras."] },
+  { at: BEAT.free, lines: ["Any angle.", "Any moment."] },
+  { at: BEAT.predict, lines: ["His next move.", "Predicted."] },
+  { at: BEAT.stats, lines: ["The whole incident.", "In one view."] },
 ];
-/** Index of the chapter whose title's last line is the running dwell counter. */
-export const DWELL_CHAPTER = 5;
-export const STATS_CHAPTER = 8;
+/** The end card's two lines: what goes in, what comes out. */
+export const END_LINES = ["Security footage in.", "3D replay out."] as const;
+/** Fonts the captions are set in, fetched before the clock starts (CSS font shorthand, see document.fonts.load). */
+export const FONTS: readonly string[] = ['600 40px "Inter Variable"'];
 
 /** Index into CHAPTERS, or -1 during the end card. */
 export function chapterAt(e: number): number {
@@ -400,8 +419,6 @@ const DEG = Math.PI / 180;
 export function cctvAt(e: number): CameraId | null {
   return e < BEAT.twin + 0.2 ? LOCK_FIRST : null;
 }
-/** The camera named in the top bar (once the wall's own labels are gone). */
-export const namedCamAt = (e: number) => (e >= BEAT.reveal + 0.3 && e < BEAT.twin + 0.2 ? LOCK_FIRST : null);
 export const cctvFilterAt = (_e: number) => "";
 
 const chestOf = (feet: Vec3): Vec3 => [feet[0], feet[1] + 0.98, feet[2]];
@@ -445,19 +462,20 @@ function followCamera(ctx: DemoContext): DemoCam {
 }
 
 /**
- * Out of CAM 01: up through where the ceiling was, then out over the window wall to the whole room (the wall
- * is crossed above its top: nothing of it passes in front of the lens).
+ * Out of CAM 01: straight up through where the ceiling was, tilting down along the room, then out over the
+ * window wall to the whole room (the wall is crossed above its top: nothing of it passes in front of the
+ * lens). The viewport does not fly on over him: he stays in the picture, clear of the caption, until he has
+ * faded out (FLY.aim: how far below the floor the viewport aims half way, which is what lifts him in the picture).
  */
+const FLY = { up: 2.6, at: 0.5, aim: -0.3, end: 1.8 } as const;
 function flyOut(e: number, ctx: DemoContext): DemoCam {
   const cam1 = throughCamera("cam1", ctx);
   const R = wholeRoom(ctx);
-  const [cx, , cz] = ctx.bounds.center;
-  const top = ctx.bounds.max[1];
-  const mid: Vec3 = [lerp(cam1.p[0], cx, 0.35), top + 2.6, lerp(cam1.p[2], cz, 0.3)];
-  const xs = [BEAT.twin, BEAT.twin + 0.75, BEAT.twin + 1.8];
+  const mid: Vec3 = [cam1.p[0], ctx.bounds.max[1] + FLY.up, cam1.p[2]];
+  const xs = [BEAT.twin, BEAT.twin + FLY.at, BEAT.twin + FLY.end];
   return {
     p: pchip3(xs, [cam1.p, mid, R.p], e),
-    t: pchip3(xs, [cam1.t, [lerp(cam1.t[0], R.t[0], 0.5), R.t[1], lerp(cam1.t[2], R.t[2], 0.5)], R.t], e),
+    t: pchip3(xs, [cam1.t, [lerp(cam1.t[0], R.t[0], 0.5), ctx.bounds.min[1] + FLY.aim, lerp(cam1.t[2], R.t[2], 0.5)], R.t], e),
     roll: pchip(xs, [cam1.roll, 0, 0], e),
     fov: pchip(xs, [cam1.fov, lerp(cam1.fov, R.fov, 0.6), R.fov], e),
   };
@@ -465,7 +483,7 @@ function flyOut(e: number, ctx: DemoContext): DemoCam {
 
 /** The twin and the replay of his walk in: the whole room, then the tracking shot. */
 function outsideCamera(e: number, ctx: DemoContext): DemoCam {
-  if (e < BEAT.twin + 1.8) return flyOut(e, ctx);
+  if (e < BEAT.twin + FLY.end) return flyOut(e, ctx);
   const R = wholeRoom(ctx);
   const w = easeInOut(span(e, FOLLOW_IN[0], FOLLOW_IN[1]));
   if (w <= 0) return R;

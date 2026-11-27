@@ -34,15 +34,19 @@ export const demoLook = {
   marks: [0, 1, 2].map(() => ({ on: false, x: 0, y: 0, text: "" })),
   /** 0..1: the cameras' coverage volumes unfold (1 = as the viewer draws them). */
   coverage: 1,
+  /** 0..1: the cameras' labels in the scene (1 = as the viewer draws them). */
+  cameraTags: 1,
+  /** The cameras' labels give their name only, not what they see of the subject. */
+  plainCameraTags: false,
   /** The recordings are not on screen: leave the <video> elements alone instead of seeking them. */
   holdVideos: false,
   /** Tracking bracket around the subject, in viewport pixels (drawn by the overlay); lock 0..1: closing in. */
   bracket: { on: false, lock: 0, x: 0, top: 0, bottom: 0, text: "", sub: "" },
   /**
-   * Demo 2: the forecast drawn ahead of the subject from the fused track (written by Demo2Scene, read by the
-   * overlay). Labels in viewport pixels; speed in m/s, heading in degrees (0 = along +z, clockwise from above), eta in seconds (negative: none).
+   * Demo 2: the label on the exit the forecast points at (written by Demo2Scene from the fused track, drawn by
+   * the overlay): where (viewport pixels), what it says, 0..1 how much of it is there.
    */
-  forecast: { on: false, x: 0, y: 0, text: "", exitOn: false, ex: 0, ey: 0, exitText: "", speed: 0, heading: 0, eta: -1, alpha: 0 },
+  forecast: { exitOn: false, ex: 0, ey: 0, exitText: "", exitAlpha: 0 },
   /** Demo time the scene was last set to (recording waits for this to match the requested step). */
   applied: -1,
 };

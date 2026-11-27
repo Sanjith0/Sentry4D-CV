@@ -43,6 +43,7 @@ function CameraMarker({ cam, index }: { cam: SecurityCamera; index: number }) {
   // demo walkthrough: the label gives way to the subject's tag and to the cameras before it
   const { anchorRef: labelAnchorRef, elRef: labelRef } = useLabelSlot(index + 1);
   const statusRef = useRef<HTMLSpanElement>(null);
+  const tagRef = useRef<HTMLDivElement>(null);
   // ... and sits on a dark plate: the walkthrough flies it over the bright room, where the tinted one cannot be read
   const demo = useDemoStore((s) => s.phase !== "idle");
   const selected = useReplayStore((s) => s.selectedCameraId === cam.id);
@@ -74,7 +75,14 @@ function CameraMarker({ cam, index }: { cam: SecurityCamera; index: number }) {
     }
     // The demo walkthrough takes the subject out for its rewind: the cameras' status on him goes with him
     // (it would otherwise flicker through TRACKING / NO DETECTION / OUT OF FRAME as time runs backwards).
-    if (statusRef.current) statusRef.current.style.display = demoLook.active && demoLook.hideSubject ? "none" : "";
+    // (a walkthrough can also ask for the cameras' names alone)
+    if (statusRef.current) statusRef.current.style.display = demoLook.active && (demoLook.hideSubject || demoLook.plainCameraTags) ? "none" : "";
+    // ... or for no labels on the cameras at all (not laid out then: the label fitting passes them over)
+    if (tagRef.current) {
+      const shown = demoLook.active ? demoLook.cameraTags : 1;
+      tagRef.current.style.display = shown > 0.01 ? "" : "none";
+      tagRef.current.style.opacity = shown >= 1 ? "" : shown.toFixed(2);
+    }
     if (ring.current) ring.current.opacity = selected || tracking ? 0.6 + 0.4 * Math.sin(clock.elapsedTime * (tracking ? 8 : 5)) : 0.5;
     if (coverage.current) {
       // The demo walkthrough unfolds the volumes one camera after another; otherwise they are simply drawn.
@@ -159,6 +167,7 @@ function CameraMarker({ cam, index }: { cam: SecurityCamera; index: number }) {
       {!viewingThrough && (
         <group position={[0, 0.28, 0]} ref={labelAnchorRef}>
           <Html center zIndexRange={[20, 0]} style={{ pointerEvents: "none" }}>
+            <div ref={tagRef}>
             <div
               ref={labelRef}
               className={`whitespace-nowrap rounded border px-1.5 py-0.5 font-mono text-[10px] tracking-wider backdrop-blur-sm transition-colors ${
@@ -173,6 +182,7 @@ function CameraMarker({ cam, index }: { cam: SecurityCamera; index: number }) {
                   {CAMERA_STATE_LABEL[evidence]}
                 </span>
               )}
+            </div>
             </div>
           </Html>
         </group>

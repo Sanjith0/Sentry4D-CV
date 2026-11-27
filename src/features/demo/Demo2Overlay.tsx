@@ -1,117 +1,65 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { addAfterEffect } from "@react-three/fiber";
-import { Search, X } from "lucide-react";
-import { securityCameras } from "../../config/cameras";
+import { Check, Search, X } from "lucide-react";
 import { formatClock } from "../../lib/format";
-import { useAppearanceStore } from "../reconstruction/useAppearanceStore";
-import { evidenceAt } from "../sentry/useEvidence";
-import { recordingSources } from "./recordingSources";
 import { demoLook } from "./demoLook";
 import { useLabelObstacle } from "./labelFit";
-import {
-  BEAT,
-  chapterAt,
-  CHAPTERS,
-  DWELL_CHAPTER,
-  flashAt,
-  FREEZE_LOOKS,
-  glitchAt,
-  incidentTime,
-  lookStateAt,
-  namedCamAt,
-  rateLabel,
-  scanLinesAt,
-  SEARCH,
-  STATS_CHAPTER,
-  wipeAt,
-  wipeLineAt,
-  wipeShown,
-} from "./demo2Script";
-import { CAMERA_ORDER, clamp01, DEMO_CLIP, DEMO_SUBJECT, easeInOut, easeOut, lerp, span } from "./demoScript";
+import { BEAT, chapterAt, CHAPTERS, END_LINES, flashAt, glitchAt, incidentTime, rateAt, scanLinesAt, SEARCH, WALL_RESERVE, wipeAt, wipeLineAt, wipeShown } from "./demo2Script";
+import { easeInOut, easeOut, lerp, span } from "./demoScript";
 import { useDemoStore } from "./useDemoStore";
 
-type Kicker = "search" | "seen" | "looks" | "forecast" | null;
-/** The row above the title: what the system is doing right now. */
-const kickerAt = (e: number): Kicker => {
-  if (e >= BEAT.wall && e < BEAT.reveal + 0.2) return "search";
-  if (e >= BEAT.track + 0.3 && e < BEAT.free) return "seen";
-  if (e >= BEAT.free && e < BEAT.predict) return "looks";
-  if (e >= BEAT.predict + 0.3 && e < BEAT.stats) return "forecast";
-  return null;
-};
-/** The cameras that see the subject at demo time e, as one string ("cam1 cam3"). */
-const observersAt = (e: number) => (kickerAt(e) === "seen" ? (evidenceAt(DEMO_SUBJECT, incidentTime(e))?.observers ?? []).join(" ") : "");
-
-const chip = (on: boolean) =>
-  `rounded border px-[0.8em] py-[0.4em] tracking-[0.12em] whitespace-nowrap ${
-    on ? "border-cyan-300 bg-cyan-400/20 text-cyan-50 shadow-[0_0_18px_-2px_rgba(34,211,238,0.85)]" : "border-ink-500 bg-ink-950/75 text-slate-500"
-  }`;
-
-/** The search bar's size once it has taken its place above the title (1 = as typed). */
+/** The search bar's size once it has taken its place between the wall and the caption (1 = as typed). */
 const SEARCH_REST = 0.78;
+/** Share of the picture's height above the wall of recordings (DemoWall's own margin). */
+const WALL_TOP = 0.08;
 /** Sizes follow the window's height; its width only caps them in a narrow (portrait) window. */
-const SMALL = { fontSize: "clamp(9px, min(1.5vh, 2.6vw), 15px)" };
-const SUB = { fontSize: "clamp(9px, min(1.7vh, 2.9vw), 17px)" };
-/** The wipe's "3D RECONSTRUCTION" label: its cyan tint over a dark backing (the room's wireframe passes behind it). */
-const WIPE_3D = { ...SUB, background: "linear-gradient(rgba(34,211,238,0.2), rgba(34,211,238,0.2)), rgba(4,18,26,0.55)" };
-const TITLE = { fontSize: "clamp(20px, min(6.4vh, 8.6vw), 78px)", textShadow: "0 0 34px rgba(34,211,238,0.5), 0 2px 18px rgba(2,6,12,0.9)" };
-const STAT = { fontSize: "clamp(16px, min(4.6vh, 6.2vw), 56px)" };
+const LABEL = { fontSize: "clamp(10px, min(1.7vh, 2.9vw), 28px)" };
+const CAPTION = { fontSize: "clamp(20px, min(5.6vh, 6.6vw), 104px)", textShadow: "0 1px 2px rgba(2,6,12,0.5), 0 0.06em 0.7em rgba(2,6,12,0.75)" };
+/** A caption's line rises this far (em) while it fades in, over this long (s); its second line this much later. */
+const RISE = 0.34;
+const CAPTION_IN = 0.34;
+const CAPTION_STAGGER = 0.09;
+/** A caption is on its way out from this long before the next one, and gone this long before it (s). */
+const CAPTION_OUT = [0.22, 0.04] as const;
 /**
  * Everything that has to be read sits in this column in the middle of the picture: a 4:5 crop of a 16:9
  * recording (a feed post) keeps all of it.
  */
 const COLUMN = "absolute inset-y-0 left-1/2 w-[min(100vw,80vh)] -translate-x-1/2";
+/** A small label on the picture: what a thing is, in two or three words. */
+const PILL = "flex items-center gap-[0.6em] rounded-full bg-ink-950/75 px-[1em] py-[0.62em] leading-none font-semibold tracking-[0.14em] whitespace-nowrap text-slate-50";
+const DOT = "h-[0.5em] w-[0.5em] shrink-0 rounded-full";
+/** The replay's pace as a sign: rewinding, playing, running fast. */
+const PACE_ICONS = ["M11 5.5v13L2.5 12zM21.5 5.5v13L13 12z", "M7 4.5v15L19.5 12z", "M2.5 5.5v13L11 12zM13 5.5v13L21.5 12z"];
+/** The tracking bracket: four corner ticks. */
+const TICK = "absolute h-[3vh] w-[3vh] border-cyan-200";
+const TICK_WIDTH = "max(2px, 0.28vh)";
 
-/** The numbers of this reconstruction: label under the tile, label on the end card, decimals, unit. */
-const STATS = [
-  { label: "CCTV CAMERAS", short: "CAMERAS", digits: 0, unit: "" },
-  { label: "SECONDS TRACKED", short: "TRACKED", digits: 1, unit: "s" },
-  { label: "METRES OF PATH", short: "PATH", digits: 1, unit: "m" },
-  { label: "SAM 2.1 CUT-OUTS", short: "CUT-OUTS", digits: 0, unit: "" },
-] as const;
+/** Past its end and back (a check mark that pops in). */
+const backOut = (t: number) => 1 + 2.70158 * Math.pow(t - 1, 3) + 1.70158 * Math.pow(t - 1, 2);
 
 /**
- * DEMO 2's overlay: brand and incident clock, the headline and chapter titles (large, inside the 4:5-safe
- * column), the search bar, the wipe between recording and 3D view, the labels of the forecast, the numbers of
- * this reconstruction and the end card. Positions that change every frame are written straight to the
- * elements from the demo clock, so a stepped recording and a live run look the same.
+ * DEMO 2's overlay: one caption per beat in plain words (inside the 4:5-safe column), the brand and the
+ * incident's clock, the search bar, the wipe between recording and 3D view with a label on either side, the
+ * tracking bracket, the label on the exit and the end card. Nothing else is written on the picture: what the
+ * system does is shown by the picture itself. Everything that moves is written straight to the elements from
+ * the demo clock, so a stepped recording and a live run look the same.
  */
 export function Demo2Overlay() {
   const phase = useDemoStore((s) => s.phase);
   const stop = useDemoStore((s) => s.stop);
-  const chapter = useDemoStore((s) => chapterAt(s.elapsed));
-  const kicker = useDemoStore((s) => kickerAt(s.elapsed));
-  const cctv = useDemoStore((s) => namedCamAt(s.elapsed));
-  const observers = useDemoStore((s) => observersAt(s.elapsed));
-  const look = useDemoStore((s) => lookStateAt(s.elapsed).name);
   const percent = useDemoStore((s) => Math.round(s.progress * 100));
-  const clip = useAppearanceStore((s) => s.clips[DEMO_CLIP]);
   const [hint, setHint] = useState(false);
   const hintTimer = useRef(0);
-
-  /** Recordings in the clip, and frames in which SAM 2.1 cut the subject out of one. */
-  const counted = useMemo(() => {
-    let cameras = 0;
-    let cutouts = 0;
-    for (const id of CAMERA_ORDER) {
-      const frames = clip?.cameras[id]?.frames;
-      if (!frames?.length) continue;
-      cameras++;
-      for (const f of frames) if (f.crop) cutouts++;
-    }
-    return { cameras, cutouts };
-  }, [clip]);
 
   const host = useRef<HTMLDivElement>(null);
   const top = useRef<HTMLDivElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const time = useRef<HTMLSpanElement>(null);
   const rate = useRef<HTMLSpanElement>(null);
+  const paceIcons = useRef<(SVGPathElement | null)[]>([]);
   const caption = useRef<HTMLDivElement>(null);
-  const title = useRef<HTMLDivElement>(null);
-  const accent = useRef<HTMLDivElement>(null);
-  const fills = useRef<(HTMLDivElement | null)[]>([]);
-  const marks = useRef<(HTMLDivElement | null)[]>([]);
+  const captionLines = useRef<(HTMLDivElement | null)[]>([]);
   const flash = useRef<HTMLDivElement>(null);
   const glitch = useRef<HTMLDivElement>(null);
   const lines = useRef<HTMLDivElement>(null);
@@ -122,38 +70,24 @@ export function Demo2Overlay() {
   const searchBar = useRef<HTMLDivElement>(null);
   const searchText = useRef<HTMLSpanElement>(null);
   const searchCaret = useRef<HTMLSpanElement>(null);
-  const searchStatus = useRef<HTMLSpanElement>(null);
-  const slot = useRef<HTMLDivElement>(null);
-  const speed = useRef<HTMLSpanElement>(null);
-  const heading = useRef<HTMLSpanElement>(null);
-  const pace = useRef<HTMLSpanElement>(null);
-  const eta = useRef<HTMLSpanElement>(null);
-  const ahead = useRef<HTMLDivElement>(null);
+  const searchBusy = useRef<HTMLSpanElement>(null);
+  const searchDone = useRef<HTMLSpanElement>(null);
   const exit = useRef<HTMLDivElement>(null);
-  const statValues = useRef<(HTMLSpanElement | null)[]>([]);
-  const endValues = useRef<(HTMLSpanElement | null)[]>([]);
+  const exitText = useRef<HTMLSpanElement>(null);
   const end = useRef<HTMLDivElement>(null);
+  const endParts = useRef<(HTMLDivElement | null)[]>([]);
   const bracket = useRef<HTMLDivElement>(null);
-  const bracketText = useRef<HTMLDivElement>(null);
-  const bracketSub = useRef<HTMLDivElement>(null);
-  const side = useRef<HTMLDivElement>(null);
   useLabelObstacle(bracket);
-  useLabelObstacle(side);
   useLabelObstacle(caption);
-  useLabelObstacle(ahead);
   useLabelObstacle(exit);
   /** Writes the demo clock's state to the elements above. */
   const sync = useRef<() => void>(() => {});
-  const countedRef = useRef(counted);
-  useEffect(() => {
-    countedRef.current = counted;
-  }, [counted]);
 
   useEffect(() => {
-    const text = (el: HTMLElement | null, v: string) => {
+    const text = (el: Element | null, v: string) => {
       if (el && el.textContent !== v) el.textContent = v;
     };
-    const show = (el: HTMLElement | null, on: boolean) => {
+    const show = (el: HTMLElement | SVGElement | null, on: boolean) => {
       if (el) el.style.display = on ? "" : "none";
     };
     const update = () => {
@@ -166,32 +100,35 @@ export function Demo2Overlay() {
       const W = host.current?.clientWidth ?? 0;
       const H = host.current?.clientHeight ?? 0;
 
+      // ---- the incident's clock and the replay's pace (a figure only where it is not real time)
       text(time.current, formatClock(T));
-      text(rate.current, rateLabel(e));
+      const pace = rateAt(e);
+      const sign = pace < 0 ? 0 : pace > 1.05 ? 2 : 1;
+      paceIcons.current.forEach((el, i) => show(el, i === sign));
+      text(rate.current, pace < 0 || Math.abs(pace - 1) < 0.05 ? "" : `${pace.toFixed(1)}\u00D7`);
       if (top.current) top.current.style.opacity = String(out);
       if (bottom.current) bottom.current.style.opacity = String(out);
 
-      // title: on screen from the first frame of the cold open; later chapters' titles punch in
-      if (caption.current && title.current && ch >= 0) {
-        const u = ch === 0 ? 1 : span(e, CHAPTERS[ch].at, CHAPTERS[ch].at + 0.24);
-        caption.current.style.opacity = String(clamp01(u * 1.8));
-        title.current.style.transform = `scale(${(1.14 - 0.14 * easeOut(u)).toFixed(4)})`;
-        if (accent.current) {
-          // the cold open's last line lands a beat after the picture
-          const pop = ch === 0 ? easeOut(span(e, 0.05, 0.5)) : 1;
-          accent.current.style.transform = `scale(${(1.3 - 0.3 * pop).toFixed(4)})`;
-          // the dwell: seconds he has stood at the table by the shown time, from the fused track
-          const info = demoLook.pathInfo;
-          if (ch === DWELL_CHAPTER) text(accent.current, `${Math.min(Math.max(T - info.dwellFrom, 0), info.dwell).toFixed(1)} S`);
+      // ---- caption: its two lines rise in one after the other, and are gone just before the next beat
+      // (the first one is there from the first frame)
+      if (caption.current) {
+        show(caption.current, ch >= 0);
+        if (ch >= 0) {
+          const c = CHAPTERS[ch];
+          const next = ch + 1 < CHAPTERS.length ? CHAPTERS[ch + 1].at : BEAT.end;
+          const leave = 1 - span(e, next - CAPTION_OUT[0], next - CAPTION_OUT[1]);
+          captionLines.current.forEach((el, i) => {
+            if (!el) return;
+            text(el, c.lines[i]);
+            const from = c.at + 0.02 + i * CAPTION_STAGGER;
+            const u = ch === 0 ? 1 : easeOut(span(e, from, from + CAPTION_IN));
+            el.style.opacity = (u * leave).toFixed(3);
+            el.style.transform = `translate3d(0, ${((1 - u) * RISE).toFixed(3)}em, 0)`;
+          });
         }
       }
-      fills.current.forEach((el, i) => {
-        if (!el) return;
-        const to = i + 1 < CHAPTERS.length ? CHAPTERS[i + 1].at : BEAT.end;
-        el.style.transform = `scaleX(${span(e, CHAPTERS[i].at, to).toFixed(4)})`;
-      });
 
-      // ---- search bar: typed in the middle of the wall, then it takes its place above the title
+      // ---- search bar: typed over the middle of the wall, then it takes its place between the wall and the caption
       if (searchBar.current && searchDim.current) {
         const on = e >= BEAT.wall && e < BEAT.reveal + 0.2;
         show(searchBar.current, on);
@@ -200,21 +137,27 @@ export function Demo2Overlay() {
           const alpha = span(e, BEAT.wall + 0.05, BEAT.wall + 0.25) * (1 - span(e, BEAT.reveal - 0.1, BEAT.reveal + 0.2));
           const m = easeInOut(span(e, SEARCH.scan[0] - 0.05, SEARCH.scan[0] + 0.4));
           const h = searchBar.current.offsetHeight;
-          const hostBox = host.current?.getBoundingClientRect();
-          const slotBox = slot.current?.getBoundingClientRect();
+          const hostTop = host.current?.getBoundingClientRect().top ?? 0;
+          const captionTop = caption.current ? caption.current.getBoundingClientRect().top - hostTop : H * 0.83;
+          const wallBottom = H * (1 - WALL_RESERVE);
           const scale = lerp(1, SEARCH_REST, m);
-          // (at rest its lower edge sits on the row's)
-          const rest = slotBox && hostBox ? slotBox.bottom - hostBox.top - h * SEARCH_REST - slotBox.height * 0.14 : H * 0.7;
-          const y = lerp(H * 0.43 - h / 2, rest, m);
+          const y = lerp((H * WALL_TOP + wallBottom) / 2 - h / 2, (wallBottom + captionTop) / 2 - (h * SEARCH_REST) / 2, m);
           searchBar.current.style.opacity = alpha.toFixed(3);
           searchBar.current.style.transform = `translate3d(-50%, ${y.toFixed(1)}px, 0) scale(${scale.toFixed(4)})`;
           searchDim.current.style.opacity = (0.5 * alpha * (1 - m)).toFixed(3);
           const typed = Math.round(SEARCH.query.length * span(e, SEARCH.type[0], SEARCH.type[1]));
           text(searchText.current, SEARCH.query.slice(0, typed));
           if (searchCaret.current) searchCaret.current.style.opacity = e < SEARCH.scan[0] && (typed < SEARCH.query.length ? typed > 0 || Math.floor(e * 4) % 2 === 0 : Math.floor(e * 6) % 2 === 0) ? "1" : "0";
-          // (feeds in which SAM 2.1 has his cut-out at the shown moment)
-          const feeds = Object.values(recordingSources(T)).filter((w) => (w ?? 0) > 0.5).length;
-          text(searchStatus.current, e < SEARCH.scan[0] ? "" : e < BEAT.lock ? "SCANNING" : `${feeds}/4 FEEDS`);
+          // busy while the sweep crosses the feeds; a check once his cut-outs light up
+          if (searchBusy.current) {
+            searchBusy.current.style.opacity = e >= SEARCH.scan[0] && e < BEAT.lock ? "1" : "0";
+            searchBusy.current.style.transform = `rotate(${((e * 600) % 360).toFixed(1)}deg)`;
+          }
+          if (searchDone.current) {
+            const u = span(e, BEAT.lock, BEAT.lock + 0.3);
+            searchDone.current.style.opacity = Math.min(1, u * 3).toFixed(3);
+            searchDone.current.style.transform = `scale(${(0.4 + 0.6 * backOut(u)).toFixed(3)})`;
+          }
         }
       }
 
@@ -246,59 +189,33 @@ export function Demo2Overlay() {
         }
       }
 
-      // ---- labels on the tracked path, riding on the points they name
-      marks.current.forEach((el, i) => {
-        const mark = demoLook.marks[i];
-        if (!el || !mark) return;
-        el.style.display = mark.on ? "block" : "none";
-        if (!mark.on) return;
-        text(el, mark.text);
-        el.style.opacity = demoLook.path.labels.toFixed(3);
-        el.style.transform = `translate3d(${mark.x.toFixed(1)}px, ${mark.y.toFixed(1)}px, 0) translate(-50%, ${i === 0 ? "calc(-100% - 1.5em)" : "1.5em"})`;
-      });
-
-      // ---- forecast: the arrow's reach and the exit, on their points; the values in the row above the title
+      // ---- the exit the forecast points at: its name and the time to it, over its pin
       const f = demoLook.forecast;
-      if (ahead.current) {
-        const on = f.on && f.alpha > 0.02 && e >= BEAT.predict;
-        show(ahead.current, on);
-        if (on) {
-          text(ahead.current, f.text);
-          ahead.current.style.opacity = Math.min(1, f.alpha * 1.4).toFixed(3);
-          ahead.current.style.transform = `translate3d(${f.x.toFixed(1)}px, ${f.y.toFixed(1)}px, 0) translate(-50%, 0.9em)`;
-        }
-      }
       if (exit.current) {
-        show(exit.current, f.exitOn);
-        if (f.exitOn) {
-          text(exit.current, f.exitText);
-          exit.current.style.opacity = String(out);
+        const on = f.exitOn && f.exitAlpha > 0.02;
+        show(exit.current, on);
+        if (on) {
+          text(exitText.current, f.exitText);
+          exit.current.style.opacity = (Math.min(1, f.exitAlpha * 1.4) * out).toFixed(3);
           exit.current.style.transform = `translate3d(${f.ex.toFixed(1)}px, ${f.ey.toFixed(1)}px, 0) translate(-50%, -100%)`;
         }
       }
-      text(speed.current, `${f.speed.toFixed(1)} m/s`);
-      text(pace.current, `${f.speed.toFixed(1)} m/s`);
-      text(heading.current, f.speed > 0.45 ? `${Math.round(f.heading).toString().padStart(3, "0")}\u00B0` : "\u2014");
-      text(eta.current, f.eta >= 0 ? `${f.eta.toFixed(1)} S` : "\u2014");
 
-      // ---- the numbers of this reconstruction
-      // (cameras and cut-outs from the clip's manifest; seconds and metres from the fused track)
-      const info = demoLook.pathInfo;
-      const values = [countedRef.current.cameras, Math.max(info.end - info.start, 0), info.length, countedRef.current.cutouts];
-      const counting = easeOut(span(e, BEAT.stats + 0.05, BEAT.stats + 0.75));
-      STATS.forEach((st, i) => {
-        text(statValues.current[i], (values[i] * counting).toFixed(st.digits));
-        text(endValues.current[i], `${values[i].toFixed(st.digits)}${st.unit ? ` ${st.unit.toUpperCase()}` : ""}`);
-      });
-
+      // ---- end card: the name, what it does, where to find it, one after the other
       if (end.current) {
         const u = span(e, BEAT.end, BEAT.end + 0.45);
         end.current.style.opacity = String(u);
-        end.current.style.transform = `scale(${(1.06 - 0.06 * easeOut(u)).toFixed(4)})`;
         end.current.style.visibility = u > 0 ? "visible" : "hidden";
+        endParts.current.forEach((el, i) => {
+          if (!el) return;
+          const from = BEAT.end + 0.1 + i * 0.1;
+          const v = easeOut(span(e, from, from + 0.4));
+          el.style.opacity = v.toFixed(3);
+          el.style.transform = `translate3d(0, ${((1 - v) * 1.6).toFixed(3)}vh, 0)`;
+        });
       }
 
-      // ---- tracking bracket
+      // ---- tracking bracket: four ticks that close in on him
       const b = demoLook.bracket;
       if (bracket.current) {
         bracket.current.style.display = b.on ? "block" : "none";
@@ -310,12 +227,6 @@ export function Demo2Overlay() {
           bracket.current.style.width = `${bw.toFixed(1)}px`;
           bracket.current.style.height = `${h.toFixed(1)}px`;
           bracket.current.style.opacity = (Math.min(1, b.lock * 1.6) * out).toFixed(3);
-          text(bracketText.current, b.text);
-          text(bracketSub.current, b.sub);
-          if (side.current) {
-            const over = b.x + bw / 2 + 12 + side.current.offsetWidth - W * 0.978;
-            side.current.style.transform = over > 0 ? `translate3d(${(-over).toFixed(1)}px, 0, 0)` : "";
-          }
         }
       }
     };
@@ -337,10 +248,9 @@ export function Demo2Overlay() {
   };
 
   const live = phase === "running" || phase === "ended";
-  const current = chapter >= 0 ? CHAPTERS[chapter] : null;
 
   return (
-    <div ref={host} className={`absolute inset-0 z-[60] overflow-hidden font-mono select-none ${hint ? "" : "cursor-none"}`} onPointerMove={onMove} onPointerDown={showHint}>
+    <div ref={host} className={`absolute inset-0 z-[60] overflow-hidden font-demo select-none ${hint ? "" : "cursor-none"}`} onPointerMove={onMove} onPointerDown={showHint}>
       {live && (
         <>
           <div className="vignette absolute inset-0 opacity-70" />
@@ -353,203 +263,138 @@ export function Demo2Overlay() {
           />
           <div ref={flash} className="absolute inset-0 bg-cyan-50" style={{ opacity: 0 }} />
 
-          {/* the wipe: 3D view on its left, the recording on its right */}
+          {/* the wipe: 3D view on its left, the recording on its right, each under its name */}
           <div ref={wipe} className="absolute inset-y-0 left-0 w-0" style={{ display: "none" }}>
             <div className="absolute inset-y-0 -left-px w-[2px] bg-cyan-100 shadow-[0_0_22px_3px_rgba(34,211,238,0.95)]" />
-            <div ref={wipeLeft} className="absolute top-[13vh] right-[1.1em] rounded border border-cyan-300 px-[0.9em] py-[0.45em] font-semibold tracking-[0.16em] whitespace-nowrap text-cyan-50 shadow-[0_0_18px_-2px_rgba(34,211,238,0.85)]" style={WIPE_3D}>
+            <div ref={wipeLeft} className={`absolute top-[13vh] right-[1.2em] ${PILL}`} style={LABEL}>
+              <span className={`${DOT} bg-cyan-300`} />
               3D RECONSTRUCTION
             </div>
-            <div ref={wipeRight} className="absolute top-[13vh] left-[1.1em] flex items-center gap-[0.6em] rounded border border-ink-500 bg-ink-950/85 px-[0.9em] py-[0.45em] font-semibold tracking-[0.16em] whitespace-nowrap text-slate-200" style={SUB}>
-              <span className="rec-dot h-[0.55em] w-[0.55em] rounded-full bg-red-400" />
+            <div ref={wipeRight} className={`absolute top-[13vh] left-[1.2em] ${PILL}`} style={LABEL}>
+              <span className={`${DOT} bg-red-400`} />
               REAL FOOTAGE
             </div>
           </div>
 
           {/* tracking bracket */}
-          <div ref={bracket} className="absolute top-0 left-0 border border-cyan-300/70 shadow-[0_0_18px_-4px_rgba(34,211,238,0.9)]" style={{ display: "none" }}>
-            <div className="absolute -top-px -left-px h-3 w-3 border-t-2 border-l-2 border-cyan-200" />
-            <div className="absolute -top-px -right-px h-3 w-3 border-t-2 border-r-2 border-cyan-200" />
-            <div className="absolute -bottom-px -left-px h-3 w-3 border-b-2 border-l-2 border-cyan-200" />
-            <div className="absolute -right-px -bottom-px h-3 w-3 border-r-2 border-b-2 border-cyan-200" />
-            <div ref={side} className="absolute top-[12%] left-full ml-3 border-l-2 border-cyan-300 bg-ink-950/85 px-[0.8em] py-[0.5em] whitespace-nowrap portrait:hidden" style={SMALL}>
-              <div ref={bracketText} className="tracking-[0.1em] text-cyan-100" />
-              <div ref={bracketSub} className="mt-[0.3em] tracking-[0.1em] text-slate-400" />
-            </div>
+          <div ref={bracket} className="absolute top-0 left-0" style={{ display: "none", filter: "drop-shadow(0 0 0.5vh rgba(2,6,12,0.6))" }}>
+            <div className={`${TICK} top-0 left-0`} style={{ borderTopWidth: TICK_WIDTH, borderLeftWidth: TICK_WIDTH }} />
+            <div className={`${TICK} top-0 right-0`} style={{ borderTopWidth: TICK_WIDTH, borderRightWidth: TICK_WIDTH }} />
+            <div className={`${TICK} bottom-0 left-0`} style={{ borderBottomWidth: TICK_WIDTH, borderLeftWidth: TICK_WIDTH }} />
+            <div className={`${TICK} right-0 bottom-0`} style={{ borderRightWidth: TICK_WIDTH, borderBottomWidth: TICK_WIDTH }} />
           </div>
 
-          {/* labels on the tracked path */}
-          {[0, 1, 2].map((i) => (
-            <div
-              key={i}
-              ref={(el) => {
-                marks.current[i] = el;
-              }}
-              className="absolute top-0 left-0 border-l-2 border-cyan-300 bg-ink-950/85 px-[0.7em] py-[0.35em] tracking-[0.12em] whitespace-nowrap text-cyan-50"
-              style={{ ...SMALL, display: "none" }}
-            />
-          ))}
+          {/* the exit the forecast points at */}
+          <div ref={exit} className={`absolute top-0 left-0 ${PILL}`} style={{ ...LABEL, display: "none" }}>
+            <span className={`${DOT} bg-amber-300`} />
+            <span ref={exitText} className="text-amber-50 tabular-nums" />
+          </div>
 
-          {/* forecast: the arrow's reach, the exit */}
-          <div ref={ahead} className="absolute top-0 left-0 border-l-2 border-amber-300 bg-ink-950/85 px-[0.7em] py-[0.35em] tracking-[0.12em] whitespace-nowrap text-amber-100" style={{ ...SMALL, display: "none" }} />
-          <div
-            ref={exit}
-            className="absolute top-0 left-0 rounded border border-amber-300 bg-ink-950/90 px-[0.8em] py-[0.4em] font-semibold tracking-[0.12em] whitespace-nowrap text-amber-100 shadow-[0_0_18px_-2px_rgba(255,194,51,0.8)]"
-            style={{ ...SMALL, display: "none" }}
-          />
-
-          {/* search bar (flies from the middle of the wall to the row above the title) */}
+          {/* search bar (flies from the middle of the wall to its place over the caption) */}
           <div
             ref={searchBar}
-            className="absolute top-0 left-1/2 z-10 flex w-[min(90vw,72vh,620px)] origin-top items-center gap-[0.7em] rounded-[0.6em] border border-cyan-300/80 bg-ink-950/90 px-[0.9em] py-[0.62em] shadow-[0_0_40px_-6px_rgba(34,211,238,0.9)]"
-            style={{ display: "none", fontSize: "clamp(13px, min(3vh, 4.3vw), 34px)" }}
+            className="absolute top-0 left-1/2 z-10 flex w-[min(88vw,70vh)] origin-top items-center gap-[0.7em] rounded-full border border-white/15 bg-ink-950/85 px-[1.1em] py-[0.62em] shadow-[0_0.6em_2em_rgba(2,6,12,0.6),0_0_0_1px_rgba(34,211,238,0.14)]"
+            style={{ display: "none", fontSize: "clamp(13px, min(3vh, 4.3vw), 60px)" }}
           >
-            <Search className="h-[1em] w-[1em] shrink-0 text-cyan-300" />
-            <span className="min-w-0 whitespace-nowrap text-slate-50">
+            <Search className="h-[1em] w-[1em] shrink-0 text-slate-400" />
+            <span className="min-w-0 font-medium whitespace-nowrap text-slate-50">
               <span ref={searchText} />
-              <span ref={searchCaret} className="ml-[0.08em] inline-block h-[1em] w-[0.5em] translate-y-[0.12em] bg-cyan-300" />
+              <span ref={searchCaret} className="ml-[0.08em] inline-block h-[1.05em] w-[2px] translate-y-[0.18em] bg-cyan-300" />
             </span>
-            <span ref={searchStatus} className="ml-auto shrink-0 text-[0.58em] font-semibold tracking-[0.12em] whitespace-nowrap text-cyan-300" />
+            <span className="relative ml-auto h-[1em] w-[1em] shrink-0">
+              <span ref={searchBusy} className="absolute inset-[0.06em] rounded-full border-[0.11em] border-cyan-300/25 border-t-cyan-300" style={{ opacity: 0 }} />
+              <span ref={searchDone} className="absolute inset-0 flex items-center justify-center text-cyan-300" style={{ opacity: 0 }}>
+                <Check className="h-[1em] w-[1em]" strokeWidth={2.8} />
+              </span>
+            </span>
           </div>
 
           <div className={COLUMN}>
-            {/* brand, the camera on screen, the incident clock */}
-            <div ref={top} className="absolute inset-x-0 top-0 flex items-center gap-[0.8em] px-[2.2vh] pt-[2vh]" style={SMALL}>
-              <div className="flex items-center gap-[0.7em] rounded border border-cyan-400/50 bg-ink-950/80 px-[0.9em] py-[0.45em] whitespace-nowrap text-cyan-50 shadow-[0_0_18px_-6px_rgba(34,211,238,0.9)]">
-                <span className="h-[0.6em] w-[0.6em] rotate-45 bg-cyan-300" />
-                <span className="font-semibold tracking-[0.28em]">SENTRY4D</span>
-              </div>
-              {cctv && (
-                <div className="flex items-center gap-[0.6em] rounded border border-ink-500 bg-ink-950/80 px-[0.9em] py-[0.45em] tracking-[0.14em] whitespace-nowrap text-slate-200 portrait:hidden">
-                  <span className="rec-dot h-[0.55em] w-[0.55em] rounded-full bg-red-400" />
-                  CAM 0{securityCameras.findIndex((c) => c.id === cctv) + 1}
-                </div>
-              )}
-              <div className="ml-auto flex items-center gap-[0.8em] rounded border border-ink-500 bg-ink-950/80 px-[0.9em] py-[0.45em] whitespace-nowrap">
-                <span ref={time} className="tracking-[0.08em] text-cyan-50 tabular-nums">
-                  00:00.00
-                </span>
-                <span ref={rate} className="text-right tracking-[0.08em] text-cyan-300" />
+            {/* the brand; the incident's clock and the replay's pace */}
+            <div ref={top} className="absolute inset-x-0 top-0 px-[2.2vh] pt-[2.4vh]">
+              <div className="absolute -inset-x-[100vw] top-0 h-[12vh] bg-gradient-to-b from-ink-950/70 to-transparent" />
+              <div className="relative flex items-center leading-none font-semibold whitespace-nowrap text-slate-50" style={{ ...LABEL, textShadow: "0 1px 3px rgba(2,6,12,0.7)" }}>
+                <span className="mr-[0.7em] h-[0.62em] w-[0.62em] rotate-45 bg-cyan-300" />
+                <span className="tracking-[0.24em]">SENTRY4D</span>
+                <svg viewBox="0 0 24 24" className="ml-auto h-[1.05em] w-[1.05em] fill-cyan-300">
+                  {PACE_ICONS.map((d, i) => (
+                    <path
+                      key={d}
+                      d={d}
+                      ref={(el) => {
+                        paceIcons.current[i] = el;
+                      }}
+                      style={{ display: i === 1 ? undefined : "none" }}
+                    />
+                  ))}
+                </svg>
+                <span ref={rate} className="ml-[0.35em] tracking-[0.04em] text-cyan-300 tabular-nums" />
+                <span ref={time} className="ml-[0.9em] tracking-[0.06em] tabular-nums" />
               </div>
             </div>
 
-            {/* what the system is doing, the title, the chapter rail */}
-            <div ref={bottom} className="absolute inset-x-0 bottom-0 px-[2.2vh] pb-[2.2vh]">
-              <div className="absolute -inset-x-[100vw] bottom-0 h-[34vh] bg-gradient-to-t from-ink-950/95 via-ink-950/60 to-transparent" />
-              <div ref={caption} className="relative flex flex-col items-center text-center">
-                <div ref={slot} className="flex min-h-[3em] items-end justify-center gap-[0.55em] pb-[0.4em]" style={SMALL}>
-                  {kicker === "seen" && (
-                    <>
-                      <span className="mr-[0.2em] tracking-[0.2em] text-slate-300">SEEN BY</span>
-                      {securityCameras.slice(0, 4).map((c, i) => (
-                        <span key={c.id} className={chip(observers.split(" ").includes(c.id))}>
-                          CAM 0{i + 1}
-                        </span>
-                      ))}
-                      <span ref={speed} className="ml-[0.3em] min-w-[4.6em] text-left tracking-[0.08em] text-cyan-200 tabular-nums portrait:hidden" />
-                    </>
-                  )}
-                  {kicker === "looks" &&
-                    FREEZE_LOOKS.map((l) => (
-                      <span key={l.name} className={chip(l.name === look)}>
-                        {l.label}
-                      </span>
-                    ))}
-                  {kicker === "forecast" && (
-                    <div className="flex items-center gap-[1.4em] rounded border border-amber-300/70 bg-ink-950/85 px-[1em] py-[0.45em] tracking-[0.12em] whitespace-nowrap text-slate-300">
-                      <span>
-                        HEADING <span ref={heading} className="font-semibold text-amber-200" />
-                      </span>
-                      <span>
-                        SPEED <span ref={pace} className="font-semibold text-amber-200 tabular-nums" />
-                      </span>
-                      <span>
-                        EXIT IN <span ref={eta} className="font-semibold text-amber-200 tabular-nums" />
-                      </span>
-                    </div>
-                  )}
-                </div>
-                {chapter === STATS_CHAPTER ? (
-                  <div key="stats" ref={title} className="mt-[1vh] grid w-full origin-bottom grid-cols-4 gap-[1vh]">
-                    {STATS.map((st, i) => (
-                      <div key={st.label} className="rounded border border-cyan-400/40 bg-ink-950/80 px-[0.4em] py-[1.1vh] shadow-[0_0_22px_-8px_rgba(34,211,238,0.9)]">
-                        <div className="leading-none font-semibold text-slate-50 tabular-nums" style={STAT}>
-                          <span
-                            ref={(el) => {
-                              statValues.current[i] = el;
-                            }}
-                          />
-                          {st.unit && <span className="ml-[0.12em] text-[0.5em] text-cyan-300">{st.unit}</span>}
-                        </div>
-                        <div className="mt-[0.9vh] tracking-[0.1em] text-cyan-200/90" style={{ fontSize: "clamp(7px, min(1.25vh, 2.1vw), 13px)" }}>
-                          {st.label}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div ref={title} key={chapter} className="mt-[0.6vh] origin-bottom leading-[1.08] font-bold tracking-[0.03em] whitespace-nowrap text-slate-50" style={TITLE}>
-                    {current?.title.map((line, i) =>
-                      i === current.title.length - 1 && current.title.length > 1 ? (
-                        <div key={i} ref={accent} className="origin-center text-cyan-300">
-                          {line}
-                        </div>
-                      ) : (
-                        <div key={i}>{line}</div>
-                      ),
-                    )}
-                  </div>
-                )}
-                <div className="mt-[1vh] max-w-full tracking-[0.14em] text-cyan-100/90 uppercase" style={SUB}>
-                  {chapter === STATS_CHAPTER ? "The whole incident in one frame \u00B7 measured on this clip" : current?.sub}
-                </div>
-              </div>
-              <div className="relative mt-[1.6vh] flex gap-[0.5vh]">
-                {CHAPTERS.map((c, i) => (
-                  <div key={c.rail} className="h-[3px] min-w-0 flex-1 overflow-hidden rounded-full bg-slate-500/30">
-                    <div
-                      ref={(el) => {
-                        fills.current[i] = el;
-                      }}
-                      className="h-full origin-left bg-cyan-300"
-                      style={{ transform: "scaleX(0)" }}
-                    />
-                  </div>
+            {/* the caption: what the picture shows, in plain words */}
+            <div ref={bottom} className="absolute inset-x-0 bottom-0 px-[2.2vh] pb-[4.6vh]">
+              <div
+                className="absolute -inset-x-[100vw] bottom-0 h-[30vh]"
+                style={{ background: "linear-gradient(to top, rgba(4,7,12,0.9) 0%, rgba(4,7,12,0.66) 36%, rgba(4,7,12,0.26) 70%, rgba(4,7,12,0) 100%)" }}
+              />
+              <div ref={caption} className="relative text-center leading-[1.12] font-semibold tracking-[-0.022em] whitespace-nowrap" style={CAPTION}>
+                {["text-white", "text-cyan-300"].map((tone, i) => (
+                  <div
+                    key={tone}
+                    ref={(el) => {
+                      captionLines.current[i] = el;
+                    }}
+                    className={tone}
+                  />
                 ))}
               </div>
             </div>
           </div>
 
           {/* end card */}
-          <div ref={end} className="absolute inset-0 bg-ink-950/78" style={{ opacity: 0, visibility: "hidden" }}>
-            <div className={`${COLUMN} flex flex-col items-center justify-center px-[2.2vh] text-center`}>
-              <div className="pl-[0.16em] font-semibold tracking-[0.16em] whitespace-nowrap text-slate-50" style={{ fontSize: "clamp(30px, min(10.5vh, 13.5vw), 132px)", textShadow: "0 0 60px rgba(34,211,238,0.55)" }}>
+          <div ref={end} className="absolute inset-0 bg-ink-950/85" style={{ opacity: 0, visibility: "hidden" }}>
+            <div className={`${COLUMN} flex flex-col items-center justify-center px-[2.2vh] text-center whitespace-nowrap`}>
+              <div
+                ref={(el) => {
+                  endParts.current[0] = el;
+                }}
+                className="pl-[0.22em] leading-none font-semibold tracking-[0.22em] text-white"
+                style={{ fontSize: "clamp(24px, min(8vh, 10vw), 150px)" }}
+              >
                 SENTRY<span className="text-cyan-300">4D</span>
               </div>
-              <div className="mt-[1.4vh] h-px w-[86%] bg-gradient-to-r from-transparent via-cyan-300 to-transparent" />
-              <div className="mt-[2.6vh] font-bold tracking-[0.1em] whitespace-nowrap text-slate-50" style={{ fontSize: "clamp(16px, min(4.6vh, 6.2vw), 56px)" }}>
-                CCTV IN. <span className="text-cyan-300">4D OUT.</span>
-              </div>
-              <div className="mt-[3vh] grid w-full grid-cols-4 gap-[1vh]">
-                {STATS.map((st, i) => (
-                  <div key={st.short} className="border-t border-cyan-400/40 pt-[1.2vh]">
-                    <div className="font-semibold whitespace-nowrap text-slate-50 tabular-nums" style={{ fontSize: "clamp(12px, min(2.9vh, 3.9vw), 34px)" }}>
-                      <span
-                        ref={(el) => {
-                          endValues.current[i] = el;
-                        }}
-                      />
-                    </div>
-                    <div className="mt-[0.6vh] tracking-[0.14em] text-slate-400" style={{ fontSize: "clamp(7px, min(1.25vh, 2.1vw), 13px)" }}>
-                      {st.short}
-                    </div>
+              <div className="mt-[3.2vh] leading-[1.14] font-semibold tracking-[-0.022em]" style={{ fontSize: "clamp(17px, min(4.6vh, 6.2vw), 86px)" }}>
+                {["text-white", "text-cyan-300"].map((tone, i) => (
+                  <div
+                    key={tone}
+                    ref={(el) => {
+                      endParts.current[1 + i] = el;
+                    }}
+                    className={tone}
+                  >
+                    {END_LINES[i]}
                   </div>
                 ))}
               </div>
-              <div className="mt-[3.4vh] rounded border border-cyan-300 bg-cyan-400/15 px-[1.2em] py-[0.6em] font-semibold tracking-[0.16em] whitespace-nowrap text-cyan-50 shadow-[0_0_24px_-4px_rgba(34,211,238,0.9)]" style={{ fontSize: "clamp(11px, min(2.3vh, 3.4vw), 28px)" }}>
-                SENTRY4D.VERCEL.APP
+              <div
+                ref={(el) => {
+                  endParts.current[3] = el;
+                }}
+                className="mt-[4.4vh] rounded-full border border-white/25 px-[1.3em] py-[0.62em] leading-none font-medium tracking-[0.01em] text-slate-50"
+                style={{ fontSize: "clamp(12px, min(2.5vh, 3.7vw), 46px)" }}
+              >
+                sentry4d.vercel.app
               </div>
-              <div className="mt-[1.8vh] tracking-[0.16em] text-slate-400" style={SMALL}>
-                RECONSTRUCTED FROM THE FOOTAGE {"\u00B7"} NOT GENERATED
+              <div
+                ref={(el) => {
+                  endParts.current[4] = el;
+                }}
+                className="mt-[2.4vh] font-medium tracking-[0.01em] text-slate-400"
+                style={{ fontSize: "clamp(10px, min(1.8vh, 3vw), 32px)" }}
+              >
+                Reconstructed from real footage {"\u00B7"} not generated
               </div>
             </div>
           </div>
@@ -558,14 +403,14 @@ export function Demo2Overlay() {
 
       {phase === "preparing" && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-ink-950">
-          <div className="pl-[0.28em] font-semibold tracking-[0.28em] text-slate-50" style={{ fontSize: "clamp(20px, 4.5vh, 54px)" }}>
+          <div className="pl-[0.22em] leading-none font-semibold tracking-[0.22em] text-white" style={{ fontSize: "clamp(18px, 3.8vh, 54px)" }}>
             SENTRY<span className="text-cyan-300">4D</span>
           </div>
-          <div className="mt-[2.2vh] h-[3px] w-[min(46vw,420px)] overflow-hidden rounded-full bg-ink-600">
+          <div className="mt-[2.8vh] h-[2px] w-[min(40vw,380px)] overflow-hidden rounded-full bg-white/10">
             <div className="h-full bg-cyan-300 transition-[width] duration-200" style={{ width: `${percent}%` }} />
           </div>
-          <div className="mt-[1.6vh] pl-[0.2em] tracking-[0.2em] text-slate-400" style={SMALL}>
-            LOADING RECONSTRUCTION {percent}%
+          <div className="mt-[2vh] font-medium text-slate-400 tabular-nums" style={LABEL}>
+            Loading the reconstruction {"\u00B7"} {percent}%
           </div>
         </div>
       )}
@@ -574,7 +419,7 @@ export function Demo2Overlay() {
         type="button"
         onClick={stop}
         title="Exit the demo (Esc)"
-        className={`absolute top-[2vh] left-1/2 flex -translate-x-1/2 items-center gap-2 rounded border border-ink-500 bg-ink-950/90 px-3 py-1.5 text-[11px] tracking-[0.14em] text-slate-300 transition-opacity duration-200 hover:border-slate-400 hover:text-white ${
+        className={`absolute top-[2vh] left-1/2 flex -translate-x-1/2 items-center gap-2 rounded border border-ink-500 bg-ink-950/90 px-3 py-1.5 font-mono text-[11px] tracking-[0.14em] text-slate-300 transition-opacity duration-200 hover:border-slate-400 hover:text-white ${
           hint ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
       >

@@ -114,7 +114,7 @@ export function Header() {
             if (e.detail) e.currentTarget.blur();
             useDemoStore.getState().start({ variant: 2 });
           }}
-          title="Demo 2: a second 25-second cut. It opens on the 3D result, searches the four recordings, wipes from the recording to the 3D view, then tracks, orbits and forecasts (Esc to exit)"
+          title="Demo 2: a second 25-second cut for a first-time viewer. It starts on the four recordings, finds the person in each, wipes from the recording to the 3D view, then tracks, orbits and forecasts (Esc to exit)"
           className="!border-amber-300/60 !bg-amber-300/10 !text-amber-100 shadow-[0_0_14px_-4px_rgba(255,194,51,0.8)] hover:!border-amber-200 hover:!bg-amber-300/20"
         >
           <Sparkles className="h-3.5 w-3.5" /> DEMO 2

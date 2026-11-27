@@ -492,8 +492,10 @@ export interface WallState {
   scan?: number;
   /** 0..1: share of the screen's width, from the left, where the recording is wiped away (the 3D view shows). */
   wipe?: number;
-  /** The tag on the cut-out; left out: the subject's label and "SAM 2.1". */
+  /** The tag on the cut-out; left out: the subject's label and "SAM 2.1"; "": the bracket alone. */
   tag?: string;
+  /** The tiles carry their camera's number alone (not where it hangs, nor its clock). */
+  plain?: boolean;
   /** Share of the screen's height kept free under the wall for the captions; left out: 0.165. */
   reserve?: number;
   /**

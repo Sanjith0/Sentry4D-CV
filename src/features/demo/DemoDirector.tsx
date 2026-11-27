@@ -241,6 +241,9 @@ export function DemoDirector() {
     demoLook.hideTrail = look.hideTrail;
     demoLook.hideSubject = look.hideSubject;
     demoLook.tagLift = S.tagLiftAt(e);
+    const cameraTags = S.cameraTagsAt?.(e);
+    demoLook.cameraTags = cameraTags?.show ?? 1;
+    demoLook.plainCameraTags = cameraTags?.plain ?? false;
     const path = S.pathAt(e);
     demoLook.path.draw = path.draw;
     demoLook.path.alpha = path.alpha;
@@ -306,6 +309,9 @@ export function DemoDirector() {
       await until(() => !alive() || !["checking", "loading"].includes(useViewStore.getState().roomStatus), 90_000);
       progress(0.1);
       await until(() => !alive() || (!["idle", "loading"].includes(useAppearanceStore.getState().loadStatus) && !["idle", "loading"].includes(useAvatarStore.getState().loadStatus)), 15_000);
+      if (!alive()) return;
+      // (and the captions' font: a caption must not change its face mid-walkthrough; a slow link starts without it)
+      if (S.FONTS?.length && document.fonts) await Promise.race([Promise.all(S.FONTS.map((f) => document.fonts.load(f))).catch(() => null), new Promise((res) => setTimeout(res, 4_000))]);
       if (!alive()) return;
 
       // 2. every footage frame the walkthrough draws, loaded and kept before the clock starts
@@ -396,6 +402,8 @@ export function DemoDirector() {
     demoLook.hideTrail = false;
     demoLook.hideSubject = false;
     demoLook.tagLift = 0;
+    demoLook.cameraTags = 1;
+    demoLook.plainCameraTags = false;
     demoLook.path.draw = 0;
     demoLook.path.alpha = 0;
     demoLook.path.labels = 0;
@@ -405,9 +413,7 @@ export function DemoDirector() {
     for (const mark of demoLook.marks) mark.on = false;
     demoLook.holdVideos = false;
     demoLook.bracket.on = false;
-    demoLook.forecast.on = false;
     demoLook.forecast.exitOn = false;
-    demoLook.forecast.alpha = 0;
     demoLook.applied = -1;
     setBuildScripted(false);
     setWindowFrames(1);
