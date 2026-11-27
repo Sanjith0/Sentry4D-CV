@@ -120,7 +120,7 @@ export function Demo2Overlay() {
           captionLines.current.forEach((el, i) => {
             if (!el) return;
             text(el, c.lines[i]);
-            const from = c.at + 0.02 + i * CAPTION_STAGGER;
+            const from = c.at + (c.delay ?? 0) + 0.02 + i * CAPTION_STAGGER;
             const u = ch === 0 ? 1 : easeOut(span(e, from, from + CAPTION_IN));
             el.style.opacity = (u * leave).toFixed(3);
             el.style.transform = `translate3d(0, ${((1 - u) * RISE).toFixed(3)}em, 0)`;

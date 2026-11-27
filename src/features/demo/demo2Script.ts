@@ -368,13 +368,16 @@ export interface Chapter2 {
   at: number;
   /** The caption: two short lines in plain words (short: they stay inside a 4:5 crop of a 16:9 recording). */
   lines: readonly [string, string];
+  /** Seconds after the beat that the caption waits before it comes in (0 if left out). */
+  delay?: number;
 }
 
 export const CHAPTERS: Chapter2[] = [
   { at: BEAT.wall, lines: ["Four security cameras.", "One room."] },
   { at: BEAT.lock, lines: ["One person.", "Found in every camera."] },
   { at: BEAT.reveal, lines: ["The same moment.", "Rebuilt in 3D."] },
-  { at: BEAT.twin, lines: ["The whole room.", "Scanned to scale."] },
+  // (in CAM 01's picture he stands where the caption goes: it comes in once the viewport has lifted him off it)
+  { at: BEAT.twin, lines: ["The whole room.", "Scanned to scale."], delay: 0.25 },
   { at: BEAT.track, lines: ["Every step.", "Tracked across cameras."] },
   { at: BEAT.free, lines: ["Any angle.", "Any moment."] },
   { at: BEAT.predict, lines: ["His next move.", "Predicted."] },
