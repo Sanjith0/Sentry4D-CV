@@ -11,6 +11,7 @@ import { CCTV_ASPECT } from "../../config/cctv";
 import { clamp01, DEMO_CLIP, DEMO_SUBJECT, footageBand, lerp } from "./demoScript";
 import { activeScript } from "./scripts";
 import { useDemoStore } from "./useDemoStore";
+import { dropKeptFrame, dropWallFrames, keptFrame } from "./wallFrames";
 
 const INK = "#04070c";
 const CYAN = "#22d3ee";
@@ -58,6 +59,8 @@ interface FeedStyle {
   safeBottom: number;
   /** 0..1: a search sweep crossing the picture (absent: none). */
   scan?: number;
+  /** A frame kept from before a cut still shows from this share of the picture's width rightwards (absent: it is dissolved out). */
+  keep?: number;
   /** The tag on the bracket; "": none. */
   tag: string;
   /** The tile's name is its camera's number alone, without its clock. */
@@ -306,10 +309,25 @@ function silhouette(id: CameraId, img: CanvasImageSource & { width: number; heig
   return c;
 }
 
+/** A frame kept over a cut dissolves into the recording's new one over this long (s), and is dropped after KEPT_MAX whatever happens. */
+const KEPT_FADE = 0.25;
+const KEPT_MAX = 3;
+
 /** One recording into rectangle r: the picture, the subject picked out of it, the tile's own labels. */
 function drawFeed(ctx: CanvasRenderingContext2D, env: Env, cam: SecurityCamera, r: Rect, st: FeedStyle) {
   const video = videoRegistry.get(cam.id);
-  const ready = !!video && video.readyState >= 2 && video.videoWidth > 0;
+  /** The recording has shown a picture; `steady`: and what it shows is the frame at its currentTime. */
+  const has = !!video && video.videoWidth > 0;
+  const steady = has && video.readyState >= 2 && !video.seeking;
+  let old = st.src ? undefined : keptFrame(cam.id);
+  if (old && performance.now() - old.at > KEPT_MAX * 1000) {
+    dropKeptFrame(cam.id);
+    old = undefined;
+  }
+  // A recording that is finding a frame: over a cut the frame kept of it stands in; with none kept, its own
+  // last picture (the browser paints that one until the new frame is there). Never a blank tile for a seek.
+  const picture = steady ? video : (old?.canvas ?? (has ? video : undefined));
+  const ready = !!picture;
   ctx.save();
   ctx.beginPath();
   ctx.rect(r.x, r.y, r.w, r.h);
@@ -317,9 +335,9 @@ function drawFeed(ctx: CanvasRenderingContext2D, env: Env, cam: SecurityCamera, 
   ctx.fillStyle = "#070c14";
   ctx.fillRect(r.x, r.y, r.w, r.h);
 
-  if (ready) {
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
+  if (picture) {
+    const vw = picture instanceof HTMLVideoElement ? picture.videoWidth : picture.width;
+    const vh = picture instanceof HTMLVideoElement ? picture.videoHeight : picture.height;
     let { sx, sy, sw, sh } = st.src ?? coverRect(vw, vh, r.w / r.h);
     if (st.punch > 0 && !st.src) {
       // Closer in on the subject: a zoom about a fixed point of the picture, chosen so that the subject ends
@@ -341,11 +359,39 @@ function drawFeed(ctx: CanvasRenderingContext2D, env: Env, cam: SecurityCamera, 
       sw /= zoom;
       sh /= zoom;
     }
-    ctx.drawImage(video, sx, sy, sw, sh, r.x, r.y, r.w, r.h);
+    ctx.drawImage(picture, sx, sy, sw, sh, r.x, r.y, r.w, r.h);
+
+    // A cut in the recordings: the frame this one showed before it stays, over the new one, until the script
+    // uncovers that (from the left, under the sweep's line: the two differ only where he is, and the line is
+    // on the seam). A recording that has not found its new frame by then keeps the old one whole, then dissolves.
+    if (old) {
+      const there = steady && video.currentTime > old.target - 0.05;
+      old.fresh = there ? old.fresh + 1 : 0;
+      const fresh = old.fresh >= 2; // (the second draw: the picture drawn above is the new frame for certain)
+      if (st.keep !== undefined) old.swept = true;
+      let from = 0;
+      let alpha = 1;
+      if (!fresh) old.late ||= st.keep === undefined || st.keep > 0;
+      else if (old.swept && !old.late) from = st.keep ?? 1;
+      else {
+        old.fadeFrom ??= env.e;
+        alpha = 1 - (env.e - old.fadeFrom) / KEPT_FADE;
+      }
+      if (alpha <= 0 || from >= 1 || old.canvas.width !== vw) dropKeptFrame(cam.id);
+      else if (steady) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(r.x + r.w * from, r.y, r.w * (1 - from), r.h);
+        ctx.clip();
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(old.canvas, sx, sy, sw, sh, r.x, r.y, r.w, r.h);
+        ctx.restore();
+      }
+    }
 
     // the subject, picked out of this feed
     const clip = env.clip;
-    const kf = clip ? Math.round((video.currentTime - (env.offsets[cam.id] ?? 0) - clip.t0) * clip.fps) : -1;
+    const kf = clip && steady ? Math.round((video.currentTime - (env.offsets[cam.id] ?? 0) - clip.t0) * clip.fps) : -1;
     const frame = clip?.cameras[cam.id]?.frames[kf];
     const tex = frame?.file ? peekTexture(DEMO_CLIP, frame.file) : null;
     const img = tex?.image as (CanvasImageSource & { width: number; height: number }) | undefined;
@@ -507,6 +553,7 @@ export function DemoWall() {
       // goes must not show the bare viewport underneath.
       const show = s.phase !== "idle" && wall.visible;
       el.style.display = show ? "block" : "none";
+      if (s.phase === "idle") dropWallFrames();
       if (!show) return;
       el.style.opacity = String(wall.footage * (wall.pip ?? 1));
       // a wipe: the recording is cut away from the left, the 3D viewport underneath shows there
@@ -566,6 +613,7 @@ export function DemoWall() {
       const style = (r: Rect, mark: number, chrome: number, punch: number, focusTime: number, index = -1): FeedStyle => ({
         highlight: wall.highlights?.[index] ?? wall.highlight,
         scan: wall.scan,
+        keep: wall.keep,
         tag,
         plain: wall.plain,
         dim: wall.highlights?.[index] ?? wall.dim,

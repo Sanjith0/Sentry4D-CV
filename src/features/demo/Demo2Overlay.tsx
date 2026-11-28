@@ -4,7 +4,7 @@ import { Box, Check, X } from "lucide-react";
 import { formatClock } from "../../lib/format";
 import { demoLook } from "./demoLook";
 import { useLabelObstacle } from "./labelFit";
-import { BEAT, chapterAt, CHAPTERS, END_LINES, flashAt, glitchAt, incidentTime, rateAt, REEL, reelAt, scanLinesAt, SEARCH, WALL_RESERVE, wipeAt, wipeLineAt, wipeShown } from "./demo2Script";
+import { BEAT, chapterAt, CHAPTERS, clockAt, END_LINES, flashAt, glitchAt, rateAt, REEL, reelAt, scanLinesAt, SEARCH, WALL_RESERVE, wipeAt, wipeLineAt, wipeShown } from "./demo2Script";
 import { easeInOut, easeOut, lerp, span } from "./demoScript";
 import { useDemoStore } from "./useDemoStore";
 
@@ -121,13 +121,12 @@ export function Demo2Overlay() {
       if (s.phase !== "running" && s.phase !== "ended") return;
       const e = s.elapsed;
       const ch = chapterAt(e);
-      const T = incidentTime(e);
       const out = 1 - span(e, BEAT.end, BEAT.end + 0.3); // the chrome leaves for the end card
       const W = host.current?.clientWidth ?? 0;
       const H = host.current?.clientHeight ?? 0;
 
       // ---- the incident's clock and the replay's pace (a figure only where it is not real time)
-      text(time.current, formatClock(T));
+      text(time.current, formatClock(clockAt(e)));
       const pace = rateAt(e);
       const sign = pace < 0 ? 0 : pace > 1.05 ? 2 : 1;
       paceIcons.current.forEach((el, i) => show(el, i === sign));

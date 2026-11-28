@@ -19,6 +19,7 @@ import { CAMERA_ORDER, DEMO_CLIP, DEMO_SUBJECT, END_HOLD_SECONDS } from "./demoS
 import { activeScript } from "./scripts";
 import { recordingSources } from "./recordingSources";
 import { useDemoStore, type DemoVariant } from "./useDemoStore";
+import { dropWallFrames, keepWallFrames } from "./wallFrames";
 
 /** Viewer state the walkthrough changes, put back when it ends. */
 interface Snapshot {
@@ -103,6 +104,30 @@ function videosSettled(masterTime: number) {
   return true;
 }
 
+/**
+ * Where the recordings are (incident time), while they play near incident time `near`: the slowest of them,
+ * but no more than BUNCH behind the fastest (one that hangs does not hold the others up). Null if none can play.
+ */
+const BUNCH = 0.3;
+function recordingsTime(near: number): number | null {
+  const offsets = useReplayStore.getState().cameraOffsets;
+  let slowest = Infinity;
+  let fastest = -Infinity;
+  for (const id of CAMERA_ORDER) {
+    const v = videoRegistry.get(id);
+    if (!v || v.error || v.readyState < 2 || !Number.isFinite(v.duration)) continue;
+    const offset = offsets[id] ?? 0;
+    if (near + offset < 0 || near + offset > v.duration - 0.5) continue; // (this camera is not recording then: it is parked)
+    slowest = Math.min(slowest, v.currentTime - offset);
+    fastest = Math.max(fastest, v.currentTime - offset);
+  }
+  return fastest === -Infinity ? null : Math.max(slowest, fastest - BUNCH);
+}
+/** Recordings that came out of a cut late make up the time at this pace (times the script's own). */
+const CATCH_UP = 1.12;
+/** ...and this long after a cut's `resume` they play on whether or not every one of them has its frame (s). */
+const CUT_PATIENCE = 1.2;
+
 function takeSnapshot(): Snapshot {
   const r = useReplayStore.getState();
   const v = useViewStore.getState();
@@ -142,6 +167,18 @@ export function DemoDirector() {
   /** performance.now() at demo time 0. */
   const clock0 = useRef<number | null>(null);
   const resync = useRef(true);
+  /**
+   * Behind the loading card (DemoScript.ROLL_IN): the recordings are parked that long before their first
+   * frame, then play up to it. T: the incident time shown meanwhile (theirs, once they play), as of `at`;
+   * frame: seconds the last frame took.
+   */
+  const rollIn = useRef<{ T: number; playing: boolean; at: number; frame: number } | null>(null);
+  /** The recordings wait on the frame a cut took them to (DemoScript.cuts): its `resume`, that frame's incident time. */
+  const parked = useRef<{ resume: number; T: number } | null>(null);
+  /** Seconds the recordings are behind the script, having come out of a cut late; made up bit by bit. */
+  const lag = useRef(0);
+  /** Demo time, the script's incident time for it and its pace, on the last frame the recordings played. */
+  const last = useRef<{ e: number; T: number; rate: number } | null>(null);
 
   const apply = (e: number, running: boolean, camera: THREE.PerspectiveCamera, size: { width: number; height: number }) => {
     const replay = useReplayStore.getState();
@@ -154,21 +191,78 @@ export function DemoDirector() {
     setCanvasFilter(gl.domElement, S.cctvFilterAt(e));
 
     // ---- incident time
-    const T = S.incidentTime(e);
+    let T = S.incidentTime(e);
     const live = S.videosLive(e);
     if (demoLook.holdVideos === live) {
       demoLook.holdVideos = !live;
       if (live) resync.current = true;
     }
-    if (live && running && !manual) {
+    const lead = running ? null : rollIn.current;
+    if (lead) {
+      // Behind the loading card: the recordings are parked ahead of their first frame, then play up to it.
+      // Nothing is asked of them while they start: the shown time follows them, and the clock starts when
+      // they are there (see the lifecycle below).
+      if (lead.playing) {
+        if (!replay.isPlaying || replay.playbackSpeed !== 1) useReplayStore.setState({ isPlaying: true, playbackSpeed: 1 });
+        lead.T = Math.max(lead.T, recordingsTime(lead.T) ?? lead.T);
+        const now = performance.now();
+        if (lead.at > 0) lead.frame = Math.min((now - lead.at) / 1000, 0.25);
+        lead.at = now;
+        useReplayStore.setState({ currentTime: lead.T });
+      } else {
+        if (replay.isPlaying) replay.pause();
+        if (resync.current || Math.abs(replay.currentTime - lead.T) > 1e-4) replay.seek(lead.T);
+        resync.current = false;
+      }
+      T = lead.T;
+    } else if (live && running && !manual) {
       // The recordings are on screen: they play by themselves (faster through the pass of the cameras) and
       // the clock only steers them.
       const rate = S.videoRate(e);
-      if (!replay.isPlaying || replay.playbackSpeed !== rate) useReplayStore.setState({ isPlaying: true, playbackSpeed: rate });
-      if (resync.current || Math.abs(replay.currentTime - T) > 0.25) replay.seek(T);
-      else useReplayStore.setState({ currentTime: T });
-      resync.current = false;
+      const script = T;
+      const cut = S.cuts?.find((c) => e >= c.at && e < c.resume);
+      let prev = last.current;
+      // The script's own time jumps: at a cut (DemoScript.cuts), or one the clock stepped over. (A frame that
+      // took long is no jump: the recordings played on meanwhile and are where the clock is.)
+      // (the pace may step within a frame: anything between the two paces is no jump either)
+      const ahead = prev ? script - prev.T : 0;
+      const dt = prev ? e - prev.e : 0;
+      const jumped = !parked.current && prev !== null && (ahead < Math.min(rate, prev.rate) * dt - 0.25 || ahead > Math.max(rate, prev.rate) * dt + 0.25);
+      if (cut ? parked.current?.resume !== cut.resume : jumped) {
+        // One jump, to the frame they play on from, and they wait on it. The wall keeps their pictures.
+        keepWallFrames(T);
+        parked.current = { resume: cut ? cut.resume : e, T };
+        lag.current = 0;
+        resync.current = false;
+        useReplayStore.setState((r) => ({ isPlaying: false, currentTime: T, seekToken: r.seekToken + 1 }));
+      }
+      const wait = parked.current;
+      if (wait && (cut || (e < wait.resume + CUT_PATIENCE && !videosSettled(wait.T)))) {
+        T = wait.T; // (waiting: for the clock, then for every recording to have the frame)
+        last.current = null;
+      } else {
+        if (wait) {
+          // They play on from the frame they are on, however late that is: what they are behind is made up
+          // bit by bit (a jump to where the script is by now would stall them once more).
+          lag.current = T - wait.T > 0.05 ? T - wait.T : 0;
+          parked.current = null;
+          prev = null;
+        } else if (lag.current > 0 && prev) lag.current = Math.max(lag.current - (CATCH_UP - 1) * rate * Math.max(e - prev.e, 0), 0);
+        T -= lag.current;
+        const speed = lag.current > 0 ? rate * CATCH_UP : rate;
+        if (!replay.isPlaying || replay.playbackSpeed !== speed) useReplayStore.setState({ isPlaying: true, playbackSpeed: speed });
+        if (resync.current) replay.seek(T);
+        else useReplayStore.setState({ currentTime: T });
+        resync.current = false;
+        last.current = { e, T: script, rate };
+      }
     } else {
+      last.current = null;
+      parked.current = null;
+      // (what the recordings were still behind is made up here at the latest: the 3D view's time has no seam)
+      if (running && !manual && lag.current > 0 && demoLook.applied >= 0) lag.current = Math.max(lag.current - 0.5 * Math.max(e - demoLook.applied, 0), 0);
+      else lag.current = 0;
+      T -= lag.current;
       if (replay.isPlaying) replay.pause();
       if (live) {
         // stepped: the recordings are seeked to the exact frame
@@ -304,6 +398,11 @@ export function DemoDirector() {
     warm.current = 0;
     clock0.current = null;
     resync.current = true;
+    rollIn.current = null;
+    parked.current = null;
+    lag.current = 0;
+    last.current = null;
+    dropWallFrames();
 
     (async () => {
       // 1. the room scan and the reconstruction manifests
@@ -354,13 +453,16 @@ export function DemoDirector() {
         await frames(2);
         if (!alive()) return;
       }
+      // 4. the recordings: on their first frame, or (ROLL_IN) parked ahead of it and played up to it
+      const T0 = S.incidentTime(0);
+      const ahead = !stepped && S.PREP_E === 0 && S.videosLive(0) ? Math.min(S.ROLL_IN ?? 0, T0) : 0;
+      const lead = ahead > 0 ? { T: T0 - ahead, playing: false, at: 0, frame: 0 } : null;
       warm.current = S.PREP_E;
+      rollIn.current = lead;
       resync.current = true;
       await frames(2);
       progress(0.96);
-
-      // 4. the recordings on their first frame
-      await until(() => !alive() || videosSettled(S.DEMO_START_TIME), 8_000);
+      await until(() => !alive() || videosSettled(T0 - ahead), 8_000);
       await frames(2);
       if (!alive()) return;
       if (S.PREP_E !== 0) {
@@ -370,7 +472,27 @@ export function DemoDirector() {
         await frames(2);
         if (!alive()) return;
       }
-      resync.current = true;
+      let rolled = false;
+      if (lead && recordingsTime(lead.T) !== null) {
+        if (S.cuts?.length) {
+          // (the canvases a cut keeps the recordings' pictures in: made now, not at the cut)
+          keepWallFrames(lead.T);
+          dropWallFrames();
+        }
+        lead.playing = true;
+        // (handed over a frame ahead: the clock's first frame, the next one, is then the recordings' first)
+        const there = () => lead.T >= T0 - 0.004 - 1.5 * lead.frame;
+        await until(() => !alive() || there(), (ahead + 4) * 1000);
+        if (!alive()) return;
+        rolled = there();
+      }
+      rollIn.current = null;
+      last.current = null;
+      // Rolled in: the clock's zero is the instant the recordings were on the first frame, and they play on
+      // untouched. Otherwise (no roll-in, or recordings that would not play): they are sought and started
+      // at the clock's first frame.
+      if (rolled && lead) clock0.current = lead.at - (lead.T - T0) * 1000;
+      resync.current = !rolled;
       useDemoStore.setState({ phase: "running", elapsed: 0, progress: 1 });
     })();
 
@@ -416,6 +538,11 @@ export function DemoDirector() {
     demoLook.bracket.on = false;
     demoLook.forecast.exitOn = false;
     demoLook.applied = -1;
+    rollIn.current = null;
+    parked.current = null;
+    lag.current = 0;
+    last.current = null;
+    dropWallFrames();
     setBuildScripted(false);
     setWindowFrames(1);
     setWindowGlass(1);
@@ -455,7 +582,7 @@ export function DemoDirector() {
       const now = performance.now();
       if (clock0.current === null) clock0.current = now;
       const duration = activeScript().DEMO_DURATION;
-      e = Math.min((now - clock0.current) / 1000, duration);
+      e = Math.min(Math.max((now - clock0.current) / 1000, 0), duration);
       useDemoStore.setState(e >= duration ? { elapsed: duration, phase: "ended" } : { elapsed: e });
     }
     apply(e, s.phase === "running", camera, three.size);

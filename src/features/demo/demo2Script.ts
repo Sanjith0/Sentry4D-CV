@@ -29,9 +29,10 @@ import {
  * card: it starts on the recordings and every beat is something the system does with them. One caption per
  * beat, in plain words (CHAPTERS): read one after the other they say what the product does.
  *
- *   0.0  WALL       "Four security cameras. One room."  the wall of the four recordings; over it a reel of
- *                   analysis names spins like a slot machine's and stops on "Incident reconstruction"; a sweep
- *                   crosses every feed
+ *   0.0  WALL       "Four security cameras. One room."  the wall of the four recordings, already playing
+ *                   (he turns from the table to the chair); over it a reel of analysis names spins like a slot
+ *                   machine's and stops on "Incident reconstruction"; a sweep crosses every feed, and under
+ *                   its line the recordings skip the three seconds he then stands still (OPENING)
  *   2.1  LOCK       "One person. Found in every camera."  his SAM 2.1 cut-out lights up in every feed
  *   3.4  REVEAL     "The same moment. Rebuilt in 3D."  push into CAM 01; a wipe crosses the picture: recording
  *                   on one side, 3D view on the other, the room's wireframe trailing its line
@@ -73,9 +74,20 @@ export const BEAT = {
 
 // ---------------------------------------------------------------- incident time
 
-/** Incident time when the wall comes up: he stands at the table with the chair, in sight of all four cameras. */
+/** Incident time at demo time 0 for everything from the sweep on (the lock, the push, the wipe: e + this). */
 export const DEMO_START_TIME = 16.6;
-/** Demo time applied behind the loading card while the recordings are brought to DEMO_START_TIME. */
+/**
+ * The wall itself opens earlier in the incident: on him turning from the table to the chair, in sight of all
+ * four cameras. (From 15.4 to 18.4 he stands bent over the chair, all but still: recordings that open there
+ * look paused.) At `cut` the recordings jump over those seconds to the frame of `resume` and wait on it until
+ * the clock is there: they play up to the reel's stop, and on again under the sweep's line, which uncovers the
+ * new frames from the left (wallAt's `keep`). Only he differs between the two frames; the room is the same.
+ */
+const OPENING = { time: 14.05, cut: 1.3, resume: 1.75 } as const;
+export const cuts = [{ at: OPENING.cut, resume: OPENING.resume }] as const;
+/** The recordings are already playing when the loading card goes: this long before the wall's first frame. */
+export const ROLL_IN = 1.0;
+/** Demo time applied behind the loading card while the recordings are brought to their first frame. */
 export const PREP_E = BEAT.wall;
 /** The wipe across CAM 01's picture: it sets off as the push comes to rest and is through just before the twin beat. */
 const WIPE = [BEAT.reveal + 0.5, BEAT.reveal + 2.1] as const;
@@ -149,7 +161,8 @@ export const videoRate = (e: number) => (e >= WALK_FROM ? WALK_RATE : 1);
 
 /** Master (incident) time shown at demo time e. */
 export function incidentTime(e: number): number {
-  if (e < BEAT.twin) return DEMO_START_TIME + Math.max(e - BEAT.wall, 0);
+  if (e < OPENING.cut) return OPENING.time + Math.max(e - BEAT.wall, 0);
+  if (e < BEAT.twin) return DEMO_START_TIME + Math.max(e, OPENING.resume); // (from the cut: the frame of `resume`, held)
   if (e < REWIND_FROM) return twinTime(e);
   if (e < WALK_FROM) return lerp(HELD_TIME, REWOUND_TIME, easeInOut(span(e, REWIND_FROM, WALK_FROM)));
   if (e < WALK_END) return REWOUND_TIME + WALK_RATE * (e - WALK_FROM);
@@ -164,8 +177,18 @@ export function frameWanted(masterTime: number): boolean {
   return masterTime >= REWOUND_TIME && masterTime <= incidentTime(DEMO_DURATION) + 0.3;
 }
 
+/**
+ * The incident's clock as the top bar shows it: the incident time, except over the opening's cut, where it
+ * runs through the skipped seconds instead of jumping over them.
+ */
+export function clockAt(e: number): number {
+  if (e < OPENING.cut || e >= OPENING.resume) return incidentTime(e);
+  return lerp(OPENING.time + OPENING.cut, DEMO_START_TIME + OPENING.resume, span(e, OPENING.cut, OPENING.resume));
+}
+
 /** The replay's pace at demo time e, in times real time; negative while it rewinds. */
 export function rateAt(e: number): number {
+  if (e >= OPENING.cut && e < OPENING.resume) return (DEMO_START_TIME + OPENING.resume - OPENING.time - OPENING.cut) / (OPENING.resume - OPENING.cut);
   if (e < BEAT.twin) return 1;
   if (e < REWIND_FROM) return 1 - (1 - TWIN_RATE) * smooth(span(e, BEAT.twin, BEAT.twin + TWIN_EASE));
   if (e < WALK_FROM) return (REWOUND_TIME - HELD_TIME) / (WALK_FROM - REWIND_FROM);
@@ -428,6 +451,8 @@ export function wallAt(e: number): WallState {
     footage: 1,
     view: { cam: LOCK_FIRST, punch: 0, focusTime: incidentTime(e) },
     scan: e >= SEARCH.scan[0] && e < SEARCH.scan[1] ? span(e, SEARCH.scan[0], SEARCH.scan[1]) : undefined,
+    // (the frames from before the opening's cut stay until the sweep's line has passed them)
+    keep: e >= OPENING.cut && e < SEARCH.scan[1] ? span(e, SEARCH.scan[0], SEARCH.scan[1]) : undefined,
     wipe: wipeAt(e),
     tag: "",
     plain: true,

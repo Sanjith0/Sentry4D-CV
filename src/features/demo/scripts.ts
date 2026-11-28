@@ -7,12 +7,21 @@ import { useDemoStore, type DemoVariant } from "./useDemoStore";
 /** What the director, the wall and the path need of a walkthrough: all pure functions of the demo clock. */
 export interface DemoScript {
   DEMO_DURATION: number;
-  /** Incident time the recordings are brought to behind the loading card. */
-  DEMO_START_TIME: number;
   /** Incident time whose subject position stands in when he is absent at the shown time. */
   FREEZE_TIME: number;
-  /** Demo time applied behind the loading card while the recordings are brought to DEMO_START_TIME. */
+  /** Demo time applied behind the loading card while the recordings are brought to their first frame (incidentTime(0)). */
   PREP_E: number;
+  /**
+   * Seconds the recordings already play, behind the loading card, before the clock starts: the walkthrough
+   * opens on pictures that are moving. Left out: they start with the clock.
+   */
+  ROLL_IN?: number;
+  /**
+   * Cuts in the recordings while they are on screen: at demo time `at` they jump ahead to the frame of
+   * `resume` and wait on it until the clock is there (incidentTime gives that frame's time all the way from
+   * `at` to `resume`). The wall keeps the frames it showed before the cut (WallState.keep).
+   */
+  cuts?: readonly { at: number; resume: number }[];
   WARM_UP: readonly number[];
   /** Fonts its captions are set in (CSS font shorthand): fetched behind the loading card. */
   FONTS?: readonly string[];
