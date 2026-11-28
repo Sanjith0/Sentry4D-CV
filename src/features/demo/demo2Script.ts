@@ -29,8 +29,9 @@ import {
  * card: it starts on the recordings and every beat is something the system does with them. One caption per
  * beat, in plain words (CHAPTERS): read one after the other they say what the product does.
  *
- *   0.0  WALL       "Four security cameras. One room."  the wall of the four recordings; a query is typed, a
- *                   sweep crosses every feed
+ *   0.0  WALL       "Four security cameras. One room."  the wall of the four recordings; over it a reel of
+ *                   analysis names spins like a slot machine's and stops on "Incident reconstruction"; a sweep
+ *                   crosses every feed
  *   2.1  LOCK       "One person. Found in every camera."  his SAM 2.1 cut-out lights up in every feed
  *   3.4  REVEAL     "The same moment. Rebuilt in 3D."  push into CAM 01; a wipe crosses the picture: recording
  *                   on one side, 3D view on the other, the room's wireframe trailing its line
@@ -337,10 +338,75 @@ export function lookStateAt(e: number): LookState {
 
 /** The camera the wall pushes into. */
 export const LOCK_FIRST: CameraId = "cam1";
-/** The search: typed from, typed by, sweep until (= the lock). */
-export const SEARCH = { type: [BEAT.wall + 0.3, BEAT.wall + 1.45], scan: [BEAT.wall + 1.5, BEAT.lock], query: "man carrying a chair" } as const;
-/** Share of the picture's height kept free under the wall: the caption's two lines, and the search bar above them. */
+/** The search for him: the sweep crosses every feed from, until (= the lock). */
+export const SEARCH = { scan: [BEAT.wall + 1.5, BEAT.lock] } as const;
+/** Share of the picture's height kept free under the wall: the caption's two lines, and the title bar above them. */
 export const WALL_RESERVE = 0.28;
+
+/**
+ * The opening title: a reel of analysis names that spins like a slot machine's and stops on one. `names` in
+ * the order they come past, `stop` the one it stops on (those after it are only seen coming, at the edge of
+ * the window), `land` when that one reaches the middle: the bar leaves for its place under the wall just after.
+ */
+export const REEL = {
+  names: [
+    "Cross-camera tracking",
+    "Scene digital twin",
+    "Movement timeline",
+    "Trajectory forecast",
+    "Free-viewpoint replay",
+    "Evidence timeline",
+    "Incident report",
+    "3D reconstruction analysis",
+    "Forensic reconstruction report",
+    "Spatio-temporal reconstruction",
+    "Incident reconstruction",
+    "4D scene replay",
+  ],
+  stop: 10,
+  land: BEAT.wall + 1.3,
+} as const;
+/** Its speed as the stop arrives (names per second), and how sharply it brakes on the way there (2 = evenly). */
+const REEL_ARRIVE = 3.2;
+const REEL_BRAKE = 2.4;
+/** It runs past the stop and swings back: the swing's frequency (Hz) and how fast it dies (per second). */
+const REEL_SPRING = [2.3, 6.5] as const;
+
+export interface ReelState {
+  /** The name in the middle of the window, as a fractional index into REEL.names. */
+  at: number;
+  /** Names per second (negative while it swings back). */
+  speed: number;
+  /** 0..1: it has stopped (the names around the stop leave). */
+  lock: number;
+  /** 0..1: the flash of the stop. */
+  flash: number;
+}
+
+/** The reel's turn: fast, braking all the way, past the stop by a hair and back. */
+export function reelAt(e: number): ReelState {
+  const run = REEL.land - BEAT.wall;
+  const left = REEL.land - e;
+  if (left >= 0) {
+    const t = Math.min(left, run);
+    const brake = (REEL.stop - REEL_ARRIVE * run) / Math.pow(run, REEL_BRAKE); // the first name is in the middle at BEAT.wall
+    return {
+      at: REEL.stop - REEL_ARRIVE * t - brake * Math.pow(t, REEL_BRAKE),
+      speed: REEL_ARRIVE + brake * REEL_BRAKE * Math.pow(t, REEL_BRAKE - 1),
+      lock: 0,
+      flash: span(e, REEL.land - 0.03, REEL.land + 0.04),
+    };
+  }
+  const s = -left;
+  const w = 2 * Math.PI * REEL_SPRING[0];
+  const swing = REEL_ARRIVE * Math.exp(-REEL_SPRING[1] * s) * (1 - span(s, 0.7, 0.9)); // dead still from 0.9 s on
+  return {
+    at: REEL.stop + (swing / w) * Math.sin(w * s),
+    speed: swing * (Math.cos(w * s) - (REEL_SPRING[1] / w) * Math.sin(w * s)),
+    lock: smooth(span(s, 0.1, 0.38)),
+    flash: span(e, REEL.land - 0.03, REEL.land + 0.04) * Math.pow(1 - span(s, 0.04, 0.7), 3),
+  };
+}
 /** The cut-outs light up one feed after the other. */
 const MATCH_STAGGER = 0.11;
 /** The lock's marks leave as the wipe sets off: the recording as filmed on one side, the 3D view on the other. */

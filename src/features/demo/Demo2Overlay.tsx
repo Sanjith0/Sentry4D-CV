@@ -1,15 +1,28 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { addAfterEffect } from "@react-three/fiber";
-import { Check, Search, X } from "lucide-react";
+import { Box, Check, X } from "lucide-react";
 import { formatClock } from "../../lib/format";
 import { demoLook } from "./demoLook";
 import { useLabelObstacle } from "./labelFit";
-import { BEAT, chapterAt, CHAPTERS, END_LINES, flashAt, glitchAt, incidentTime, rateAt, scanLinesAt, SEARCH, WALL_RESERVE, wipeAt, wipeLineAt, wipeShown } from "./demo2Script";
+import { BEAT, chapterAt, CHAPTERS, END_LINES, flashAt, glitchAt, incidentTime, rateAt, REEL, reelAt, scanLinesAt, SEARCH, WALL_RESERVE, wipeAt, wipeLineAt, wipeShown } from "./demo2Script";
 import { easeInOut, easeOut, lerp, span } from "./demoScript";
 import { useDemoStore } from "./useDemoStore";
 
-/** The search bar's size once it has taken its place between the wall and the caption (1 = as typed). */
-const SEARCH_REST = 0.78;
+/** The title bar's size once it has taken its place between the wall and the caption (1 = while its reel turns). */
+const TITLE_REST = 0.78;
+const TITLE_SHADOW = "0 0.6em 2em rgba(2,6,12,0.6), 0 0 0 1px rgba(34,211,238,0.14)";
+/** The bar swells by this much, about its middle, as the reel stops. */
+const TITLE_POP = 0.03;
+/** The reel is a drum seen from the front: the angle between two names on it (rad) and its radius (em). */
+const REEL_STEP = 0.84;
+const REEL_RADIUS = 1.6;
+/** Its window: the names fade out towards the top and the bottom of the bar. */
+const REEL_WINDOW = "linear-gradient(to bottom, transparent 6%, #000 33%, #000 69%, transparent 94%)";
+/** While the drum is fast its names smear along their way: over this long (s), from this speed on (names per second). */
+const REEL_SHUTTER = 1 / 24;
+const REEL_SHARP = 4;
+/** The smear is drawn with this many copies of the letters on either side of them. */
+const SMEAR_COPIES = 6;
 /** Share of the picture's height above the wall of recordings (DemoWall's own margin). */
 const WALL_TOP = 0.08;
 /** Sizes follow the window's height; its width only caps them in a narrow (portrait) window. */
@@ -38,12 +51,25 @@ const TICK_WIDTH = "max(2px, 0.28vh)";
 /** Past its end and back (a check mark that pops in). */
 const backOut = (t: number) => 1 + 2.70158 * Math.pow(t - 1, 3) + 1.70158 * Math.pow(t - 1, 2);
 
+/** Letters smeared along their way, over `length` em: copies of them above and below, fainter outwards. */
+function smear(length: number) {
+  const gain = Math.min(1, length / 0.1);
+  const soft = ((0.6 * length) / (2 * SMEAR_COPIES)).toFixed(4);
+  const copies: string[] = [];
+  for (let k = 1; k <= SMEAR_COPIES; k++) {
+    const d = (((length / 2) * k) / SMEAR_COPIES).toFixed(4);
+    const tone = `${soft}em rgba(186,230,253,${(gain * (0.27 - 0.03 * k)).toFixed(3)})`;
+    copies.push(`0 ${d}em ${tone}`, `0 -${d}em ${tone}`);
+  }
+  return copies.join(", ");
+}
+
 /**
  * DEMO 2's overlay: one caption per beat in plain words (inside the 4:5-safe column), the brand and the
- * incident's clock, the search bar, the wipe between recording and 3D view with a label on either side, the
- * tracking bracket, the label on the exit and the end card. Nothing else is written on the picture: what the
- * system does is shown by the picture itself. Everything that moves is written straight to the elements from
- * the demo clock, so a stepped recording and a live run look the same.
+ * incident's clock, the title bar and its reel, the wipe between recording and 3D view with a label on either
+ * side, the tracking bracket, the label on the exit and the end card. Nothing else is written on the picture:
+ * what the system does is shown by the picture itself. Everything that moves is written straight to the
+ * elements from the demo clock, so a stepped recording and a live run look the same.
  */
 export function Demo2Overlay() {
   const phase = useDemoStore((s) => s.phase);
@@ -66,12 +92,12 @@ export function Demo2Overlay() {
   const wipe = useRef<HTMLDivElement>(null);
   const wipeLeft = useRef<HTMLDivElement>(null);
   const wipeRight = useRef<HTMLDivElement>(null);
-  const searchDim = useRef<HTMLDivElement>(null);
-  const searchBar = useRef<HTMLDivElement>(null);
-  const searchText = useRef<HTMLSpanElement>(null);
-  const searchCaret = useRef<HTMLSpanElement>(null);
-  const searchBusy = useRef<HTMLSpanElement>(null);
-  const searchDone = useRef<HTMLSpanElement>(null);
+  const titleDim = useRef<HTMLDivElement>(null);
+  const titleBar = useRef<HTMLDivElement>(null);
+  const titleIcon = useRef<SVGSVGElement>(null);
+  const reelRows = useRef<(HTMLSpanElement | null)[]>([]);
+  const titleBusy = useRef<HTMLSpanElement>(null);
+  const titleDone = useRef<HTMLSpanElement>(null);
   const exit = useRef<HTMLDivElement>(null);
   const exitText = useRef<HTMLSpanElement>(null);
   const end = useRef<HTMLDivElement>(null);
@@ -128,35 +154,58 @@ export function Demo2Overlay() {
         }
       }
 
-      // ---- search bar: typed over the middle of the wall, then it takes its place between the wall and the caption
-      if (searchBar.current && searchDim.current) {
+      // ---- title bar: over the middle of the wall its reel of names turns like a slot machine's and stops on
+      // one; then the bar takes its place between the wall and the caption
+      if (titleBar.current && titleDim.current) {
         const on = e >= BEAT.wall && e < BEAT.reveal + 0.2;
-        show(searchBar.current, on);
-        show(searchDim.current, on);
+        show(titleBar.current, on);
+        show(titleDim.current, on);
         if (on) {
-          const alpha = span(e, BEAT.wall + 0.05, BEAT.wall + 0.25) * (1 - span(e, BEAT.reveal - 0.1, BEAT.reveal + 0.2));
+          const reel = reelAt(e);
+          const alpha = span(e, BEAT.wall + 0.02, BEAT.wall + 0.2) * (1 - span(e, BEAT.reveal - 0.1, BEAT.reveal + 0.2));
           const m = easeInOut(span(e, SEARCH.scan[0] - 0.05, SEARCH.scan[0] + 0.4));
-          const h = searchBar.current.offsetHeight;
+          const h = titleBar.current.offsetHeight;
           const hostTop = host.current?.getBoundingClientRect().top ?? 0;
           const captionTop = caption.current ? caption.current.getBoundingClientRect().top - hostTop : H * 0.83;
           const wallBottom = H * (1 - WALL_RESERVE);
-          const scale = lerp(1, SEARCH_REST, m);
-          const y = lerp((H * WALL_TOP + wallBottom) / 2 - h / 2, (wallBottom + captionTop) / 2 - (h * SEARCH_REST) / 2, m);
-          searchBar.current.style.opacity = alpha.toFixed(3);
-          searchBar.current.style.transform = `translate3d(-50%, ${y.toFixed(1)}px, 0) scale(${scale.toFixed(4)})`;
-          searchDim.current.style.opacity = (0.5 * alpha * (1 - m)).toFixed(3);
-          const typed = Math.round(SEARCH.query.length * span(e, SEARCH.type[0], SEARCH.type[1]));
-          text(searchText.current, SEARCH.query.slice(0, typed));
-          if (searchCaret.current) searchCaret.current.style.opacity = e < SEARCH.scan[0] && (typed < SEARCH.query.length ? typed > 0 || Math.floor(e * 4) % 2 === 0 : Math.floor(e * 6) % 2 === 0) ? "1" : "0";
+          const rest = lerp(1, TITLE_REST, m);
+          const scale = rest * (1 + TITLE_POP * reel.flash);
+          const y = lerp((H * WALL_TOP + wallBottom) / 2 - h / 2, (wallBottom + captionTop) / 2 - (h * TITLE_REST) / 2, m) - (h * (scale - rest)) / 2;
+          const lit = reel.flash;
+          const bar = titleBar.current.style;
+          bar.opacity = alpha.toFixed(3);
+          bar.transform = `translate3d(-50%, ${y.toFixed(1)}px, 0) scale(${scale.toFixed(4)})`;
+          bar.borderColor = `rgba(${Math.round(lerp(255, 103, lit))},${Math.round(lerp(255, 232, lit))},${Math.round(lerp(255, 249, lit))},${lerp(0.15, 0.95, lit).toFixed(3)})`;
+          bar.boxShadow = `${TITLE_SHADOW}, 0 0 1.6em rgba(34,211,238,${(0.6 * lit).toFixed(3)}), inset 0 0 0.9em rgba(34,211,238,${(0.2 * lit).toFixed(3)})`;
+          titleDim.current.style.opacity = (0.5 * alpha * (1 - m)).toFixed(3);
+          if (titleIcon.current) titleIcon.current.style.color = `rgb(${Math.round(lerp(148, 103, lit))},${Math.round(lerp(163, 232, lit))},${Math.round(lerp(184, 249, lit))})`;
+
+          // the reel: a drum seen from the front. A name comes over its top, is full size in the middle and
+          // leaves under it; while the drum is fast its letters smear along their way
+          const blur = Math.max(0, Math.abs(reel.speed) - REEL_SHARP) * REEL_RADIUS * REEL_STEP * REEL_SHUTTER;
+          const ink = (1 - 0.72 * Math.min(1, blur / 0.45)).toFixed(3);
+          reelRows.current.forEach((el, i) => {
+            if (!el) return;
+            const turn = (i - reel.at) * REEL_STEP;
+            const facing = Math.abs(turn) < 1.5 ? Math.cos(turn) : 0;
+            const seen = facing * facing * (i === REEL.stop ? 1 : 1 - reel.lock); // once it has stopped the others leave
+            el.style.visibility = seen > 0.004 ? "visible" : "hidden";
+            if (seen <= 0.004) return;
+            el.style.opacity = seen.toFixed(3);
+            el.style.transform = `translate3d(0, ${(-REEL_RADIUS * Math.sin(turn)).toFixed(4)}em, 0) scaleY(${facing.toFixed(4)})`;
+            el.style.color = `rgba(248,250,252,${ink})`;
+            el.style.textShadow = blur > 0 ? smear(blur) : i === REEL.stop && lit > 0 ? `0 0 0.7em rgba(103,232,249,${(0.85 * lit).toFixed(3)})` : "none";
+          });
+
           // busy while the sweep crosses the feeds; a check once his cut-outs light up
-          if (searchBusy.current) {
-            searchBusy.current.style.opacity = e >= SEARCH.scan[0] && e < BEAT.lock ? "1" : "0";
-            searchBusy.current.style.transform = `rotate(${((e * 600) % 360).toFixed(1)}deg)`;
+          if (titleBusy.current) {
+            titleBusy.current.style.opacity = e >= SEARCH.scan[0] && e < BEAT.lock ? "1" : "0";
+            titleBusy.current.style.transform = `rotate(${((e * 600) % 360).toFixed(1)}deg)`;
           }
-          if (searchDone.current) {
+          if (titleDone.current) {
             const u = span(e, BEAT.lock, BEAT.lock + 0.3);
-            searchDone.current.style.opacity = Math.min(1, u * 3).toFixed(3);
-            searchDone.current.style.transform = `scale(${(0.4 + 0.6 * backOut(u)).toFixed(3)})`;
+            titleDone.current.style.opacity = Math.min(1, u * 3).toFixed(3);
+            titleDone.current.style.transform = `scale(${(0.4 + 0.6 * backOut(u)).toFixed(3)})`;
           }
         }
       }
@@ -255,7 +304,7 @@ export function Demo2Overlay() {
         <>
           <div className="vignette absolute inset-0 opacity-70" />
           <div ref={lines} className="scanlines absolute inset-0" style={{ opacity: 0 }} />
-          <div ref={searchDim} className="absolute inset-0 bg-ink-950" style={{ display: "none", opacity: 0 }} />
+          <div ref={titleDim} className="absolute inset-0 bg-ink-950" style={{ display: "none", opacity: 0 }} />
           <div
             ref={glitch}
             className="absolute -inset-x-6 inset-y-0 mix-blend-screen"
@@ -290,20 +339,32 @@ export function Demo2Overlay() {
             <span ref={exitText} className="text-amber-50 tabular-nums" />
           </div>
 
-          {/* search bar (flies from the middle of the wall to its place over the caption) */}
+          {/* title bar: its reel turns over the middle of the wall, then it flies to its place over the caption */}
           <div
-            ref={searchBar}
-            className="absolute top-0 left-1/2 z-10 flex w-[min(88vw,70vh)] origin-top items-center gap-[0.7em] rounded-full border border-white/15 bg-ink-950/85 px-[1.1em] py-[0.62em] shadow-[0_0.6em_2em_rgba(2,6,12,0.6),0_0_0_1px_rgba(34,211,238,0.14)]"
-            style={{ display: "none", fontSize: "clamp(13px, min(3vh, 4.3vw), 60px)" }}
+            ref={titleBar}
+            className="absolute top-0 left-1/2 z-10 flex w-[min(88vw,70vh)] origin-top items-center gap-[0.7em] rounded-full border border-white/15 bg-ink-950/85 px-[1.1em] py-[0.62em]"
+            style={{ display: "none", fontSize: "clamp(13px, min(3vh, 4.3vw), 60px)", boxShadow: TITLE_SHADOW }}
           >
-            <Search className="h-[1em] w-[1em] shrink-0 text-slate-400" />
-            <span className="min-w-0 font-medium whitespace-nowrap text-slate-50">
-              <span ref={searchText} />
-              <span ref={searchCaret} className="ml-[0.08em] inline-block h-[1.05em] w-[2px] translate-y-[0.18em] bg-cyan-300" />
+            <Box ref={titleIcon} className="h-[1em] w-[1em] shrink-0 text-slate-400" />
+            <span className="relative h-[1.5em] min-w-0 flex-1">
+              <span className="absolute inset-x-0 -inset-y-[0.62em] overflow-hidden" style={{ maskImage: REEL_WINDOW, WebkitMaskImage: REEL_WINDOW }}>
+                {REEL.names.map((name, i) => (
+                  <span
+                    key={`${i} ${name}`}
+                    ref={(el) => {
+                      reelRows.current[i] = el;
+                    }}
+                    className="absolute top-1/2 left-0 -mt-[0.75em] leading-[1.5] font-medium whitespace-nowrap text-slate-50"
+                    style={{ visibility: "hidden" }}
+                  >
+                    {name}
+                  </span>
+                ))}
+              </span>
             </span>
-            <span className="relative ml-auto h-[1em] w-[1em] shrink-0">
-              <span ref={searchBusy} className="absolute inset-[0.06em] rounded-full border-[0.11em] border-cyan-300/25 border-t-cyan-300" style={{ opacity: 0 }} />
-              <span ref={searchDone} className="absolute inset-0 flex items-center justify-center text-cyan-300" style={{ opacity: 0 }}>
+            <span className="relative h-[1em] w-[1em] shrink-0">
+              <span ref={titleBusy} className="absolute inset-[0.06em] rounded-full border-[0.11em] border-cyan-300/25 border-t-cyan-300" style={{ opacity: 0 }} />
+              <span ref={titleDone} className="absolute inset-0 flex items-center justify-center text-cyan-300" style={{ opacity: 0 }}>
                 <Check className="h-[1em] w-[1em]" strokeWidth={2.8} />
               </span>
             </span>
