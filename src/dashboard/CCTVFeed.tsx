@@ -51,7 +51,9 @@ function useVideoSync(video: React.RefObject<HTMLVideoElement | null>, cam: Secu
         return;
       }
       const s = useReplayStore.getState();
-      const vt = s.currentTime + (s.cameraOffsets[cam.id] ?? 0);
+      // Demo walkthrough, recordings playing by themselves: the clock's time is from its last frame.
+      const since = demoLook.liveAt > 0 && s.isPlaying ? Math.max(0, performance.now() - demoLook.liveAt) / 1000 : 0;
+      const vt = s.currentTime + since * s.playbackSpeed + (s.cameraOffsets[cam.id] ?? 0);
       const dur = v.duration;
       const r: RangeState = vt < 0 ? "before" : Number.isFinite(dur) && vt > dur - 0.03 ? "after" : "in";
       if (r !== rangeRef.current) {

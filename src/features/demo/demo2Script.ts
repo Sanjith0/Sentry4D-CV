@@ -31,8 +31,8 @@ import {
  *
  *   0.0  WALL       "Four security cameras. One room."  the wall of the four recordings, already playing
  *                   (he turns from the table to the chair); over it a reel of analysis names spins like a slot
- *                   machine's and stops on "Incident reconstruction"; a sweep crosses every feed, and under
- *                   its line the recordings skip the three seconds he then stands still (OPENING)
+ *                   machine's and stops on "Incident reconstruction"; a sweep crosses every feed, and behind
+ *                   its line the wall is some three seconds further on, past where he stands still (LEAD_IN)
  *   2.1  LOCK       "One person. Found in every camera."  his SAM 2.1 cut-out lights up in every feed
  *   3.4  REVEAL     "The same moment. Rebuilt in 3D."  push into CAM 01; a wipe crosses the picture: recording
  *                   on one side, 3D view on the other, the room's wireframe trailing its line
@@ -74,17 +74,8 @@ export const BEAT = {
 
 // ---------------------------------------------------------------- incident time
 
-/** Incident time at demo time 0 for everything from the sweep on (the lock, the push, the wipe: e + this). */
+/** Incident time at demo time 0: the recordings play on from here (what the wall shows before the sweep: LEAD_IN). */
 export const DEMO_START_TIME = 16.6;
-/**
- * The wall itself opens earlier in the incident: on him turning from the table to the chair, in sight of all
- * four cameras. (From 15.4 to 18.4 he stands bent over the chair, all but still: recordings that open there
- * look paused.) At `cut` the recordings jump over those seconds to the frame of `resume` and wait on it until
- * the clock is there: they play up to the reel's stop, and on again under the sweep's line, which uncovers the
- * new frames from the left (wallAt's `keep`). Only he differs between the two frames; the room is the same.
- */
-const OPENING = { time: 14.05, cut: 1.3, resume: 1.75 } as const;
-export const cuts = [{ at: OPENING.cut, resume: OPENING.resume }] as const;
 /** The recordings are already playing when the loading card goes: this long before the wall's first frame. */
 export const ROLL_IN = 1.0;
 /** Demo time applied behind the loading card while the recordings are brought to their first frame. */
@@ -161,8 +152,7 @@ export const videoRate = (e: number) => (e >= WALK_FROM ? WALK_RATE : 1);
 
 /** Master (incident) time shown at demo time e. */
 export function incidentTime(e: number): number {
-  if (e < OPENING.cut) return OPENING.time + Math.max(e - BEAT.wall, 0);
-  if (e < BEAT.twin) return DEMO_START_TIME + Math.max(e, OPENING.resume); // (from the cut: the frame of `resume`, held)
+  if (e < BEAT.twin) return DEMO_START_TIME + Math.max(e - BEAT.wall, 0);
   if (e < REWIND_FROM) return twinTime(e);
   if (e < WALK_FROM) return lerp(HELD_TIME, REWOUND_TIME, easeInOut(span(e, REWIND_FROM, WALK_FROM)));
   if (e < WALK_END) return REWOUND_TIME + WALK_RATE * (e - WALK_FROM);
@@ -178,17 +168,17 @@ export function frameWanted(masterTime: number): boolean {
 }
 
 /**
- * The incident's clock as the top bar shows it: the incident time, except over the opening's cut, where it
- * runs through the skipped seconds instead of jumping over them.
+ * The incident's clock as the top bar shows it while the wall shows its lead-in (LEAD_IN): that footage's
+ * time, and under the sweep it runs through the seconds between the two to the incident time, which it is
+ * from there on.
  */
 export function clockAt(e: number): number {
-  if (e < OPENING.cut || e >= OPENING.resume) return incidentTime(e);
-  return lerp(OPENING.time + OPENING.cut, DEMO_START_TIME + OPENING.resume, span(e, OPENING.cut, OPENING.resume));
+  if (e >= SEARCH.scan[1]) return incidentTime(e);
+  return lerp(LEAD_IN.time + Math.min(e, SEARCH.scan[0]), incidentTime(SEARCH.scan[1]), span(e, SEARCH.scan[0], SEARCH.scan[1]));
 }
 
 /** The replay's pace at demo time e, in times real time; negative while it rewinds. */
 export function rateAt(e: number): number {
-  if (e >= OPENING.cut && e < OPENING.resume) return (DEMO_START_TIME + OPENING.resume - OPENING.time - OPENING.cut) / (OPENING.resume - OPENING.cut);
   if (e < BEAT.twin) return 1;
   if (e < REWIND_FROM) return 1 - (1 - TWIN_RATE) * smooth(span(e, BEAT.twin, BEAT.twin + TWIN_EASE));
   if (e < WALK_FROM) return (REWOUND_TIME - HELD_TIME) / (WALK_FROM - REWIND_FROM);
@@ -363,6 +353,15 @@ export function lookStateAt(e: number): LookState {
 export const LOCK_FIRST: CameraId = "cam1";
 /** The search for him: the sweep crosses every feed from, until (= the lock). */
 export const SEARCH = { scan: [BEAT.wall + 1.5, BEAT.lock] } as const;
+/**
+ * The wall opens on earlier footage than the clock's own: him turning from the table to the chair, in sight
+ * of all four cameras, from incident time `time` on. (At the clock's own time he stands bent over that chair,
+ * all but still, until just before the lock: recordings that open there look paused.) Second players show it
+ * (leadIn.ts) while the recordings play on the clock's time from the first frame, out of sight: neither is
+ * ever stopped or moved. The sweep's line takes the wall from the one to the other (wallAt's `leadIn`): only
+ * he differs between the two, bent over the chair in both, and the room is the same. Gone at `until`.
+ */
+export const LEAD_IN = { time: 13.95, until: SEARCH.scan[1] } as const;
 /** Share of the picture's height kept free under the wall: the caption's two lines, and the title bar above them. */
 export const WALL_RESERVE = 0.28;
 
@@ -451,8 +450,8 @@ export function wallAt(e: number): WallState {
     footage: 1,
     view: { cam: LOCK_FIRST, punch: 0, focusTime: incidentTime(e) },
     scan: e >= SEARCH.scan[0] && e < SEARCH.scan[1] ? span(e, SEARCH.scan[0], SEARCH.scan[1]) : undefined,
-    // (the frames from before the opening's cut stay until the sweep's line has passed them)
-    keep: e >= OPENING.cut && e < SEARCH.scan[1] ? span(e, SEARCH.scan[0], SEARCH.scan[1]) : undefined,
+    // (the lead-in: all of each picture until the sweep sets off, then what its line has not passed yet)
+    leadIn: e < LEAD_IN.until ? span(e, SEARCH.scan[0], SEARCH.scan[1]) : undefined,
     wipe: wipeAt(e),
     tag: "",
     plain: true,

@@ -16,10 +16,10 @@ import { subjectSample } from "../sentry/SceneActors";
 import { evidenceAt } from "../sentry/useEvidence";
 import { demoLook } from "./demoLook";
 import { CAMERA_ORDER, DEMO_CLIP, DEMO_SUBJECT, END_HOLD_SECONDS } from "./demoScript";
+import { closeLeadIn, leadInFaltered, leadInOpen, leadInRolling, leadInSettled, leadInState, openLeadIn, playLeadIn, stepLeadIn } from "./leadIn";
 import { activeScript } from "./scripts";
 import { recordingSources } from "./recordingSources";
 import { useDemoStore, type DemoVariant } from "./useDemoStore";
-import { dropWallFrames, keepWallFrames } from "./wallFrames";
 
 /** Viewer state the walkthrough changes, put back when it ends. */
 interface Snapshot {
@@ -123,10 +123,13 @@ function recordingsTime(near: number): number | null {
   }
   return fastest === -Infinity ? null : Math.max(slowest, fastest - BUNCH);
 }
-/** Recordings that came out of a cut late make up the time at this pace (times the script's own). */
-const CATCH_UP = 1.12;
-/** ...and this long after a cut's `resume` they play on whether or not every one of them has its frame (s). */
-const CUT_PATIENCE = 1.2;
+/**
+ * The wall's lead-in (DemoScript.LEAD_IN) is started with the recordings, ROLL_IN before the clock. When the
+ * clock starts its players must have come at least LEAD_IN_MIN of that way, and no more than LEAD_IN_OVER (s)
+ * past it; otherwise the wall opens on the recordings themselves.
+ */
+const LEAD_IN_MIN = 0.4;
+const LEAD_IN_OVER = 0.6;
 
 function takeSnapshot(): Snapshot {
   const r = useReplayStore.getState();
@@ -173,10 +176,6 @@ export function DemoDirector() {
    * frame: seconds the last frame took.
    */
   const rollIn = useRef<{ T: number; playing: boolean; at: number; frame: number } | null>(null);
-  /** The recordings wait on the frame a cut took them to (DemoScript.cuts): its `resume`, that frame's incident time. */
-  const parked = useRef<{ resume: number; T: number } | null>(null);
-  /** Seconds the recordings are behind the script, having come out of a cut late; made up bit by bit. */
-  const lag = useRef(0);
   /** Demo time, the script's incident time for it and its pace, on the last frame the recordings played. */
   const last = useRef<{ e: number; T: number; rate: number } | null>(null);
 
@@ -203,13 +202,18 @@ export function DemoDirector() {
       // Nothing is asked of them while they start: the shown time follows them, and the clock starts when
       // they are there (see the lifecycle below).
       if (lead.playing) {
-        if (!replay.isPlaying || replay.playbackSpeed !== 1) useReplayStore.setState({ isPlaying: true, playbackSpeed: 1 });
+        if (!replay.isPlaying || replay.playbackSpeed !== 1) {
+          useReplayStore.setState({ isPlaying: true, playbackSpeed: 1 });
+          playLeadIn(); // (the wall's lead-in, in the same instant)
+        }
         lead.T = Math.max(lead.T, recordingsTime(lead.T) ?? lead.T);
         const now = performance.now();
         if (lead.at > 0) lead.frame = Math.min((now - lead.at) / 1000, 0.25);
         lead.at = now;
+        demoLook.liveAt = now;
         useReplayStore.setState({ currentTime: lead.T });
       } else {
+        demoLook.liveAt = 0;
         if (replay.isPlaying) replay.pause();
         if (resync.current || Math.abs(replay.currentTime - lead.T) > 1e-4) replay.seek(lead.T);
         resync.current = false;
@@ -217,58 +221,36 @@ export function DemoDirector() {
       T = lead.T;
     } else if (live && running && !manual) {
       // The recordings are on screen: they play by themselves (faster through the pass of the cameras) and
-      // the clock only steers them.
+      // the clock only steers them. They are sought when they come on screen, and if the script's own time
+      // jumps. (A frame that took long is no jump: they played on meanwhile and are where the clock is. The
+      // pace may step within a frame: anything between the two paces is no jump either.)
       const rate = S.videoRate(e);
-      const script = T;
-      const cut = S.cuts?.find((c) => e >= c.at && e < c.resume);
-      let prev = last.current;
-      // The script's own time jumps: at a cut (DemoScript.cuts), or one the clock stepped over. (A frame that
-      // took long is no jump: the recordings played on meanwhile and are where the clock is.)
-      // (the pace may step within a frame: anything between the two paces is no jump either)
-      const ahead = prev ? script - prev.T : 0;
+      const prev = last.current;
+      const ahead = prev ? T - prev.T : 0;
       const dt = prev ? e - prev.e : 0;
-      const jumped = !parked.current && prev !== null && (ahead < Math.min(rate, prev.rate) * dt - 0.25 || ahead > Math.max(rate, prev.rate) * dt + 0.25);
-      if (cut ? parked.current?.resume !== cut.resume : jumped) {
-        // One jump, to the frame they play on from, and they wait on it. The wall keeps their pictures.
-        keepWallFrames(T);
-        parked.current = { resume: cut ? cut.resume : e, T };
-        lag.current = 0;
-        resync.current = false;
-        useReplayStore.setState((r) => ({ isPlaying: false, currentTime: T, seekToken: r.seekToken + 1 }));
-      }
-      const wait = parked.current;
-      if (wait && (cut || (e < wait.resume + CUT_PATIENCE && !videosSettled(wait.T)))) {
-        T = wait.T; // (waiting: for the clock, then for every recording to have the frame)
-        last.current = null;
-      } else {
-        if (wait) {
-          // They play on from the frame they are on, however late that is: what they are behind is made up
-          // bit by bit (a jump to where the script is by now would stall them once more).
-          lag.current = T - wait.T > 0.05 ? T - wait.T : 0;
-          parked.current = null;
-          prev = null;
-        } else if (lag.current > 0 && prev) lag.current = Math.max(lag.current - (CATCH_UP - 1) * rate * Math.max(e - prev.e, 0), 0);
-        T -= lag.current;
-        const speed = lag.current > 0 ? rate * CATCH_UP : rate;
-        if (!replay.isPlaying || replay.playbackSpeed !== speed) useReplayStore.setState({ isPlaying: true, playbackSpeed: speed });
-        if (resync.current) replay.seek(T);
-        else useReplayStore.setState({ currentTime: T });
-        resync.current = false;
-        last.current = { e, T: script, rate };
-      }
+      const jumped = prev !== null && (ahead < Math.min(rate, prev.rate) * dt - 0.25 || ahead > Math.max(rate, prev.rate) * dt + 0.25);
+      demoLook.liveAt = performance.now(); // (T is this frame's: the feeds count on from here until the next)
+      if (!replay.isPlaying || replay.playbackSpeed !== rate) useReplayStore.setState({ isPlaying: true, playbackSpeed: rate });
+      if (resync.current || jumped) replay.seek(T);
+      else useReplayStore.setState({ currentTime: T });
+      resync.current = false;
+      last.current = { e, T, rate };
     } else {
       last.current = null;
-      parked.current = null;
-      // (what the recordings were still behind is made up here at the latest: the 3D view's time has no seam)
-      if (running && !manual && lag.current > 0 && demoLook.applied >= 0) lag.current = Math.max(lag.current - 0.5 * Math.max(e - demoLook.applied, 0), 0);
-      else lag.current = 0;
-      T -= lag.current;
+      demoLook.liveAt = 0;
       if (replay.isPlaying) replay.pause();
       if (live) {
         // stepped: the recordings are seeked to the exact frame
         if (resync.current || Math.abs(replay.currentTime - T) > 1e-4) replay.seek(T);
         resync.current = false;
       } else if (replay.currentTime !== T) useReplayStore.setState({ currentTime: T });
+    }
+
+    // ---- the wall's lead-in: its players play by themselves until the wall is through with them
+    if (S.LEAD_IN && leadInOpen() && !lead) {
+      if (manual) {
+        if (e < S.LEAD_IN.until) stepLeadIn(S.LEAD_IN.time + e); // stepped: on the exact frame, like the recordings
+      } else if (!running || e >= S.LEAD_IN.until || leadInFaltered()) closeLeadIn();
     }
 
     // ---- camera
@@ -395,14 +377,13 @@ export function DemoDirector() {
     setBuildScripted(true);
     demoLook.active = true;
     demoLook.holdVideos = false;
+    demoLook.liveAt = 0;
     warm.current = 0;
     clock0.current = null;
     resync.current = true;
     rollIn.current = null;
-    parked.current = null;
-    lag.current = 0;
     last.current = null;
-    dropWallFrames();
+    closeLeadIn();
 
     (async () => {
       // 1. the room scan and the reconstruction manifests
@@ -460,11 +441,15 @@ export function DemoDirector() {
       warm.current = S.PREP_E;
       rollIn.current = lead;
       resync.current = true;
+      // (the wall's lead-in: its own players, parked as far before their first frame as the recordings are)
+      if (S.LEAD_IN && (lead || stepped) && S.LEAD_IN.time >= ahead) openLeadIn(S.LEAD_IN.time - ahead);
       await frames(2);
       progress(0.96);
-      await until(() => !alive() || videosSettled(T0 - ahead), 8_000);
+      await until(() => !alive() || (videosSettled(T0 - ahead) && leadInSettled()), 8_000);
       await frames(2);
       if (!alive()) return;
+      // (they did not get there: the wall opens on the recordings themselves; a stepped recording waits for them frame by frame)
+      if (!stepped && !leadInSettled()) closeLeadIn();
       if (S.PREP_E !== 0) {
         // the walkthrough opens on the 3D view, not on the recordings: they stay on their first frame (held)
         // while the opening shot is drawn once behind the loading card
@@ -474,11 +459,6 @@ export function DemoDirector() {
       }
       let rolled = false;
       if (lead && recordingsTime(lead.T) !== null) {
-        if (S.cuts?.length) {
-          // (the canvases a cut keeps the recordings' pictures in: made now, not at the cut)
-          keepWallFrames(lead.T);
-          dropWallFrames();
-        }
         lead.playing = true;
         // (handed over a frame ahead: the clock's first frame, the next one, is then the recordings' first)
         const there = () => lead.T >= T0 - 0.004 - 1.5 * lead.frame;
@@ -488,6 +468,8 @@ export function DemoDirector() {
       }
       rollIn.current = null;
       last.current = null;
+      // (the lead-in's players are started with the recordings: under way by now, all of them, or not used)
+      if (!stepped && !(rolled && leadInRolling(LEAD_IN_MIN * ahead, ahead + LEAD_IN_OVER))) closeLeadIn();
       // Rolled in: the clock's zero is the instant the recordings were on the first frame, and they play on
       // untouched. Otherwise (no roll-in, or recordings that would not play): they are sought and started
       // at the clock's first frame.
@@ -535,14 +517,13 @@ export function DemoDirector() {
     demoLook.pathInfo.drawn = 0;
     for (const mark of demoLook.marks) mark.on = false;
     demoLook.holdVideos = false;
+    demoLook.liveAt = 0;
     demoLook.bracket.on = false;
     demoLook.forecast.exitOn = false;
     demoLook.applied = -1;
     rollIn.current = null;
-    parked.current = null;
-    lag.current = 0;
     last.current = null;
-    dropWallFrames();
+    closeLeadIn();
     setBuildScripted(false);
     setWindowFrames(1);
     setWindowGlass(1);
@@ -601,13 +582,13 @@ export function DemoDirector() {
         const clip = useAppearanceStore.getState().clips[DEMO_CLIP];
         let framesMissing = 0;
         if (clip) for (const id of CAMERA_ORDER) for (const f of clip.cameras[id]?.frames ?? []) if (f.file && activeScript().frameWanted(f.masterTime) && !peekTexture(DEMO_CLIP, f.file)) framesMissing++;
-        return { phase: s.phase, elapsed: s.elapsed, progress: s.progress, duration: activeScript().DEMO_DURATION, variant: s.variant, framesMissing };
+        return { phase: s.phase, elapsed: s.elapsed, progress: s.progress, duration: activeScript().DEMO_DURATION, variant: s.variant, framesMissing, leadIn: leadInOpen() ? leadInState() : null };
       },
       ready: () => {
         const s = useDemoStore.getState();
         if (s.phase !== "running" && s.phase !== "ended") return false;
         if (Math.abs(demoLook.applied - s.elapsed) > 1e-6) return false;
-        return demoLook.holdVideos || videosSettled(activeScript().incidentTime(s.elapsed));
+        return demoLook.holdVideos || (videosSettled(activeScript().incidentTime(s.elapsed)) && leadInSettled());
       },
     };
     (window as unknown as Record<string, unknown>).__sentryDemo = handle;

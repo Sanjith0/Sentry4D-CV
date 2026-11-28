@@ -491,10 +491,10 @@ export interface WallState {
   /** 0..1: a search sweep crossing every feed, left to right; left out: none. */
   scan?: number;
   /**
-   * After a cut in the recordings (DemoScript.cuts) the wall keeps the frames it showed before it. 0..1: they
-   * still show from this share of each picture's width rightwards (0: all of it); left out: they are dissolved out.
+   * The wall's lead-in (DemoScript.LEAD_IN), 0..1: its footage shows from this share of each picture's width
+   * rightwards (0: all of it), the recording itself left of there; left out: the recordings alone.
    */
-  keep?: number;
+  leadIn?: number;
   /** 0..1: share of the screen's width, from the left, where the recording is wiped away (the 3D view shows). */
   wipe?: number;
   /** The tag on the cut-out; left out: the subject's label and "SAM 2.1"; "": the bracket alone. */

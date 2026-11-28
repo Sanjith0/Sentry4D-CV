@@ -40,6 +40,12 @@ export const demoLook = {
   plainCameraTags: false,
   /** The recordings are not on screen: leave the <video> elements alone instead of seeking them. */
   holdVideos: false,
+  /**
+   * The recordings play by themselves and the walkthrough only steers them: performance.now() when it last
+   * set the incident time (0 otherwise). That time is as old as the frame it was set on; the feeds add what
+   * has passed since, so a frame that takes long does not have them sought back to it.
+   */
+  liveAt: 0,
   /** Tracking bracket around the subject, in viewport pixels (drawn by the overlay); lock 0..1: closing in. */
   bracket: { on: false, lock: 0, x: 0, top: 0, bottom: 0, text: "", sub: "" },
   /**

@@ -17,11 +17,11 @@ export interface DemoScript {
    */
   ROLL_IN?: number;
   /**
-   * Cuts in the recordings while they are on screen: at demo time `at` they jump ahead to the frame of
-   * `resume` and wait on it until the clock is there (incidentTime gives that frame's time all the way from
-   * `at` to `resume`). The wall keeps the frames it showed before the cut (WallState.keep).
+   * The wall opens on earlier footage than the clock's own: from incident time `time` on (at demo time 0),
+   * until demo time `until`. Second players show it (leadIn.ts, WallState.leadIn) while the recordings play
+   * on the clock's time, out of sight. Needs ROLL_IN: those players are started with the recordings.
    */
-  cuts?: readonly { at: number; resume: number }[];
+  LEAD_IN?: { readonly time: number; readonly until: number };
   WARM_UP: readonly number[];
   /** Fonts its captions are set in (CSS font shorthand): fetched behind the loading card. */
   FONTS?: readonly string[];
